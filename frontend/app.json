@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "Inventario",
+    "slug": "inventario",
+    "version": "1.0.0",
+    "scheme": "inventario",
+    "plugins": ["expo-router", "expo-camera"],
+    "experiments": { "typedRoutes": true },
+    "ios": {
+      "infoPlist": {
+        "NSCameraUsageDescription": "Usiamo la fotocamera per scansionare i codici a barre dei prodotti"
+      }
+    },
+    "android": {
+      "permissions": ["android.permission.CAMERA"]
+    }
+  }
+}
