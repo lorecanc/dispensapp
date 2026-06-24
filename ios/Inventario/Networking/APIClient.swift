@@ -16,7 +16,6 @@ final class APIClient {
 
         self.decoder = JSONDecoder()
         self.decoder.dateDecodingStrategy = .inventoryDate
-        self.decoder.keyDecodingStrategy = .convertFromSnakeCase
     }
 
     private static let dateFormatter: DateFormatter = {
