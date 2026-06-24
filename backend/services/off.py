@@ -24,6 +24,6 @@ async def fetch_product(barcode: str) -> Optional[dict]:
         "barcode": barcode,
         "name": product.get("product_name", ""),
         "brand": product.get("brands") or None,
-        "categories": product.get("categories_tags", []),
+        "categories": [c.split(":")[-1] for c in product.get("categories_tags", [])],
         "image_url": product.get("image_front_small_url") or None,
     }
