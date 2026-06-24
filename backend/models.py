@@ -17,3 +17,4 @@ class InventoryItem(Base):
     category = Column(String, nullable=True)
     image_url = Column(String, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    quantity = Column(Integer, nullable=False, default=1, server_default="1")

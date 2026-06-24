@@ -43,6 +43,7 @@ struct ScannerView: UIViewControllerRepresentable {
             case .barcode(let barcode):
                 hasScanned = true
                 let payload = barcode.payloadStringValue ?? ""
+                print("[Scanner] Barcode detected:", payload)
                 DispatchQueue.main.async {
                     dataScanner.stopScanning()
                     self.parent.onBarcodeScanned?(payload)
@@ -61,6 +62,7 @@ struct ScannerView: UIViewControllerRepresentable {
             case .barcode(let barcode):
                 hasScanned = true
                 let payload = barcode.payloadStringValue ?? ""
+                print("[Scanner] Barcode detected:", payload)
                 DispatchQueue.main.async {
                     dataScanner.stopScanning()
                     self.parent.onBarcodeScanned?(payload)
@@ -72,21 +74,26 @@ struct ScannerView: UIViewControllerRepresentable {
     }
 }
 
+// MARK: - Identifiable barcode wrapper
+
+struct ScannedBarcode: Identifiable {
+    let id = UUID()
+    let value: String
+}
+
 // MARK: - SwiftUI wrapper with permission handling
 
 struct ScannerViewWrapper: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var scannedBarcode: String?
+    @State private var scannedBarcode: ScannedBarcode?
     @State private var showPermissionAlert = false
-    @State private var showScanPreview = false
 
     var body: some View {
         NavigationStack {
             Group {
                 if DataScannerViewController.isSupported && DataScannerViewController.isAvailable {
                     ScannerView { barcode in
-                        scannedBarcode = barcode
-                        showScanPreview = true
+                        scannedBarcode = ScannedBarcode(value: barcode)
                     }
                     .overlay(alignment: .topTrailing) {
                         Button {
@@ -115,10 +122,8 @@ struct ScannerViewWrapper: View {
                     Button("Chiudi") { dismiss() }
                 }
             }
-            .sheet(isPresented: $showScanPreview) {
-                if let barcode = scannedBarcode {
-                    ScanPreviewSheet(barcode: barcode)
-                }
+            .sheet(item: $scannedBarcode) { barcode in
+                ScanPreviewSheet(barcode: barcode.value)
             }
             .alert("Accesso alla fotocamera", isPresented: $showPermissionAlert) {
                 Button("OK") { dismiss() }

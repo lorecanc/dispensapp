@@ -6,8 +6,8 @@ from backend.config import ESTIMATED_NOTE, EXPIRING_SOON_DAYS
 def to_markdown(items: list) -> str:
     today = date.today()
     lines = ["# 🍲 Inventario Dispensa\n"]
-    lines.append("| Prodotto | Brand | Scadenza | Stato | Note |")
-    lines.append("| :--- | :--- | :--- | :--- | :--- |")
+    lines.append("| Prodotto | Brand | Quantità | Scadenza | Stato | Note |")
+    lines.append("| :--- | :--- | :--- | :--- | :--- | :--- |")
 
     for item in items:
         name = item.name
@@ -27,6 +27,6 @@ def to_markdown(items: list) -> str:
 
         note = ESTIMATED_NOTE if item.is_estimated else ""
 
-        lines.append(f"| {name} | {brand} | {scadenza} | {stato} | {note} |")
+        lines.append(f"| {name} | {brand} | {item.quantity} | {scadenza} | {stato} | {note} |")
 
     return "\n".join(lines)

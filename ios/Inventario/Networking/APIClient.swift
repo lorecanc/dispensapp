@@ -29,6 +29,7 @@ final class APIClient {
     // MARK: - Scan
 
     func scan(barcode: String) async throws -> ScanResult {
+        print("[APIClient] POST /api/scan barcode:", barcode)
         let url = APIConfig.baseURL.appending(path: "api/scan")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"

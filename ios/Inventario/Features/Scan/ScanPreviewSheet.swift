@@ -134,6 +134,7 @@ struct ScanPreviewSheet: View {
     }
 
     private func loadScanResult() async {
+        print("[ScanPreview] loadScanResult for barcode:", barcode)
         isLoading = true
         do {
             let result = try await client.scan(barcode: barcode)

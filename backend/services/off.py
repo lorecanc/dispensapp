@@ -18,7 +18,7 @@ async def fetch_product(barcode: str) -> Optional[dict]:
     product = data.get("product")
     status = data.get("status")
     if status != 1 or product is None:
-        return None
+        return {"found": False}
 
     return {
         "barcode": barcode,

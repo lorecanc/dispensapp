@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from sqlalchemy.orm import Session
 
@@ -8,6 +8,7 @@ from backend.schemas import (
     InventoryCreate,
     InventoryCreateManual,
     InventoryOut,
+    InventoryUpdate,
     MessageResponse,
 )
 from backend.services.expiration import estimate_expiration
@@ -34,6 +35,7 @@ def create_inventory(body: InventoryCreate, db: Session = Depends(get_db)):
         is_estimated=is_estimated,
         category=body.category,
         image_url=body.image_url,
+        quantity=body.quantity,
     )
     db.add(item)
     db.commit()
@@ -62,8 +64,22 @@ def create_inventory_manual(
         expiration_date=expiration_date,
         is_estimated=is_estimated,
         category=body.category,
+        quantity=body.quantity,
     )
     db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.patch("/inventory/{item_id}", response_model=InventoryOut)
+def update_inventory(item_id: int, body: InventoryUpdate, db: Session = Depends(get_db)):
+    item = db.query(InventoryItem).filter(InventoryItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Elemento non trovato")
+    data = body.model_dump(exclude_unset=True)
+    for k, v in data.items():
+        setattr(item, k, v)
     db.commit()
     db.refresh(item)
     return item

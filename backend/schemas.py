@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, computed_field
+from pydantic import BaseModel, ConfigDict, computed_field, model_validator
 
 from backend.config import EXPIRING_SOON_DAYS
 
@@ -27,6 +27,7 @@ class InventoryCreate(BaseModel):
     expiration_date: Optional[date] = None
     category: Optional[str] = None
     image_url: Optional[str] = None
+    quantity: int = 1
 
 
 class InventoryCreateManual(BaseModel):
@@ -34,6 +35,7 @@ class InventoryCreateManual(BaseModel):
     brand: Optional[str] = None
     expiration_date: Optional[date] = None
     category: Optional[str] = None
+    quantity: int = 1
 
 
 class InventoryOut(BaseModel):
@@ -48,6 +50,7 @@ class InventoryOut(BaseModel):
     category: Optional[str] = None
     image_url: Optional[str] = None
     created_at: datetime
+    quantity: int = 1
 
     @computed_field
     @property
@@ -60,6 +63,21 @@ class InventoryOut(BaseModel):
         if self.expiration_date <= today + timedelta(days=EXPIRING_SOON_DAYS):
             return "expiring_soon"
         return "ok"
+
+
+class InventoryUpdate(BaseModel):
+    name: Optional[str] = None
+    brand: Optional[str] = None
+    expiration_date: Optional[date] = None
+    category: Optional[str] = None
+    image_url: Optional[str] = None
+    quantity: Optional[int] = None
+
+    @model_validator(mode="after")
+    def at_least_one_field(self):
+        if not self.model_fields_set:
+            raise ValueError("Almeno un campo da aggiornare")
+        return self
 
 
 class MessageResponse(BaseModel):

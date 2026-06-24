@@ -19,7 +19,7 @@ async def scan_barcode(body: ScanRequest):
             ).model_dump(),
         )
 
-    if not result.get("name"):
+    if result.get("found") is False:
         return ScanResponse(
             found=False,
             barcode=body.barcode,
@@ -29,7 +29,7 @@ async def scan_barcode(body: ScanRequest):
     return ScanResponse(
         found=True,
         barcode=result["barcode"],
-        name=result["name"],
+        name=result.get("name", ""),
         brand=result.get("brand"),
         categories=result.get("categories", []),
         image_url=result.get("image_url"),
