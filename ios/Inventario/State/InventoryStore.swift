@@ -8,13 +8,14 @@ final class InventoryStore {
     var error: APIError?
     var exportedMarkdown: String?
 
-    private let client = APIClient()
+    let client = APIClient.shared
 
     func refresh() async {
         isLoading = true
         error = nil
         do {
-            items = try await client.list()
+            let fetched = try await client.list()
+            items = fetched.sorted { ($0.expirationDate ?? .distantFuture) < ($1.expirationDate ?? .distantFuture) }
         } catch {
             self.error = error as? APIError ?? .transport(error)
         }
@@ -91,6 +92,7 @@ final class InventoryStore {
             )
             if let index = items.firstIndex(where: { $0.id == id }) {
                 items[index] = updated
+                items.sort { ($0.expirationDate ?? .distantFuture) < ($1.expirationDate ?? .distantFuture) }
             }
         } catch {
             self.error = error as? APIError ?? .transport(error)

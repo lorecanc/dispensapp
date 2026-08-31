@@ -1,8 +1,11 @@
+import logging
 from typing import Optional
 
 import httpx
 
 from backend.config import OFF_BASE_URL
+
+logger = logging.getLogger(__name__)
 
 
 async def fetch_product(barcode: str) -> Optional[dict]:
@@ -12,7 +15,8 @@ async def fetch_product(barcode: str) -> Optional[dict]:
             response = await client.get(url)
             response.raise_for_status()
             data = response.json()
-    except (httpx.HTTPError, httpx.TimeoutException, ValueError):
+    except (httpx.HTTPError, httpx.TimeoutException, ValueError) as exc:
+        logger.warning("OFF fetch failed for %s: %s", barcode, exc)
         return None
 
     product = data.get("product")

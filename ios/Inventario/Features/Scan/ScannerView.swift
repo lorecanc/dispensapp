@@ -96,16 +96,41 @@ struct ScannerViewWrapper: View {
                         scannedBarcode = ScannedBarcode(value: barcode)
                     }
                     .overlay(alignment: .topTrailing) {
-                        Button {
-                            dismiss()
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.title2)
-                                .symbolRenderingMode(.palette)
-                                .foregroundStyle(.white, .black.opacity(0.4))
-                                .padding()
+                        Group {
+                            if #available(iOS 26.0, *) {
+                                GlassEffectContainer {
+                                    Button {
+                                        dismiss()
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.title2)
+                                            .foregroundStyle(.white)
+                                            .shadow(radius: 2)
+                                            .padding(8)
+                                            .accessibilityHidden(true)
+                                    }
+                                    .glassEffect(.regular, in: Circle())
+                                    .accessibilityLabel("Chiudi scanner")
+                                    .accessibilityHint("Chiude la fotocamera e torna alla dispensa")
+                                }
+                            } else {
+                                Button {
+                                    dismiss()
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.title2)
+                                        .symbolRenderingMode(.palette)
+                                        .foregroundStyle(.white, .black.opacity(0.4))
+                                        .accessibilityHidden(true)
+                                }
+                                .background(.ultraThinMaterial, in: Circle())
+                                .accessibilityLabel("Chiudi scanner")
+                                .accessibilityHint("Chiude la fotocamera e torna alla dispensa")
+                            }
                         }
+                        .padding()
                     }
+                    .accessibilityElement(children: .contain)
                     .ignoresSafeArea()
                 } else {
                     ContentUnavailableView(
@@ -113,6 +138,9 @@ struct ScannerViewWrapper: View {
                         systemImage: "barcode.viewfinder",
                         description: Text("Il dispositivo non supporta la scansione di codici a barre.")
                     )
+                    .accessibilityLabel("Scanner non disponibile")
+                    .accessibilityHint("Il dispositivo non supporta la scansione codici a barre")
+                    .dynamicTypeSize(.xSmall ... .accessibility3)
                 }
             }
             .navigationTitle("Scansiona")
@@ -120,6 +148,8 @@ struct ScannerViewWrapper: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Chiudi") { dismiss() }
+                        .accessibilityLabel("Chiudi scanner")
+                        .accessibilityHint("Chiude la fotocamera")
                 }
             }
             .sheet(item: $scannedBarcode) { barcode in

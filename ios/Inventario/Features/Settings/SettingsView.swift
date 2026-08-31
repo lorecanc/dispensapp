@@ -7,8 +7,6 @@ struct SettingsView: View {
     @State private var connectionStatus: ConnectionStatus?
     @State private var showExportShare = false
 
-    private let client = APIClient()
-
     enum ConnectionStatus: Equatable {
         case testing
         case success
@@ -16,9 +14,9 @@ struct SettingsView: View {
 
         var color: Color {
             switch self {
-            case .testing: return .gray
-            case .success: return .green
-            case .failure: return .red
+            case .testing: return Color.pantryStone
+            case .success: return Color.statusFresh
+            case .failure: return Color.statusExpired
             }
         }
 
@@ -84,10 +82,12 @@ struct SettingsView: View {
                             Spacer()
                             if store.exportedMarkdown != nil {
                                 Image(systemName: "checkmark")
-                                    .foregroundStyle(.green)
+                                    .foregroundStyle(Color.statusFresh)
                             }
                         }
                     }
+                    .accessibilityLabel("Genera esportazione markdown")
+                    .accessibilityHint("Crea il file markdown della dispensa per la condivisione")
                 }
 
                 Section("Informazioni") {
@@ -95,8 +95,10 @@ struct SettingsView: View {
                         Text("Versione")
                         Spacer()
                         Text("1.0.0")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.textSecondary)
                     }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Versione 1.0.0")
                 }
             }
             .navigationTitle("Impostazioni")
@@ -112,7 +114,7 @@ struct SettingsView: View {
     private func testConnection() async {
         connectionStatus = .testing
         do {
-            _ = try await client.list()
+            _ = try await store.client.list()
             connectionStatus = .success
         } catch {
             connectionStatus = .failure(error.localizedDescription)

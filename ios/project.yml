@@ -22,6 +22,7 @@ targets:
       properties:
         NSCameraUsageDescription: Per scansionare i codici a barre dei prodotti.
         NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: false
           NSAllowsLocalNetworking: true
         UILaunchScreen: {}
     settings:
@@ -30,3 +31,13 @@ targets:
       SWIFT_VERSION: "5.9"
       ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+  InventarioTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: InventarioTests
+    dependencies:
+      - target: Inventario
+    settings:
+      SWIFT_VERSION: "5.9"
+      PRODUCT_BUNDLE_IDENTIFIER: com.inventario.tests

@@ -7,11 +7,12 @@ struct ErrorBanner: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.pantryLinen)
+                .accessibilityHidden(true)
 
             Text(message)
                 .font(.subheadline)
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.pantryLinen)
 
             Spacer(minLength: 0)
 
@@ -20,17 +21,23 @@ struct ErrorBanner: View {
                     onDismiss()
                 } label: {
                     Image(systemName: "xmark")
-                        .foregroundStyle(.white.opacity(0.8))
+                        .foregroundStyle(Color.pantryLinen.opacity(0.85))
                         .font(.caption.weight(.semibold))
                 }
+                .accessibilityLabel("Chiudi avviso")
+                .accessibilityHint("Tocca per nascondere il messaggio di errore")
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(.red.opacity(0.85))
+        .background(Color.statusExpired.opacity(0.9))
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .padding(.horizontal)
         .padding(.top, 4)
         .transition(.move(edge: .top).combined(with: .opacity))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Errore: \(message)")
+        .accessibilityHint("Avviso di errore")
+        .dynamicTypeSize(.xSmall ... .accessibility2)
     }
 }

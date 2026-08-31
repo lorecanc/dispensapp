@@ -28,19 +28,21 @@ struct ItemDetailView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                         case .failure:
                             RoundedRectangle(cornerRadius: 12)
-                                .fill(.secondary.opacity(0.2))
+                                .fill(Color.pantryOat.opacity(0.35))
                                 .frame(height: 200)
                                 .overlay {
                                     Image(systemName: "photo")
                                         .font(.largeTitle)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(Color.textSecondary)
+                                        .accessibilityHidden(true)
                                 }
                         case .empty:
                             RoundedRectangle(cornerRadius: 12)
-                                .fill(.secondary.opacity(0.2))
+                                .fill(Color.pantryOat.opacity(0.25))
                                 .frame(height: 200)
                                 .overlay {
                                     ProgressView()
+                                        .tint(Color.pantryMoss)
                                 }
                         @unknown default:
                             EmptyView()
@@ -56,16 +58,20 @@ struct ItemDetailView: View {
                         if let brand = item.brand, !brand.isEmpty {
                             Text(brand)
                                 .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.textSecondary)
+                                .accessibilityLabel("Marca \(brand)")
                         }
 
                         if let category = item.category {
                             HStack(spacing: 4) {
                                 Image(systemName: "tag")
+                                    .accessibilityHidden(true)
                                 Text(categoryDisplayName(category))
                             }
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.textSecondary)
+                            .accessibilityLabel("Categoria \(categoryDisplayName(category))")
+                            .accessibilityHint("Categoria del prodotto")
                         }
 
                         StatusBadge(status: ItemStatus.from(statusString: item.status))
@@ -74,21 +80,26 @@ struct ItemDetailView: View {
                         if let expirationDate = item.expirationDate {
                             HStack {
                                 Text("Scadenza:")
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(Color.textSecondary)
                                 Text(expirationDate.formatted(date: .long, time: .omitted))
                                     .fontWeight(.medium)
                             }
                             .font(.subheadline)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel("Scadenza \(expirationDate.formatted(date: .long, time: .omitted))")
 
                             if item.isEstimated {
                                 Label("Data stimata", systemImage: "exclamationmark.triangle")
                                     .font(.caption)
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(Color.statusSoon)
+                                    .accessibilityLabel("Data stimata")
+                                    .accessibilityHint("Data di scadenza stimata dalla categoria, non esatta")
                             }
                         } else {
                             Text("Nessuna data di scadenza")
                                 .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.textSecondary)
+                                .accessibilityLabel("Nessuna data di scadenza")
                         }
                     }
 
@@ -101,6 +112,10 @@ struct ItemDetailView: View {
                                     await store.update(id: item.id, quantity: newValue)
                                 }
                             }
+                            .accessibilityLabel("Quantità")
+                            .accessibilityValue("\(editQuantity)")
+                            .accessibilityHint("Regola la quantità del prodotto")
+                            .dynamicTypeSize(.xSmall ... .accessibility2)
 
                         Button {
                             Task {
@@ -111,7 +126,9 @@ struct ItemDetailView: View {
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
-                        .tint(.green)
+                        .tint(Color.statusFresh)
+                        .accessibilityLabel("Segna come consumato")
+                        .accessibilityHint("Diminuisce la quantità di uno")
 
                         Button(role: .destructive) {
                             showDeleteConfirmation = true
@@ -120,6 +137,8 @@ struct ItemDetailView: View {
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
+                        .accessibilityLabel("Elimina \(item.name)")
+                        .accessibilityHint("Elimina definitivamente il prodotto")
                     }
                     .padding(.horizontal)
                 }
@@ -146,18 +165,6 @@ struct ItemDetailView: View {
     }
 
     private func categoryDisplayName(_ category: String) -> String {
-        switch category {
-        case "yogurt": return "Yogurt"
-        case "fresh-milk": return "Latte fresco"
-        case "pasta": return "Pasta"
-        case "canned-vegetables": return "Verdure in scatola"
-        case "rice": return "Riso"
-        case "cheeses": return "Formaggi"
-        case "eggs": return "Uova"
-        case "fresh-fruits": return "Frutta fresca"
-        case "fresh-vegetables": return "Verdura fresca"
-        case "frozen-foods": return "Surgelati"
-        default: return category
-        }
+        CategoryRegistry.displayName(for: category)
     }
 }

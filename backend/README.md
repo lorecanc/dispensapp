@@ -30,27 +30,49 @@ pip install -r ../requirements.txt
 uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Tables are created automatically on first startup. The database file is `inventory.db` in the project root.
+Tables are created via Alembic migrations on startup (`alembic upgrade head` in `lifespan`), with `Base.metadata.create_all` as fallback if Alembic is unavailable. The database file is `inventory.db` in the project root (absolute path resolved from `config.py`).
+
+### Database & Migrations (Alembic)
+
+```bash
+# from backend/
+alembic upgrade head      # apply all migrations
+alembic downgrade base    # revert all (drops tables — destructive)
+alembic revision --autogenerate -m "add_xxx"  # new migration (env.py uses Base.metadata)
+# override DB for one-off runs:
+DATABASE_URL=sqlite:////tmp/test.db alembic upgrade head
+DATABASE_URL=sqlite:////tmp/test.db alembic downgrade base
+```
+
+- Config: `backend/alembic.ini` + `backend/alembic/env.py` (loads `Base` from `database.py` and `DATABASE_URL` from `config.py`/`DATABASE_URL` env).
+- Baseline: `alembic/versions/*_create_initial_tables.py` creates `inventory_items` (idempotent — skips if table exists, does not drop data on upgrade).
 
 ## Configuration
 
-All constants in [`config.py`](./config.py):
+All constants in [`config.py`](./config.py). `DATABASE_URL` is env-configurable.
 
 | Key | Default | Description |
 |-----|---------|-------------|
+| `DATABASE_URL` | `sqlite:///<project_root>/inventory.db` (absolute, from `DATABASE_URL` env) | SQLAlchemy URL. Override with `DATABASE_URL` env var, e.g. `sqlite:////tmp/test.db` or `postgresql://user:pass@host/db`. Default is resolved as absolute path relative to `config.py` (not CWD) |
 | `DEFAULT_SHELF_LIFE` | (per category map) | Shelf life in days by product category |
 | `OFF_BASE_URL` | `https://world.openfoodfacts.org/api/v0/product` | Open Food Facts API endpoint |
-| `CORS_ORIGINS` | `["*"]` | Allowed CORS origins |
+| `CORS_ORIGINS` | localhost dev origins + `CORS_ORIGINS` env (comma-separated) | Allowed CORS origins |
 | `EXPIRING_SOON_DAYS` | `3` | Days before expiration to flag as "expiring soon" |
 | `ESTIMATED_NOTE` | `⚠️ Scadenza stimata...` | Warning for auto-estimated dates |
+
+`database.py` also reads `DATABASE_URL` via `os.getenv("DATABASE_URL", ...)` with the same absolute-path default, so setting the env var is enough for both modules.
 
 ## Project Layout
 
 ```
 backend/
-├── main.py              # App factory, lifespan (create_all), CORS, router registration
-├── config.py            # Constants: shelf life, OFF URL, CORS
-├── database.py          # SQLAlchemy engine, SessionLocal, get_db dependency
+├── main.py              # App factory, lifespan (alembic upgrade + create_all fallback), CORS, router registration
+├── config.py            # Constants: shelf life, OFF URL, CORS, DATABASE_URL (env + absolute default)
+├── database.py          # SQLAlchemy engine, SessionLocal, get_db, DATABASE_URL (env + absolute default)
+├── alembic.ini          # Alembic config (sqlalchemy.url overridden by env.py)
+├── alembic/
+│   ├── env.py           # Uses Base from database.py + DATABASE_URL from config
+│   └── versions/*_create_initial_tables.py  # Baseline: inventory_items
 ├── models.py            # InventoryItem ORM model
 ├── schemas.py           # Pydantic v2 schemas (ScanRequest/Response, InventoryCreate/Out/Update)
 ├── routes/

@@ -19,19 +19,21 @@ struct ScanPreviewSheet: View {
     @State private var showError = false
     @State private var errorMessage = ""
 
-    private let client = APIClient()
-
     var body: some View {
         NavigationStack {
             Group {
                 if isLoading {
                     ProgressView("Caricamento...")
+                        .accessibilityLabel("Caricamento prodotto")
+                        .dynamicTypeSize(.xSmall ... .accessibility2)
                 } else if let error {
                     ContentUnavailableView(
                         "Errore",
                         systemImage: "exclamationmark.triangle",
                         description: Text(error.localizedDescription)
                     )
+                    .accessibilityLabel("Errore \(error.localizedDescription)")
+                    .dynamicTypeSize(.xSmall ... .accessibility2)
                 } else if let result = scanResult {
                     formView(result: result)
                 }
@@ -43,10 +45,21 @@ struct ScanPreviewSheet: View {
                     Button("Annulla") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Salva") {
-                        Task { await saveItem() }
+                    Group {
+                        if #available(iOS 26.0, *) {
+                            Button("Salva") {
+                                Task { await saveItem() }
+                            }
+                            .buttonStyle(.glassProminent)
+                            .tint(Color.pantryMoss)
+                            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || isSaving)
+                        } else {
+                            Button("Salva") {
+                                Task { await saveItem() }
+                            }
+                            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || isSaving)
+                        }
                     }
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || isSaving)
                 }
             }
             .task {
@@ -75,18 +88,20 @@ struct ScanPreviewSheet: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
                         case .failure:
                             RoundedRectangle(cornerRadius: 8)
-                                .fill(.secondary.opacity(0.2))
+                                .fill(Color.pantryOat.opacity(0.35))
                                 .frame(height: 120)
                                 .overlay {
                                     Image(systemName: "photo")
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(Color.textSecondary)
+                                        .accessibilityHidden(true)
                                 }
                         case .empty:
                             RoundedRectangle(cornerRadius: 8)
-                                .fill(.secondary.opacity(0.2))
+                                .fill(Color.pantryOat.opacity(0.25))
                                 .frame(height: 120)
                                 .overlay {
                                     ProgressView()
+                                        .tint(Color.pantryMoss)
                                 }
                         @unknown default:
                             EmptyView()
@@ -100,12 +115,15 @@ struct ScanPreviewSheet: View {
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
                         Label("Prodotto non trovato", systemImage: "exclamationmark.magnifyingglass")
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(Color.statusSoon)
                             .font(.headline)
+                            .accessibilityLabel("Prodotto non trovato")
+                            .accessibilityHint("Inserisci i dati manualmente")
                         Text(result.message ?? "Inserisci i dati manualmente.")
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.textSecondary)
                     }
+                    .accessibilityElement(children: .combine)
                 }
             }
 
@@ -114,15 +132,20 @@ struct ScanPreviewSheet: View {
                     Text("Codice a barre")
                     Spacer()
                     Text(barcode)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.textSecondary)
                         .monospaced()
+                        .accessibilityLabel("Codice a barre \(barcode)")
                 }
+                .accessibilityElement(children: .combine)
 
                 TextField("Nome *", text: $name)
                     .autocorrectionDisabled()
+                    .accessibilityLabel("Nome prodotto")
+                    .accessibilityHint("Campo obbligatorio")
 
                 TextField("Marca", text: $brand)
                     .autocorrectionDisabled()
+                    .accessibilityLabel("Marca")
             }
 
             Section {
@@ -137,12 +160,12 @@ struct ScanPreviewSheet: View {
         print("[ScanPreview] loadScanResult for barcode:", barcode)
         isLoading = true
         do {
-            let result = try await client.scan(barcode: barcode)
+            let result = try await store.client.scan(barcode: barcode)
             scanResult = result
             name = result.name ?? ""
             brand = result.brand ?? ""
             let rawCategory = result.categories.first ?? ""
-            selectedCategory = CategoryPicker.validCategoryKeys.contains(rawCategory) ? rawCategory : ""
+            selectedCategory = CategoryRegistry.validCategoryKeys.contains(rawCategory) ? rawCategory : ""
         } catch {
             self.error = error as? APIError ?? .transport(error)
         }

@@ -40,21 +40,43 @@ struct ManualEntryView: View {
             }
 
             Section {
-                Button {
-                    Task { await saveItem() }
-                } label: {
-                    HStack {
-                        Spacer()
-                        if isSaving {
-                            ProgressView()
-                        } else {
-                            Text("Salva")
-                                .fontWeight(.semibold)
+                Group {
+                    if #available(iOS 26.0, *) {
+                        Button {
+                            Task { await saveItem() }
+                        } label: {
+                            HStack {
+                                Spacer()
+                                if isSaving {
+                                    ProgressView()
+                                } else {
+                                    Text("Salva")
+                                        .fontWeight(.semibold)
+                                }
+                                Spacer()
+                            }
                         }
-                        Spacer()
+                        .buttonStyle(.glassProminent)
+                        .tint(Color.pantryMoss)
+                        .disabled(!isFormValid || isSaving)
+                    } else {
+                        Button {
+                            Task { await saveItem() }
+                        } label: {
+                            HStack {
+                                Spacer()
+                                if isSaving {
+                                    ProgressView()
+                                } else {
+                                    Text("Salva")
+                                        .fontWeight(.semibold)
+                                }
+                                Spacer()
+                            }
+                        }
+                        .disabled(!isFormValid || isSaving)
                     }
                 }
-                .disabled(!isFormValid || isSaving)
             }
         }
         .navigationTitle("Inserimento manuale")

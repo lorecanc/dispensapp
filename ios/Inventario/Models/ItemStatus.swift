@@ -5,11 +5,12 @@ enum ItemStatus: String, CaseIterable {
     case expiringSoon = "expiring_soon"
     case expired
 
+    // Palette Terra: fresco/soon/expired mappati su StatusFresh/Soon/Expired con PantryMoss token.
     var color: Color {
         switch self {
-        case .ok: return .green
-        case .expiringSoon: return .orange
-        case .expired: return .red
+        case .ok: return .statusFresh
+        case .expiringSoon: return .statusSoon
+        case .expired: return .statusExpired
         }
     }
 

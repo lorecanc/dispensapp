@@ -1,13 +1,37 @@
 from datetime import date, datetime, timedelta
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, computed_field, field_validator, model_validator
 
-from backend.config import EXPIRING_SOON_DAYS
+from backend.services.expiration import get_status
+
+# EAN-8 / UPC-A / EAN-13 / EAN-14
+BARCODE_PATTERN = r"^\d{8,14}$"
+
+
+def _validate_expiration(v: Optional[date]) -> Optional[date]:
+    if v is None:
+        return v
+    today = date.today()
+    # rifiuta date assurde: >2 anni nel passato o >10 anni nel futuro
+    if v < today - timedelta(days=730):
+        raise ValueError("expiration_date troppo nel passato")
+    if v > today + timedelta(days=3650):
+        raise ValueError("expiration_date troppo nel futuro")
+    return v
+
+
+def _strip_not_empty(v: Optional[str], field_name: str = "campo") -> Optional[str]:
+    if v is None:
+        return v
+    stripped = v.strip()
+    if not stripped:
+        raise ValueError(f"{field_name} non può essere vuoto")
+    return stripped
 
 
 class ScanRequest(BaseModel):
-    barcode: str
+    barcode: str = Field(pattern=BARCODE_PATTERN)
 
 
 class ScanResponse(BaseModel):
@@ -15,27 +39,70 @@ class ScanResponse(BaseModel):
     name: Optional[str] = None
     brand: Optional[str] = None
     categories: list[str] = []
-    image_url: Optional[str] = None
+    image_url: Optional[HttpUrl] = None
     found: bool
     message: Optional[str] = None
 
 
 class InventoryCreate(BaseModel):
-    barcode: str
-    name: str
+    barcode: str = Field(pattern=BARCODE_PATTERN)
+    name: str = Field(min_length=1)
     brand: Optional[str] = None
     expiration_date: Optional[date] = None
     category: Optional[str] = None
-    image_url: Optional[str] = None
-    quantity: int = 1
+    image_url: Optional[HttpUrl] = None
+    quantity: int = Field(default=1, ge=1, le=999)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("name non può essere vuoto")
+        return stripped
+
+    @field_validator("brand", "category")
+    @classmethod
+    def strip_optional(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        stripped = v.strip()
+        return stripped or None
+
+    @field_validator("expiration_date")
+    @classmethod
+    def validate_expiration(cls, v: Optional[date]) -> Optional[date]:
+        return _validate_expiration(v)
 
 
 class InventoryCreateManual(BaseModel):
-    name: str
+    name: str = Field(min_length=1)
     brand: Optional[str] = None
     expiration_date: Optional[date] = None
     category: Optional[str] = None
-    quantity: int = 1
+    quantity: int = Field(default=1, ge=1, le=999)
+    image_url: Optional[HttpUrl] = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("name non può essere vuoto")
+        return stripped
+
+    @field_validator("brand", "category")
+    @classmethod
+    def strip_optional(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        stripped = v.strip()
+        return stripped or None
+
+    @field_validator("expiration_date")
+    @classmethod
+    def validate_expiration(cls, v: Optional[date]) -> Optional[date]:
+        return _validate_expiration(v)
 
 
 class InventoryOut(BaseModel):
@@ -48,30 +115,38 @@ class InventoryOut(BaseModel):
     expiration_date: Optional[date] = None
     is_estimated: bool = False
     category: Optional[str] = None
-    image_url: Optional[str] = None
+    image_url: Optional[HttpUrl] = None
     created_at: datetime
     quantity: int = 1
 
     @computed_field
     @property
     def status(self) -> str:
-        if self.expiration_date is None:
-            return "ok"
-        today = date.today()
-        if self.expiration_date < today:
-            return "expired"
-        if self.expiration_date <= today + timedelta(days=EXPIRING_SOON_DAYS):
-            return "expiring_soon"
-        return "ok"
+        return get_status(self.expiration_date)
 
 
 class InventoryUpdate(BaseModel):
-    name: Optional[str] = None
+    name: Optional[str] = Field(default=None, min_length=1)
     brand: Optional[str] = None
     expiration_date: Optional[date] = None
     category: Optional[str] = None
-    image_url: Optional[str] = None
-    quantity: Optional[int] = None
+    image_url: Optional[HttpUrl] = None
+    quantity: Optional[int] = Field(default=None, ge=1, le=999)
+
+    @field_validator("name", "brand", "category")
+    @classmethod
+    def strip_optional_fields(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        stripped = v.strip()
+        if v is not None and not stripped:
+            raise ValueError("campo non può essere vuoto o solo spazi")
+        return stripped
+
+    @field_validator("expiration_date")
+    @classmethod
+    def validate_expiration(cls, v: Optional[date]) -> Optional[date]:
+        return _validate_expiration(v)
 
     @model_validator(mode="after")
     def at_least_one_field(self):
@@ -82,3 +157,66 @@ class InventoryUpdate(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+
+
+# --- ShoppingList (T4) ---
+
+
+class ShoppingListCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("name non può essere vuoto")
+        return stripped
+
+
+class ShoppingListItemCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    quantity: int = Field(default=1, ge=1, le=999)
+    compartment: Optional[str] = Field(default=None, max_length=32)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("name non può essere vuoto")
+        return stripped
+
+    @field_validator("compartment")
+    @classmethod
+    def validate_compartment(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        stripped = v.strip()
+        return stripped or None
+
+
+class ShoppingListItemCheckedUpdate(BaseModel):
+    checked: bool
+
+
+class ShoppingListItemOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    shopping_list_id: int
+    name: str
+    quantity: int
+    checked: bool
+    compartment: Optional[str] = None
+    created_at: datetime
+
+
+class ShoppingListOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    pantry_id: int
+    name: str
+    created_at: datetime
+    items: list[ShoppingListItemOut] = []

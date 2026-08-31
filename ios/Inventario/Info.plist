@@ -22,9 +22,9 @@
 	<string>Per scansionare i codici a barre dei prodotti.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
 		<key>NSAllowsArbitraryLoads</key>
+		<false/>
+		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
 	<key>UILaunchScreen</key>

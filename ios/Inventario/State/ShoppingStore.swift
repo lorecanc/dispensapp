@@ -1,0 +1,174 @@
+import Foundation
+
+@Observable
+@MainActor
+final class ShoppingStore {
+    var lists: [ShoppingList] = []
+    var selectedListId: Int?
+    var isLoading = false
+    var error: APIError?
+    var exportedMarkdown: String?
+    var suggestions: [Suggestion] = []
+    var pantryChecks: [Int: PantryCheckItem] = [:]
+
+    let client = APIClient.shared
+    // Default pantry — backend crea "La mia dispensa" id=1 via backfill.
+    let pantryId: Int = 1
+
+    var selectedList: ShoppingList? {
+        guard let id = selectedListId else { return lists.first }
+        return lists.first(where: { $0.id == id }) ?? lists.first
+    }
+
+    // MARK: - Lists
+
+    func fetchLists() async {
+        isLoading = true
+        error = nil
+        do {
+            let fetched = try await client.listShoppingLists(pantryId: pantryId)
+            lists = fetched
+            if selectedListId == nil { selectedListId = fetched.first?.id }
+            else if let sel = selectedListId, !fetched.contains(where: { $0.id == sel }) {
+                selectedListId = fetched.first?.id
+            }
+        } catch {
+            self.error = error as? APIError ?? .transport(error)
+        }
+        isLoading = false
+    }
+
+    func createList(name: String = "Spesa") async {
+        error = nil
+        do {
+            let created = try await client.createShoppingList(pantryId: pantryId, name: name)
+            lists.append(created)
+            selectedListId = created.id
+        } catch {
+            self.error = error as? APIError ?? .transport(error)
+        }
+    }
+
+    func fetchItems(listId: Int) async {
+        error = nil
+        do {
+            let refreshed = try await client.getShoppingList(pantryId: pantryId, listId: listId)
+            if let idx = lists.firstIndex(where: { $0.id == listId }) {
+                lists[idx] = refreshed
+            } else {
+                lists.append(refreshed)
+            }
+        } catch {
+            self.error = error as? APIError ?? .transport(error)
+        }
+    }
+
+    // MARK: - Items
+
+    func addItem(name: String, quantity: Int, compartment: String?) async {
+        guard let listId = selectedList?.id else {
+            // Auto-crea lista se mancante
+            await createList()
+            guard let newId = selectedList?.id else { return }
+            await addItemToList(listId: newId, name: name, quantity: quantity, compartment: compartment)
+            return
+        }
+        await addItemToList(listId: listId, name: name, quantity: quantity, compartment: compartment)
+    }
+
+    private func addItemToList(listId: Int, name: String, quantity: Int, compartment: String?) async {
+        error = nil
+        do {
+            let item = try await client.addShoppingItem(
+                pantryId: pantryId, listId: listId, name: name, quantity: quantity, compartment: compartment
+            )
+            if let idx = lists.firstIndex(where: { $0.id == listId }) {
+                lists[idx].items.append(item)
+            }
+        } catch {
+            self.error = error as? APIError ?? .transport(error)
+        }
+    }
+
+    func toggleChecked(item: ShoppingListItem) async {
+        guard let listId = selectedList?.id else { return }
+        // Toggle ottimistico per UI reattiva, revert su errore
+        if let lIdx = lists.firstIndex(where: { $0.id == listId }),
+           let iIdx = lists[lIdx].items.firstIndex(where: { $0.id == item.id }) {
+            lists[lIdx].items[iIdx].checked.toggle()
+        }
+        do {
+            let updated = try await client.toggleShoppingItem(
+                pantryId: pantryId, listId: listId, itemId: item.id, checked: !item.checked
+            )
+            if let lIdx = lists.firstIndex(where: { $0.id == listId }),
+               let iIdx = lists[lIdx].items.firstIndex(where: { $0.id == updated.id }) {
+                lists[lIdx].items[iIdx] = updated
+            }
+        } catch {
+            // revert
+            if let lIdx = lists.firstIndex(where: { $0.id == listId }),
+               let iIdx = lists[lIdx].items.firstIndex(where: { $0.id == item.id }) {
+                lists[lIdx].items[iIdx].checked = item.checked
+            }
+            self.error = error as? APIError ?? .transport(error)
+        }
+    }
+
+    func deleteItem(itemId: Int) async {
+        guard let listId = selectedList?.id else { return }
+        error = nil
+        do {
+            try await client.deleteShoppingItem(pantryId: pantryId, listId: listId, itemId: itemId)
+            if let lIdx = lists.firstIndex(where: { $0.id == listId }) {
+                lists[lIdx].items.removeAll { $0.id == itemId }
+                pantryChecks.removeValue(forKey: itemId)
+            }
+        } catch {
+            self.error = error as? APIError ?? .transport(error)
+        }
+    }
+
+    // MARK: - Export
+
+    func exportMarkdown() async {
+        guard let listId = selectedList?.id else { return }
+        error = nil
+        do {
+            exportedMarkdown = try await client.exportShoppingMarkdown(pantryId: pantryId, listId: listId)
+        } catch {
+            self.error = error as? APIError ?? .transport(error)
+        }
+    }
+
+    // MARK: - Check pantry cross
+
+    func checkInPantry() async {
+        guard let listId = selectedList?.id else { return }
+        error = nil
+        do {
+            let results = try await client.checkShoppingList(pantryId: pantryId, listId: listId)
+            var map: [Int: PantryCheckItem] = [:]
+            for r in results { map[r.id] = r }
+            pantryChecks = map
+        } catch {
+            self.error = error as? APIError ?? .transport(error)
+        }
+    }
+
+    // MARK: - Suggestions
+
+    func fetchSuggestions(q: String) async {
+        let trimmed = q.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else {
+            suggestions = []
+            return
+        }
+        do {
+            suggestions = try await client.fetchSuggestions(q: trimmed)
+        } catch {
+            // suggerimenti non critici: non sovrascrivere error principale
+            suggestions = []
+        }
+    }
+}
