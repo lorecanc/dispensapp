@@ -252,12 +252,15 @@ final class APIClient: Sendable {
         let url = try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/shopping-lists/\(listId)/items/\(itemId)")
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
-        let (_, response) = try await session.data(for: request)
+        request = decorated(request)
+        let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw APIError.transport(URLError(.badServerResponse))
         }
         guard httpResponse.statusCode == 204 || httpResponse.statusCode == 200 else {
-            throw APIError.http(status: httpResponse.statusCode, message: nil)
+            if httpResponse.statusCode == 404 { throw APIError.notFound }
+            let body = (try? JSONDecoder().decode([String: String].self, from: data)).flatMap { $0["detail"] ?? $0["message"] }
+            throw APIError.http(status: httpResponse.statusCode, message: body)
         }
     }
 
@@ -266,13 +269,15 @@ final class APIClient: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("text/markdown", forHTTPHeaderField: "Accept")
+        request = decorated(request)
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw APIError.transport(URLError(.badServerResponse))
         }
         guard (200...299).contains(httpResponse.statusCode) else {
             if httpResponse.statusCode == 404 { throw APIError.notFound }
-            throw APIError.http(status: httpResponse.statusCode, message: nil)
+            let body = (try? JSONDecoder().decode([String: String].self, from: data)).flatMap { $0["detail"] ?? $0["message"] }
+            throw APIError.http(status: httpResponse.statusCode, message: body)
         }
         guard let markdown = String(data: data, encoding: .utf8) else {
             throw APIError.decoding(DecodingError.dataCorrupted(
@@ -303,12 +308,25 @@ final class APIClient: Sendable {
         return try makeDecoder().decode([Suggestion].self, from: data)
     }
 
+    // MARK: - Pantry auth
+
+    private func decorated(_ request: URLRequest) -> URLRequest {
+        var req = request
+        if let path = req.url?.path, path.contains("/pantries/") || path.contains("/shopping-lists") {
+            if req.value(forHTTPHeaderField: PantryToken.headerName) == nil {
+                req.setValue(PantryToken.value, forHTTPHeaderField: PantryToken.headerName)
+            }
+        }
+        return req
+    }
+
     // MARK: - Private
 
     private func perform(_ request: URLRequest) async throws -> Data {
+        let decoratedRequest = decorated(request)
         let (data, response): (Data, URLResponse)
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await session.data(for: decoratedRequest)
         } catch {
             throw APIError.transport(error)
         }

@@ -13,6 +13,7 @@ from backend.schemas import (
     ShoppingListItemOut,
     ShoppingListOut,
 )
+from backend.services.compartment import infer_compartment
 from backend.services.shopping_markdown import to_shopping_markdown
 
 router = APIRouter(prefix="/api/pantries/{pantry_id}/shopping-lists", tags=["shopping"])
@@ -127,11 +128,14 @@ def add_item(
 ):
     _get_pantry_or_404(db, pantry_id)
     lst = _get_list_or_404(db, pantry_id, list_id)
+    compartment = body.compartment
+    if not compartment:
+        compartment = infer_compartment(name=body.name)
     item = ShoppingListItem(
         shopping_list_id=lst.id,
         name=body.name,
         quantity=body.quantity,
-        compartment=body.compartment,
+        compartment=compartment,
         checked=False,
         added_by_token=current_token,
     )

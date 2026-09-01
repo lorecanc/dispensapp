@@ -4,24 +4,36 @@ struct ShoppingListView: View {
     @State private var store = ShoppingStore()
     @State private var newItemName = ""
     @State private var newItemQuantity = 1
-    @State private var newItemCompartment: String = "dispensa"
     @State private var suggestionQuery = ""
     @State private var showMarkdownSheet = false
     @State private var showCreateListSheet = false
     @State private var newListName = ""
+    @State private var expandedCompartments: Set<String> = Set(Compartment.supermarketOrder.map(\.rawValue))
 
-    // Raggruppamento per comparto normalizzato
+    // Raggruppamento per comparto inferito (se item ha compartment salvato usalo, altrimenti inferisci da nome)
     private var groupedItems: [(Compartment, [ShoppingListItem])] {
         guard let items = store.selectedList?.items else { return [] }
         let grouped = Dictionary(grouping: items) { item in
-            Compartment.normalized(item.compartment)
+            Compartment.resolved(for: item)
         }
-        // Ordine fisso: frigo, cantina, dispensa, altro
-        let order: [Compartment] = [.frigo, .cantina, .dispensa, .altro]
-        return order.compactMap { comp in
+        return Compartment.supermarketOrder.compactMap { comp in
             guard let arr = grouped[comp], !arr.isEmpty else { return nil }
             return (comp, arr)
         }
+    }
+
+    private func isExpanded(_ comp: Compartment) -> Bool {
+        expandedCompartments.contains(comp.rawValue)
+    }
+
+    private func binding(for comp: Compartment) -> Binding<Bool> {
+        Binding(
+            get: { expandedCompartments.contains(comp.rawValue) },
+            set: { expanded in
+                if expanded { expandedCompartments.insert(comp.rawValue) }
+                else { expandedCompartments.remove(comp.rawValue) }
+            }
+        )
     }
 
     var body: some View {
@@ -67,7 +79,7 @@ struct ShoppingListView: View {
                         .listRowBackground(Color.clear)
                     }
 
-                    // Add item form
+                    // Add item form — solo nome + quantità, senza Picker comparto
                     Section {
                         addItemSection
                     } header: {
@@ -85,7 +97,14 @@ struct ShoppingListView: View {
                                 Button {
                                     newItemName = sug.name
                                     suggestionQuery = sug.name
-                                    Task { await store.addItem(name: sug.name, quantity: newItemQuantity, compartment: newItemCompartment) }
+                                    // Inferisci comparto da categoria se disponibile, altrimenti da nome
+                                    let inferred: String? = {
+                                        if let cat = sug.category {
+                                            return Compartment.inferCompartment(fromCategory: cat).rawValue
+                                        }
+                                        return Compartment.inferCompartment(fromName: sug.name).rawValue
+                                    }()
+                                    Task { await store.addItem(name: sug.name, quantity: newItemQuantity, compartment: inferred) }
                                     newItemName = ""
                                     suggestionQuery = ""
                                     store.suggestions = []
@@ -119,7 +138,7 @@ struct ShoppingListView: View {
                         .listSectionSeparator(.hidden, edges: .bottom)
                     }
 
-                    // Gruppi per comparto
+                    // Gruppi per comparto — DisclosureGroup collassabili (default expanded)
                     if let selected = store.selectedList, selected.items.isEmpty {
                         Section {
                             Text("Lista vuota — aggiungi prodotti sopra.")
@@ -133,34 +152,50 @@ struct ShoppingListView: View {
                     } else {
                         ForEach(groupedItems, id: \.0) { compartment, items in
                             Section {
-                                ForEach(items) { item in
-                                    shoppingRow(item: item)
-                                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-                                        .listRowBackground(Color.clear)
-                                        .listRowSeparator(.hidden)
-                                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                            Button(role: .destructive) {
-                                                Task { await store.deleteItem(itemId: item.id) }
-                                            } label: {
-                                                Label("Elimina", systemImage: "trash")
+                                DisclosureGroup(isExpanded: binding(for: compartment)) {
+                                    ForEach(items) { item in
+                                        shoppingRow(item: item)
+                                            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                                            .listRowBackground(Color.clear)
+                                            .listRowSeparator(.hidden)
+                                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                                Button(role: .destructive) {
+                                                    Task { await store.deleteItem(itemId: item.id) }
+                                                } label: {
+                                                    Label("Elimina", systemImage: "trash")
+                                                }
+                                                .tint(Color.statusExpired)
+                                                .accessibilityLabel("Elimina \(item.name) dalla spesa")
+                                                .accessibilityHint("Rimuove il prodotto dalla lista della spesa")
                                             }
-                                            .tint(Color.statusExpired)
-                                            .accessibilityLabel("Elimina \(item.name) dalla spesa")
-                                            .accessibilityHint("Rimuove il prodotto dalla lista della spesa")
-                                        }
+                                    }
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        Label(compartment.label, systemImage: compartment.icon)
+                                            .font(.subheadline.weight(.semibold))
+                                            .foregroundStyle(Color.pantryMoss)
+                                        Spacer()
+                                        Text("\(items.count)")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(Color.textSecondary)
+                                            .padding(.horizontal, 7)
+                                            .padding(.vertical, 3)
+                                            .background(Capsule().fill(Color.pantryOat.opacity(0.35)))
+                                            .overlay(Capsule().strokeBorder(Color.pantryOat, lineWidth: 0.5))
+                                            .accessibilityLabel("\(items.count) prodotti in \(compartment.label)")
+                                    }
+                                    .contentShape(Rectangle())
                                 }
+                                .tint(Color.pantryMoss)
                             } header: {
-                                Label(compartment.label, systemImage: compartment.icon)
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(Color.pantryMoss)
-                                    .textCase(nil)
-                                    .padding(.vertical, 2)
+                                // Header vuoto: label dentro DisclosureGroup già mostra comparto + count
+                                EmptyView()
                             }
                             .listSectionSeparator(.hidden, edges: .bottom)
                         }
                     }
 
-                    // Markdown preview card
+                    // Markdown preview card — riflette nuovi headings ## 🥬 Ortofrutta etc. dal backend
                     if let md = store.exportedMarkdown {
                         Section {
                             VStack(alignment: .leading, spacing: 8) {
@@ -254,7 +289,6 @@ struct ShoppingListView: View {
             }
         }
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
-        // Glass solo su toolbar già via toolbarBackground; HIG: Glass su chrome, Material su content già usato via pantryCardBackground
         .task {
             await store.fetchLists()
             await store.checkInPantry()
@@ -264,9 +298,7 @@ struct ShoppingListView: View {
                 store.suggestions = []
                 return
             }
-            // debounce 350ms
             try? await Task.sleep(for: .milliseconds(350))
-            // se query cambiata durante sleep, Task viene cancellato e ricreato
             await store.fetchSuggestions(q: suggestionQuery)
         }
         .sheet(isPresented: $showMarkdownSheet) {
@@ -277,33 +309,27 @@ struct ShoppingListView: View {
         }
     }
 
-    // MARK: - Add item form
+    // MARK: - Add item form (solo nome + quantità)
 
     private var addItemSection: some View {
         VStack(spacing: 12) {
             TextField("Nome prodotto", text: $newItemName)
                 .autocorrectionDisabled()
                 .onChange(of: newItemName) { _, new in
-                    // sync con searchable per suggerimenti rapidi quando si digita qui
                     if new.count >= 2 { suggestionQuery = new }
                 }
 
             HStack(spacing: 12) {
                 QuantityStepper(quantity: $newItemQuantity)
-
-                Picker("Comparto", selection: $newItemCompartment) {
-                    ForEach(Compartment.selectableCases, id: \.rawValue) { c in
-                        Text(c.label).tag(c.rawValue)
-                    }
-                }
-                .pickerStyle(.menu)
-                .tint(Color.pantryMoss)
+                Spacer()
             }
 
             Button {
                 Task {
                     guard !newItemName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-                    await store.addItem(name: newItemName.trimmingCharacters(in: .whitespaces), quantity: newItemQuantity, compartment: newItemCompartment)
+                    let trimmed = newItemName.trimmingCharacters(in: .whitespaces)
+                    // Nessun Picker comparto: inferenza lato backend/cliente da nome
+                    await store.addItem(name: trimmed, quantity: newItemQuantity, compartment: nil)
                     newItemName = ""
                     suggestionQuery = ""
                 }
@@ -358,11 +384,10 @@ struct ShoppingListView: View {
                         }
                         .overlay(Capsule().strokeBorder(Color.pantryOat, lineWidth: 0.5))
 
-                    if let comp = item.compartment, !comp.isEmpty {
-                        Text(Compartment.normalized(comp).label)
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(Color.textSecondary)
-                    }
+                    // Badge comparto inferito (non editabile)
+                    Text(Compartment.resolved(for: item).label)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(Color.textSecondary)
                 }
             }
 
@@ -388,9 +413,7 @@ struct ShoppingListView: View {
 
     private func shoppingRowAccessibilityLabel(for item: ShoppingListItem) -> String {
         var parts = [item.name, "quantità \(item.quantity)"]
-        if let comp = item.compartment, !comp.isEmpty {
-            parts.append(Compartment.normalized(comp).label)
-        }
+        parts.append(Compartment.resolved(for: item).label)
         if let check = store.pantryChecks[item.id] {
             if !check.inPantry { parts.append("Da comprare") }
             else if check.status == "expired" { parts.append("Scaduto") }

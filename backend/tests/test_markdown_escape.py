@@ -77,12 +77,12 @@ def test_shopping_markdown_grouping_and_compartment_default():
         SimpleNamespace(name="Strano", quantity=1, checked=False, compartment="garage"),
     ]
     md = to_shopping_markdown(shopping_list, items)
-    # default None -> dispensa group
-    assert "## 🏠 Dispensa" in md
+    # default None -> Dispensa Secca (supermercato)
+    assert "Dispensa Secca" in md
     assert "Yogurt" in md
-    assert "## 🍷 Cantina" in md
-    assert "## 🧊 Frigo" in md
-    assert "## 📦 Altro" in md
+    assert "Cantina" in md
+    assert "Latticini e Uova" in md
+    assert "Altro" in md
     assert "Strano" in md
 
 

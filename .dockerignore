@@ -1,0 +1,36 @@
+# Git / env
+.git
+.gitignore
+.venv
+venv
+.env
+.idea
+.vscode
+.DS_Store
+
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# DB locale (Koyeb usa DATABASE_URL esterno)
+*.db
+*.sqlite
+*.sqlite3
+inventory.db
+
+# iOS (non serve nel container backend)
+ios/
+
+# Docs
+wiki/
+*.md
+!README.md
+
+# Logs / temp
+*.log
+tmp/

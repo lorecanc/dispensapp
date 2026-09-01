@@ -8,3 +8,9 @@ venv/
 .idea/
 .vscode/
 .DS_Store
+xcuserdata/
+*.xcuserstate
+*.bak
+*.xccheckout
+DerivedData/
+.pytest_cache/

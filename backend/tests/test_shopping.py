@@ -128,10 +128,10 @@ def test_shopping_export_markdown(client, db_session):
     assert "Latte\\|Fresco" in md
     assert "- [x]" in md
     assert "- [ ]" in md
-    # groups
-    assert "Frigo" in md
+    # groups: legacy frigo/cantina/dispensa mappati su comparti supermercato
+    assert "Latticini e Uova" in md
     assert "Cantina" in md
-    assert "Dispensa" in md
+    assert "Dispensa Secca" in md
 
 
 def test_shopping_check_incrocciato(client, db_session):

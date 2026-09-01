@@ -33,7 +33,21 @@ final class ShoppingStore {
                 selectedListId = fetched.first?.id
             }
         } catch {
-            self.error = error as? APIError ?? .transport(error)
+            let apiError = error as? APIError ?? .transport(error)
+            // Hint già in APIError (401 -> "Token mancante"); logga per debug
+            if case .http(let status, _) = apiError, status == 401 {
+                print("[ShoppingStore] 401 Token mancante — verifica PantryToken/X-Pantry-Token")
+            }
+            if case .notFound = apiError {
+                print("[ShoppingStore] Pantry \(pantryId) non trovata — verifica migration backfill (owner \(PantryToken.legacyToken)), POST /api/pantries non disponibile, log only")
+            }
+            if case .http(let status, _) = apiError, status == 404 {
+                print("[ShoppingStore] Pantry \(pantryId) 404 — come sopra, log only")
+            }
+            if case .http(let status, _) = apiError, status == 403 {
+                print("[ShoppingStore] 403 token non membro pantry \(pantryId) — fallback a legacy token già applicato in PantryToken")
+            }
+            self.error = apiError
         }
         isLoading = false
     }

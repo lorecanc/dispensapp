@@ -33,6 +33,18 @@ enum APIError: LocalizedError, Equatable {
         case .decoding(let error):
             return "Errore durante l'elaborazione dei dati: \(error.localizedDescription)"
         case .http(let status, let message):
+            if status == 401 {
+                if let msg = message, !msg.isEmpty {
+                    return "Token mancante (\(status)): \(msg)"
+                }
+                return "Token mancante — X-Pantry-Token header mancante (401)."
+            }
+            if status == 403 {
+                if let msg = message, !msg.isEmpty {
+                    return "Accesso negato (\(status)): \(msg)"
+                }
+                return "Accesso negato alla dispensa (403) — token non autorizzato."
+            }
             if let msg = message, !msg.isEmpty {
                 return "Errore del server (\(status)): \(msg)"
             }

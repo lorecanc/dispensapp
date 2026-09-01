@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from backend.config import normalize_category
 from backend.database import get_db
 from backend.models import InventoryItem
+from backend.services.compartment import infer_compartment
 from backend.schemas import (
     InventoryCreate,
     InventoryCreateManual,
@@ -29,6 +30,10 @@ def create_inventory(body: InventoryCreate, db: Session = Depends(get_db)):
         off_category_tags=None,
     )
 
+    compartment = body.compartment
+    if not compartment:
+        compartment = infer_compartment(name=body.name, category=body.category)
+
     item = InventoryItem(
         barcode=body.barcode,
         name=body.name,
@@ -38,6 +43,7 @@ def create_inventory(body: InventoryCreate, db: Session = Depends(get_db)):
         category=normalize_category(body.category),
         image_url=str(body.image_url) if body.image_url else None,
         quantity=body.quantity,
+        compartment=compartment,
     )
     try:
         db.add(item)
@@ -61,6 +67,10 @@ def create_inventory_manual(
         allow_none=True,
     )
 
+    compartment = body.compartment
+    if not compartment:
+        compartment = infer_compartment(name=body.name, category=body.category)
+
     item = InventoryItem(
         barcode=None,
         name=body.name,
@@ -70,6 +80,7 @@ def create_inventory_manual(
         category=normalize_category(body.category),
         image_url=str(body.image_url) if body.image_url else None,
         quantity=body.quantity,
+        compartment=compartment,
     )
     try:
         db.add(item)

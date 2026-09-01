@@ -12,6 +12,23 @@ DEFAULT_SHELF_LIFE = {
     "fresh-fruits": 7,
     "fresh-vegetables": 7,
     "frozen-foods": 90,
+    # nuove 16 categorie allineate OFF
+    "legumes": 365,
+    "uht-milk": 90,
+    "cold-cuts": 14,
+    "meat": 4,
+    "fish": 2,
+    "canned-fish": 730,
+    "bread-bakery": 5,
+    "flours": 180,
+    "sauces-condiments": 365,
+    "oils-vinegars": 540,
+    "sweets-snacks": 180,
+    "beverages-water": 365,
+    "beverages-juices": 30,
+    "coffee-tea": 365,
+    "alcoholic-beverages": 1095,
+    "cleaning-hygiene": 730,
     "default": 30,
 }
 
@@ -27,12 +44,132 @@ CATEGORY_LABELS = {
     "fresh-fruits": "Frutta fresca",
     "fresh-vegetables": "Verdura fresca",
     "frozen-foods": "Surgelati",
+    "legumes": "Legumi",
+    "uht-milk": "Latte UHT",
+    "cold-cuts": "Salumi e affettati",
+    "meat": "Carne",
+    "fish": "Pesce fresco",
+    "canned-fish": "Pesce in scatola",
+    "bread-bakery": "Pane e prodotti da forno",
+    "flours": "Farine",
+    "sauces-condiments": "Salse e condimenti",
+    "oils-vinegars": "Oli e aceti",
+    "sweets-snacks": "Dolci e snack",
+    "beverages-water": "Acqua",
+    "beverages-juices": "Succhi e bevande",
+    "coffee-tea": "Caffè e tè",
+    "alcoholic-beverages": "Bevande alcoliche",
+    "cleaning-hygiene": "Igiene e pulizia",
 }
 
 # Alias legacy -> canonico (normalizzazione categorie)
 # es. OFF o dati legacy possono contenere "yogurt" singolare; canonical è "yogurts"
 CATEGORY_ALIASES: dict[str, str] = {
     "yogurt": "yogurts",
+    "yogurts": "yogurts",
+    "cheese": "cheeses",
+    "milk": "fresh-milk",
+    "uht-milks": "uht-milk",
+    "legume": "legumes",
+    "cold-cut": "cold-cuts",
+    "canned-fishs": "canned-fish",
+    "bread": "bread-bakery",
+    "flour": "flours",
+    "sauce": "sauces-condiments",
+    "oil": "oils-vinegars",
+    "sweet": "sweets-snacks",
+    "snack": "sweets-snacks",
+    "water": "beverages-water",
+    "juice": "beverages-juices",
+    "coffee": "coffee-tea",
+    "tea": "coffee-tea",
+    "alcohol": "alcoholic-beverages",
+    "cleaning": "cleaning-hygiene",
+    "hygiene": "cleaning-hygiene",
+}
+
+# Mapping OFF tags -> categoria interna canonica (normalizzazione ampia OFF)
+OFF_TO_INTERNAL: dict[str, str] = {
+    # latticini / uova
+    "yogurts": "yogurts",
+    "yogurt": "yogurts",
+    "fresh-milk": "fresh-milk",
+    "milk": "fresh-milk",
+    "milks": "fresh-milk",
+    "pasteurized-milk": "fresh-milk",
+    "uht-milk": "uht-milk",
+    "uht-milks": "uht-milk",
+    "cheeses": "cheeses",
+    "cheese": "cheeses",
+    "eggs": "eggs",
+    # ortofrutta / legumi
+    "fresh-fruits": "fresh-fruits",
+    "fruits": "fresh-fruits",
+    "fresh-vegetables": "fresh-vegetables",
+    "vegetables": "fresh-vegetables",
+    "legumes": "legumes",
+    "pulses": "legumes",
+    "lentils": "legumes",
+    # dispensa secca
+    "pasta": "pasta",
+    "pastas": "pasta",
+    "rice": "rice",
+    "canned-vegetables": "canned-vegetables",
+    "flours": "flours",
+    "flour": "flours",
+    "sauces-condiments": "sauces-condiments",
+    "sauces": "sauces-condiments",
+    "condiments": "sauces-condiments",
+    "oils-vinegars": "oils-vinegars",
+    "oils": "oils-vinegars",
+    "vinegars": "oils-vinegars",
+    "sweets-snacks": "sweets-snacks",
+    "sweets": "sweets-snacks",
+    "snacks": "sweets-snacks",
+    "biscuits": "sweets-snacks",
+    "chocolate": "sweets-snacks",
+    # salumi / carne / pesce
+    "cold-cuts": "cold-cuts",
+    "charcuterie": "cold-cuts",
+    "hams": "cold-cuts",
+    "salamis": "cold-cuts",
+    "meat": "meat",
+    "meats": "meat",
+    "fish": "fish",
+    "fishes": "fish",
+    "canned-fish": "canned-fish",
+    "tuna": "canned-fish",
+    "sardines": "canned-fish",
+    # forno
+    "bread-bakery": "bread-bakery",
+    "breads": "bread-bakery",
+    "bakery": "bread-bakery",
+    "pastries": "bread-bakery",
+    # surgelati
+    "frozen-foods": "frozen-foods",
+    "frozen-food": "frozen-foods",
+    # bevande
+    "beverages-water": "beverages-water",
+    "waters": "beverages-water",
+    "water": "beverages-water",
+    "beverages-juices": "beverages-juices",
+    "juices": "beverages-juices",
+    "juice": "beverages-juices",
+    "coffee-tea": "coffee-tea",
+    "coffees": "coffee-tea",
+    "teas": "coffee-tea",
+    "coffee": "coffee-tea",
+    "tea": "coffee-tea",
+    "alcoholic-beverages": "alcoholic-beverages",
+    "alcohol": "alcoholic-beverages",
+    "wines": "alcoholic-beverages",
+    "beers": "alcoholic-beverages",
+    "spirits": "alcoholic-beverages",
+    # igiene
+    "cleaning-hygiene": "cleaning-hygiene",
+    "cleaning": "cleaning-hygiene",
+    "hygiene": "cleaning-hygiene",
+    "detergents": "cleaning-hygiene",
 }
 
 
@@ -45,7 +182,54 @@ def normalize_category(key: str | None) -> str | None:
         return None
     # gestisce prefisso lingua tipo "en:yogurt" già splittato altrove, ma per sicurezza
     k = k.split(":")[-1].strip().lower()
+    # prima OFF_TO_INTERNAL, poi CATEGORY_ALIASES
+    k = OFF_TO_INTERNAL.get(k, k)
     return CATEGORY_ALIASES.get(k, k)
+
+
+# Comparti supermercato — ordine di percorrenza corsie
+SUPER_MARKET_COMPARTMENTS: list[str] = [
+    "Ortofrutta",
+    "Latticini e Uova",
+    "Salumi e Formaggi",
+    "Carne e Pesce",
+    "Surgelati",
+    "Dispensa Secca",
+    "Bevande",
+    "Cantina",
+    "Forno e Panetteria",
+    "Igiene e Casa",
+]
+
+# Categoria interna -> comparto
+COMPARTMENT_MAP: dict[str, str] = {
+    "fresh-fruits": "Ortofrutta",
+    "fresh-vegetables": "Ortofrutta",
+    "yogurts": "Latticini e Uova",
+    "fresh-milk": "Latticini e Uova",
+    "uht-milk": "Latticini e Uova",
+    "eggs": "Latticini e Uova",
+    "cheeses": "Salumi e Formaggi",
+    "cold-cuts": "Salumi e Formaggi",
+    "meat": "Carne e Pesce",
+    "fish": "Carne e Pesce",
+    "canned-fish": "Dispensa Secca",
+    "frozen-foods": "Surgelati",
+    "pasta": "Dispensa Secca",
+    "rice": "Dispensa Secca",
+    "legumes": "Dispensa Secca",
+    "canned-vegetables": "Dispensa Secca",
+    "flours": "Dispensa Secca",
+    "sauces-condiments": "Dispensa Secca",
+    "oils-vinegars": "Dispensa Secca",
+    "sweets-snacks": "Dispensa Secca",
+    "beverages-water": "Bevande",
+    "beverages-juices": "Bevande",
+    "coffee-tea": "Bevande",
+    "alcoholic-beverages": "Cantina",
+    "bread-bakery": "Forno e Panetteria",
+    "cleaning-hygiene": "Igiene e Casa",
+}
 
 # DATABASE_URL configurabile via env var; default risolto come path assoluto
 # rispetto al file (non CWD) per evitare file sparsi in directory diverse.

@@ -1,3 +1,13 @@
+---
+title: Inventario Dispensa
+emoji: 🍲
+colorFrom: green
+colorTo: yellow
+sdk: docker
+pinned: false
+app_port: 7860
+---
+
 # Inventario
 
 Pantry inventory management app — scan barcodes, track expiration dates, reduce food waste. SwiftUI iOS client + FastAPI backend over HTTP REST. Barcodes resolved via [Open Food Facts](https://world.openfoodfacts.org/); expiration dates auto-estimated from category shelf-life when not provided.

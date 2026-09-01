@@ -52,6 +52,7 @@ class InventoryCreate(BaseModel):
     category: Optional[str] = None
     image_url: Optional[HttpUrl] = None
     quantity: int = Field(default=1, ge=1, le=999)
+    compartment: Optional[str] = Field(default=None, max_length=32)
 
     @field_validator("name")
     @classmethod
@@ -61,7 +62,7 @@ class InventoryCreate(BaseModel):
             raise ValueError("name non può essere vuoto")
         return stripped
 
-    @field_validator("brand", "category")
+    @field_validator("brand", "category", "compartment")
     @classmethod
     def strip_optional(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
@@ -82,6 +83,7 @@ class InventoryCreateManual(BaseModel):
     category: Optional[str] = None
     quantity: int = Field(default=1, ge=1, le=999)
     image_url: Optional[HttpUrl] = None
+    compartment: Optional[str] = Field(default=None, max_length=32)
 
     @field_validator("name")
     @classmethod
@@ -91,7 +93,7 @@ class InventoryCreateManual(BaseModel):
             raise ValueError("name non può essere vuoto")
         return stripped
 
-    @field_validator("brand", "category")
+    @field_validator("brand", "category", "compartment")
     @classmethod
     def strip_optional(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
@@ -118,6 +120,7 @@ class InventoryOut(BaseModel):
     image_url: Optional[HttpUrl] = None
     created_at: datetime
     quantity: int = 1
+    compartment: Optional[str] = None
 
     @computed_field
     @property
@@ -132,8 +135,9 @@ class InventoryUpdate(BaseModel):
     category: Optional[str] = None
     image_url: Optional[HttpUrl] = None
     quantity: Optional[int] = Field(default=None, ge=1, le=999)
+    compartment: Optional[str] = Field(default=None, max_length=32)
 
-    @field_validator("name", "brand", "category")
+    @field_validator("name", "brand", "category", "compartment")
     @classmethod
     def strip_optional_fields(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
