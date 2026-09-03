@@ -9,7 +9,9 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
 import backend.config as config
 import backend.routes.contribute as contribute_module
@@ -95,29 +97,38 @@ def test_photo_too_large_returns_413(monkeypatch):
     mock_upload.assert_not_called()
 
 
-def test_photo_declared_content_length_oversize_returns_413_without_reading_body(
+@pytest.mark.asyncio
+async def test_photo_declared_content_length_oversize_returns_413_without_reading_body(
     monkeypatch,
 ):
     _enable_write(monkeypatch, True)
+    # Test diretto del pre-check fail-fast senza TestClient: evita il
+    # ricalcolo automatico dell'header content-length.
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/api/scan/contribute/photo",
+        "headers": [(b"content-length", str(6 * 1024 * 1024).encode())],
+        "client": ("testclient", 50000),
+    }
+    request = Request(scope)
+    read_mock = AsyncMock(side_effect=AssertionError("body must not be read"))
+    image = Mock(content_type="image/jpeg", filename="front.jpg")
+    image.read = read_mock
     with patch(
         "backend.routes.contribute.upload_product_image", new=AsyncMock()
     ) as mock_upload:
-        with patch(
-            "starlette.datastructures.UploadFile.read", new=AsyncMock()
-        ) as mock_read:
-            resp = client.post(
-                "/api/scan/contribute/photo",
-                data={
-                    "code": CODE,
-                    "imagefield": "front_it",
-                    "consent_cc_bysa": "true",
-                },
-                files={"image": ("front.jpg", JPEG_BYTES, "image/jpeg")},
-                headers={"content-length": str(6 * 1024 * 1024)},
+        with pytest.raises(HTTPException) as exc_info:
+            await contribute_module.contribute_scan_photo(
+                request,
+                code=CODE,
+                imagefield="front_it",
+                consent_cc_bysa=True,
+                image=image,
             )
-    assert resp.status_code == 413
+    assert exc_info.value.status_code == 413
     mock_upload.assert_not_called()
-    mock_read.assert_not_called()
+    read_mock.assert_not_called()
 
 
 def test_photo_unsupported_type_returns_415(monkeypatch):

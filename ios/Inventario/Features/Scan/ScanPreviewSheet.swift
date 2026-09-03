@@ -388,10 +388,10 @@ struct ScanPreviewSheet: View {
         photoLoading = false
     }
 
-    private static let jpegMagic: [UInt8] = [0xFF, 0xD8, 0xFF]
-    private static let pngMagic: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+    static let jpegMagic: [UInt8] = [0xFF, 0xD8, 0xFF]
+    static let pngMagic: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
 
-    private static func photoFilenameAndMime(data: Data, code: String, imagefield: String) -> (String, String) {
+    static func photoFilenameAndMime(data: Data, code: String, imagefield: String) -> (String, String) {
         if data.starts(with: jpegMagic) {
             return ("\(code)_\(imagefield).jpg", "image/jpeg")
         }
