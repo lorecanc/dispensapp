@@ -154,3 +154,32 @@ Messages are in Italian because the app's primary user base is Italian-speaking.
 | HTTP timeout | 10 seconds | `off.py:11` (hardcoded in `httpx.AsyncClient`) |
 
 The timeout is hardcoded in the service function and is not configurable at runtime. The base URL could be changed via `OFF_BASE_URL` if needed (e.g., to target a different OFF mirror).
+
+## Write Path (Contribute Metadata + Photo)
+
+Opt-in contribution flow via `POST /api/scan/contribute` (JSON metadati) and `POST /api/scan/contribute/photo` (multipart foto), implemented in `backend/routes/contribute.py` → `backend/services/off.py` (`product_jqm2.pl` / `product_image_upload.pl`). Disabled by default (`OFF_WRITE_ENABLED=false`).
+
+### Photo flow
+
+1. iOS `APIClient.uploadPhoto` sends multipart `code` + `imagefield` + `consent_cc_bysa` + `image` to `POST /api/scan/contribute/photo`.
+2. Backend checks rate-limit (10 req/min per IP, in-memory) → `429` when exceeded.
+3. Requires `consent_cc_bysa=true` (CC BY-SA licence) → `400` otherwise; requires `OFF_WRITE_ENABLED` → `403` otherwise.
+4. Validates `code` (`^\d{8,14}$`) → `422`, and `imagefield` allowlist (`front_it`, `ingredients_it`, `nutrition_it`, `packaging_it`) → `422`.
+5. Reads bytes: empty → `415`; over 5MB → `413`; `Content-Type` dichiarato vs magic-byte rilevati (JPEG/PNG/HEIC) mismatch → `415`.
+6. Forwards to OFF staging with `OFF_USER`/`OFF_PASS` and app `User-Agent` (password e bytes mai nei log); OFF `status != 1` → `502`, altrimenti `200 {"ok": true, "code", "message"}`.
+
+### Env
+
+See [.env.example](../../.env.example) and [backend config](../config/backend-config.md): `OFF_WRITE_ENABLED`, `OFF_WRITE_BASE_URL` (default staging `https://world.openfoodfacts.net/cgi`, prod `https://world.openfoodfacts.org/cgi` solo via env), `OFF_USER`/`OFF_PASS` (vuoti di default, obbligatori per abilitare), `OFF_APP_NAME`/`OFF_APP_VERSION`, `OFF_CONTACT_EMAIL`. Invalid/insecure base URL falls back to staging with a warning.
+
+### Consent
+
+Both endpoints require explicit `consent_cc_bysa=true` because contributions are published under CC BY-SA. iOS gates the send button on the consent toggle.
+
+### Rate limit (10/min in-memory)
+
+`_RATE_LIMIT` dict per IP with a 60s sliding window (`_RATE_LIMIT_MAX=10`) shared by both contribute endpoints; no new dependencies. Cleared/isolated per test via fixture.
+
+### Prod option (slowapi/Redis)
+
+For production, replace the in-memory limiter with `slowapi` backed by Redis (shared across workers/hosts, persistent) before go-live — see the `TODO(prod)` in `backend/routes/contribute.py`. No extra dependency is added now to keep the current scope minimal.

@@ -20,6 +20,13 @@ Application-level constants for the FastAPI backend. All values are defined in [
 |-----|------|-------|-------------|
 | `DATABASE_URL` | `str` | `"sqlite:///./inventory.db"` | [SQLite](../modules/backend-database.md) connection string. The database file is created in the project root directory. |
 | `OFF_BASE_URL` | `str` | `"https://world.openfoodfacts.org/api/v0/product"` | Base URL for the [Open Food Facts API](../concepts/off-integration.md). Used to look up product information by barcode. The product code is appended to this URL when making requests. |
+| `OFF_WRITE_ENABLED` | `bool` | `false` (da `OFF_WRITE_ENABLED` env) | Abilita `POST /api/scan/contribute` e `/photo`. Resta `false` se `OFF_USER`/`OFF_PASS` mancano o la base URL non è valida/sicura. Vedi [OFF integration](../concepts/off-integration.md) e [scan API](../api/scan.md). |
+| `OFF_WRITE_BASE_URL` | `str` | `"https://world.openfoodfacts.net/cgi"` (da `OFF_WRITE_BASE_URL` env) | Staging OFF per la scrittura (`product_jqm2.pl`, `product_image_upload.pl`). Prod `https://world.openfoodfacts.org/cgi` solo via env esplicito. Host fuori `openfoodfacts.org`/`.net` o scheme non-https → fallback a staging con warning (http solo per `localhost`/`127.0.0.1`). |
+| `OFF_USER` | `str` | `""` (env) | Account OFF personale per la scrittura (mai nei log). |
+| `OFF_PASS` | `str` | `""` (env) | Password OFF (mai nei log). |
+| `OFF_APP_NAME` | `str` | `"DispensApp"` (env) | Nome client in `comment`, `app_name` e `User-Agent`. |
+| `OFF_APP_VERSION` | `str` | `"0.1.0"` (env) | Versione client in `comment`, `app_version` e `User-Agent`. |
+| `OFF_CONTACT_EMAIL` | `str` | `""` (env) | Contatto opzionale accodato allo `User-Agent` (`Nome/Versione (email)`). |
 | `CORS_ORIGINS` | `list[str]` | `["*"]` | Allowed origins for CORS middleware. Currently set to wildcard for development convenience. |
 | `EXPIRING_SOON_DAYS` | `int` | `3` | Number of days within which an item is considered "[expiring soon](../concepts/item-status.md)". Items whose expiration date falls within this window from today trigger the expiring-soon status. |
 | `ESTIMATED_NOTE` | `str` | `"⚠️ Scadenza stimata, potrebbe scadere prima"` | Warning text appended to markdown export rows that have an estimated expiration date (as opposed to a manufacturer-provided one). Written in Italian: "Estimated expiry, may expire earlier." |

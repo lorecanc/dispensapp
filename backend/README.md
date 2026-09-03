@@ -55,12 +55,21 @@ All constants in [`config.py`](./config.py). `DATABASE_URL` is env-configurable.
 |-----|---------|-------------|
 | `DATABASE_URL` | `sqlite:///<project_root>/inventory.db` (absolute, from `DATABASE_URL` env) | SQLAlchemy URL. Override with `DATABASE_URL` env var, e.g. `sqlite:////tmp/test.db` or `postgresql://user:pass@host/db`. Default is resolved as absolute path relative to `config.py` (not CWD) |
 | `DEFAULT_SHELF_LIFE` | (per category map) | Shelf life in days by product category |
-| `OFF_BASE_URL` | `https://world.openfoodfacts.org/api/v0/product` | Open Food Facts API endpoint |
+| `OFF_BASE_URL` | `https://world.openfoodfacts.org/api/v0/product` | Open Food Facts API endpoint (sola lettura) |
+| `OFF_WRITE_ENABLED` | `false` (`OFF_WRITE_ENABLED` env) | Abilita `POST /api/scan/contribute` e `/photo`. Resta `false` senza `OFF_USER`/`OFF_PASS` |
+| `OFF_WRITE_BASE_URL` | `https://world.openfoodfacts.net/cgi` (`OFF_WRITE_BASE_URL` env) | Staging OFF per scrittura; prod `https://world.openfoodfacts.org/cgi` solo via env |
+| `OFF_USER` / `OFF_PASS` | `""` (env, mai loggata) | Credenziali account OFF personale per la scrittura |
+| `OFF_APP_NAME` / `OFF_APP_VERSION` | `DispensApp` / `0.1.0` (env) | Identificano il client in `comment` e `User-Agent` |
+| `OFF_CONTACT_EMAIL` | `""` (env) | Contatto opzionale aggiunto allo `User-Agent` |
 | `CORS_ORIGINS` | localhost dev origins + `CORS_ORIGINS` env (comma-separated) | Allowed CORS origins |
 | `EXPIRING_SOON_DAYS` | `3` | Days before expiration to flag as "expiring soon" |
 | `ESTIMATED_NOTE` | `⚠️ Scadenza stimata...` | Warning for auto-estimated dates |
 
 `database.py` also reads `DATABASE_URL` via `os.getenv("DATABASE_URL", ...)` with the same absolute-path default, so setting the env var is enough for both modules.
+
+### Scrittura Open Food Facts (OFF_WRITE)
+
+Contributi disabilitati di default. Copia `.env.example` (root) in `.env` e imposta `OFF_WRITE_ENABLED=true` + `OFF_USER`/`OFF_PASS` (account OFF personale). Base di default: staging `https://world.openfoodfacts.net/cgi`; prod `https://world.openfoodfacts.org/cgi` solo via env esplicito. Host non `openfoodfacts.org`/`.net` o scheme non-https → fallback a staging con warning. Esempio staging in `.env.example`, modulo iOS: `APIClient.contribute` / `APIClient.uploadPhoto`.
 
 ## Project Layout
 
@@ -101,6 +110,17 @@ Lookup a barcode via Open Food Facts.
 **Response (404):** `{"found": false, "message": "Prodotto non trovato"}`
 
 **Response (502):** `{"detail": "Impossibile contattare Open Food Facts"}`
+
+### `POST /api/scan/contribute` + `POST /api/scan/contribute/photo`
+
+Invio metadati/foto a OFF (staging di default) via `backend/routes/contribute.py` → `services/off.py` (`product_jqm2.pl` / `product_image_upload.pl`). Richiedono `consent_cc_bysa=true` (licenza CC BY-SA) e `OFF_WRITE_ENABLED=true`, altrimenti `400` (consenso) / `403` (disabilitata). Barcode `^\d{8,14}$`, rate-limit in-memory 10 req/min per IP (`429`).
+
+| Method | Path | Content-Type | Parametri | Risposta ok |
+|--------|------|--------------|-----------|-------------|
+| POST | `/api/scan/contribute` | `application/json` | `code`, `consent_cc_bysa`, `lang` (default `it`), almeno uno tra `product_name`/`brands`/`quantity`/`categories` | `200 {"ok": true, "code", "message"}` |
+| POST | `/api/scan/contribute/photo` | `multipart/form-data` | `code`, `imagefield` (`front_it`/`ingredients_it`/`nutrition_it`/`packaging_it`), `consent_cc_bysa`, `image` (JPEG/PNG/HEIC, max 5MB, magic-byte verificati) | `200 {"ok": true, "code", "message"}` |
+
+Limiti foto: allowlist 4 viste, max 5MB (`413`), tipi JPEG/PNG/HEIC con mismatch dichiarato/rilevato → `415`, `imagefield`/`code` non validi → `422`, rifiuto OFF → `502`. iOS: `APIClient.contribute(code:productName:brands:quantity:categories:lang:consent:)` e `APIClient.uploadPhoto(code:imageData:filename:mimeType:imagefield:consent:)` (timeout 15s/30s).
 
 ### `POST /api/inventory`
 

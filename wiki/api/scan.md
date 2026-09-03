@@ -104,3 +104,30 @@ The error body uses `MessageResponse` (`backend/schemas.py:83`).
 6. If `fetch_product` returns `None` → 502 Bad Gateway.
 7. If `fetch_product` returns `{"found": False}` → 200 OK with `found=false` and a message.
 8. Otherwise → 200 OK with `found=true` and the enriched product data.
+
+## Contribute Endpoints (OFF Write, Opt-in)
+
+Disabled by default; require `OFF_WRITE_ENABLED=true` (+ `OFF_USER`/`OFF_PASS`, see [backend config](../config/backend-config.md) and [OFF integration](../concepts/off-integration.md)). Both share an in-memory rate limit of 10 req/min per IP (`429`) and require `consent_cc_bysa=true` (CC BY-SA, `400` otherwise). Env default is OFF staging (`https://world.openfoodfacts.net/cgi`); prod only via explicit env. iOS module: `APIClient.contribute` / `APIClient.uploadPhoto`.
+
+### POST /api/scan/contribute
+
+**Description**: Sends metadata to OFF via `product_jqm2.pl` (`backend/routes/contribute.py` → `services/off.py:contribute_product`).
+
+**Request** (`application/json`): `code` (`^\d{8,14}$`), `consent_cc_bysa` (bool, required), `lang` (default `it`), plus at least one of `product_name` (max 200), `brands` (max 200), `quantity` (max 64), `categories` (max 500).
+
+**Responses**: `200 {"ok": true, "code", "message"}`; `400` missing consent / no field; `403` disabled; `429` rate-limit; `502` OFF transport/refusal.
+
+### POST /api/scan/contribute/photo
+
+**Description**: Uploads a product photo to OFF via `product_image_upload.pl` (`contribute.py` → `off.py:upload_product_image`).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `code` | form `string` | yes | Barcode `^\d{8,14}$` (`422` if invalid) |
+| `imagefield` | form `string` | yes | Allowlist: `front_it`, `ingredients_it`, `nutrition_it`, `packaging_it` (`422` otherwise) |
+| `consent_cc_bysa` | form `bool` | yes | Must be `true` (`400` otherwise) |
+| `image` | file | yes | JPEG/PNG/HEIC, max 5MB (`413` over limit; `415` on empty or declared vs magic-byte mismatch) |
+
+**Responses**: `200 {"ok": true, "code", "message": "Foto inviata a Open Food Facts"}`; `400`/`403`/`429` as above; `422` invalid `code`/`imagefield`; `413` oversize; `415` type not allowed; `502` OFF transport/refusal.
+
+**Prod note**: the in-memory limiter is a no-dependency mitigation; replace with `slowapi` + Redis before go-live (see `TODO(prod)` in `contribute.py`) — no dependency added now.

@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 struct ScanPreviewSheet: View {
@@ -29,6 +30,14 @@ struct ScanPreviewSheet: View {
     @State private var contributeLoading = false
     @State private var contributeSuccessMessage: String?
     @State private var contributeError: APIError?
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var photoData: Data?
+    @State private var photoFilename = "foto.jpg"
+    @State private var photoMimeType = "image/jpeg"
+    @State private var selectedImageField = "front_it"
+    @State private var photoLoading = false
+    @State private var photoSuccessMessage: String?
+    @State private var photoError: APIError?
 
     var body: some View {
         NavigationStack {
@@ -230,6 +239,68 @@ struct ScanPreviewSheet: View {
                             .foregroundStyle(Color.textSecondary)
                     }
                 }
+
+                Divider()
+
+                Text("Foto prodotto")
+                    .font(.headline)
+                    .accessibilityLabel("Foto prodotto")
+                Text("Aggiungi una foto (max 5MB, JPEG/PNG/HEIC): sarà pubblicata con licenza aperta CC BY-SA / ODbL.")
+                    .font(.footnote)
+                    .foregroundStyle(Color.textSecondary)
+                PhotosPicker(
+                    selection: $selectedPhotoItem,
+                    matching: .images,
+                    photoLibrary: .shared()
+                ) {
+                    Label(photoData == nil ? "Scegli una foto" : "Cambia foto", systemImage: "photo")
+                }
+                .accessibilityLabel("Scegli una foto del prodotto")
+                .accessibilityHint("Apre la libreria foto")
+                .onChange(of: selectedPhotoItem) {
+                    Task { await loadSelectedPhoto(code: barcode) }
+                }
+                if photoData != nil {
+                    Text(photoFilename)
+                        .font(.footnote)
+                        .foregroundStyle(Color.textSecondary)
+                        .accessibilityLabel("Foto selezionata \(photoFilename)")
+                }
+                Picker("Tipo di foto", selection: $selectedImageField) {
+                    Text("Fronte").tag("front_it")
+                    Text("Ingredienti").tag("ingredients_it")
+                    Text("Valori nutrizionali").tag("nutrition_it")
+                    Text("Confezione").tag("packaging_it")
+                }
+                .accessibilityLabel("Tipo di foto")
+                .accessibilityHint("Scegli quale vista del prodotto mostra la foto")
+
+                if photoLoading {
+                    ProgressView("Invio foto in corso...")
+                        .accessibilityLabel("Invio foto in corso")
+                } else if let message = photoSuccessMessage {
+                    Label(message, systemImage: "checkmark.circle")
+                        .foregroundStyle(.green)
+                        .font(.subheadline)
+                        .accessibilityLabel("Foto inviata: \(message)")
+                } else {
+                    if let photoError {
+                        Text(photoError.localizedDescription)
+                            .font(.subheadline)
+                            .foregroundStyle(.red)
+                            .accessibilityLabel("Errore foto: \(photoError.localizedDescription)")
+                    }
+                    Button(photoError == nil ? "Invia foto" : "Riprova") {
+                        Task { await sendPhoto(code: barcode) }
+                    }
+                    .disabled(!consentCCBYSA || photoLoading || photoData == nil)
+                    .accessibilityHint("Disponibile solo dopo aver dato il consenso e scelto una foto")
+                    if photoData == nil {
+                        Text("Scegli una foto per continuare")
+                            .font(.footnote)
+                            .foregroundStyle(Color.textSecondary)
+                    }
+                }
             }
         }
     }
@@ -241,6 +312,8 @@ struct ScanPreviewSheet: View {
         if contributeCategories.isEmpty { contributeCategories = result?.categories.joined(separator: ", ") ?? "" }
         contributeSuccessMessage = nil
         contributeError = nil
+        photoSuccessMessage = nil
+        photoError = nil
     }
 
     private var isContributeEmpty: Bool {
@@ -267,6 +340,56 @@ struct ScanPreviewSheet: View {
             contributeError = error as? APIError ?? .transport(error)
         }
         contributeLoading = false
+    }
+
+    private func loadSelectedPhoto(code: String) async {
+        guard let item = selectedPhotoItem else { return }
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self), !data.isEmpty else {
+                photoData = nil
+                return
+            }
+            photoData = data
+            let (filename, mimeType) = Self.photoFilenameAndMime(data: data, code: code, imagefield: selectedImageField)
+            photoFilename = filename
+            photoMimeType = mimeType
+            photoSuccessMessage = nil
+            photoError = nil
+        } catch {
+            photoData = nil
+            photoError = .transport(error)
+        }
+    }
+
+    private func sendPhoto(code: String) async {
+        guard let data = photoData else { return }
+        photoLoading = true
+        photoError = nil
+        photoSuccessMessage = nil
+        do {
+            let response = try await store.client.uploadPhoto(
+                code: code,
+                imageData: data,
+                filename: photoFilename,
+                mimeType: photoMimeType,
+                imagefield: selectedImageField,
+                consent: consentCCBYSA
+            )
+            photoSuccessMessage = response.message ?? "Foto inviata, grazie!"
+        } catch {
+            photoError = error as? APIError ?? .transport(error)
+        }
+        photoLoading = false
+    }
+
+    private static func photoFilenameAndMime(data: Data, code: String, imagefield: String) -> (String, String) {
+        if data.starts(with: [0xFF, 0xD8, 0xFF]) {
+            return ("\(code)_\(imagefield).jpg", "image/jpeg")
+        }
+        if data.starts(with: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) {
+            return ("\(code)_\(imagefield).png", "image/png")
+        }
+        return ("\(code)_\(imagefield).heic", "image/heic")
     }
 
     private func loadScanResult() async {

@@ -107,3 +107,47 @@ async def contribute_product(
     reason = data.get("status_verbose") or data.get("reason")
     logger.info("OFF contribute for %s: status=%s", code, status)
     return {"status": status, "reason": reason}
+
+
+async def upload_product_image(
+    code: str,
+    image_bytes: bytes,
+    filename: str,
+    mime: str,
+    imagefield: str,
+) -> dict:
+    """Invia una foto a OFF (staging di default) via product_image_upload.pl.
+
+    Riusa credenziali OFF_USER/OFF_PASS e User-Agent app. Non logga mai
+    la password né i bytes dell'immagine. Ritorna {"status": int, "reason": str | None}.
+    Solleva httpx.HTTPError su errori di trasporto (il chiamante mappa a 502).
+    """
+    url = f"{OFF_WRITE_BASE_URL}/product_image_upload.pl"
+    form: dict[str, str] = {
+        "code": code,
+        "imagefield": imagefield,
+        "user_id": OFF_USER,
+        "password": OFF_PASS,
+    }
+    contact = OFF_CONTACT_EMAIL.strip() if OFF_CONTACT_EMAIL else ""
+    user_agent = f"{OFF_APP_NAME}/{OFF_APP_VERSION} ({contact})" if contact else f"{OFF_APP_NAME}/{OFF_APP_VERSION}"
+    files = {"image": (filename or "upload", image_bytes, mime)}
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, data=form, files=files, headers={"User-Agent": user_agent})
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, dict):
+                raise ValueError("OFF unexpected response")
+    except (httpx.HTTPError, ValueError) as exc:
+        # Mai includere password o bytes nei log
+        logger.warning("OFF image upload failed for %s (%s): %s", code, imagefield, exc)
+        raise
+    status = data.get("status", 0)
+    try:
+        status = int(status)
+    except (TypeError, ValueError):
+        status = 0
+    reason = data.get("status_verbose") or data.get("reason")
+    logger.info("OFF image upload for %s (%s): status=%s", code, imagefield, status)
+    return {"status": status, "reason": reason}

@@ -89,6 +89,42 @@ final class APIClient: Sendable {
         return try makeDecoder().decode(ContributeResult.self, from: data)
     }
 
+    func uploadPhoto(
+        code: String,
+        imageData: Data,
+        filename: String,
+        mimeType: String,
+        imagefield: String,
+        consent: Bool
+    ) async throws -> ContributeResult {
+        let url = try resolvedBaseURL().appending(path: "api/scan/contribute/photo")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 30
+
+        let boundary = "Boundary-\(UUID().uuidString)"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+        func appendField(name: String, value: String) {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(value)\r\n".data(using: .utf8)!)
+        }
+        appendField(name: "code", value: code)
+        appendField(name: "imagefield", value: imagefield)
+        appendField(name: "consent_cc_bysa", value: consent ? "true" : "false")
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"image\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
+        body.append(imageData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        request.httpBody = body
+
+        let data = try await perform(request)
+        return try makeDecoder().decode(ContributeResult.self, from: data)
+    }
+
     // MARK: - Create from scan
 
     func create(
