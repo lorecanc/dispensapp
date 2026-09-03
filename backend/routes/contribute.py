@@ -138,8 +138,17 @@ def _detect_photo_kind(data: bytes) -> Optional[str]:
         return "jpeg"
     if data.startswith(b"\x89PNG\r\n\x1a\n"):
         return "png"
-    if len(data) >= 12 and data[4:8] == b"ftyp" and data[8:12] in _HEIC_BRANDS:
-        return "heic"
+    if len(data) >= 12 and data[4:8] == b"ftyp":
+        if data[8:12] in _HEIC_BRANDS:
+            return "heic"
+        # Compatible brands dopo minor version (offset 16), entry da 4B.
+        # Cap ai primi 32B di compat list (8 brand): fail-closed oltre.
+        end = min(len(data), 16 + 32)
+        offset = 16
+        while offset + 4 <= end:
+            if data[offset : offset + 4] in _HEIC_BRANDS:
+                return "heic"
+            offset += 4
     return None
 
 

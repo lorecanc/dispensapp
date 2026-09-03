@@ -5,6 +5,8 @@ import Foundation
 final class APIClient: Sendable {
     static let shared = APIClient()
 
+    private static let maxPhotoBytes = 5 * 1024 * 1024
+
     private let session: URLSession
 
     init(session: URLSession? = nil) {
@@ -98,7 +100,7 @@ final class APIClient: Sendable {
         consent: Bool
     ) async throws -> ContributeResult {
         // Fail-fast locale: evita 30s di upload per un file che il backend rifiuterebbe con 413.
-        guard imageData.count <= 5 * 1024 * 1024 else {
+        guard imageData.count <= Self.maxPhotoBytes else {
             throw APIError.http(status: 413, message: "Immagine troppo grande (max 5MB).")
         }
         let url = try resolvedBaseURL().appending(path: "api/scan/contribute/photo")

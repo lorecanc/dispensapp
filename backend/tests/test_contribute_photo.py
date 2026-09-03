@@ -95,6 +95,31 @@ def test_photo_too_large_returns_413(monkeypatch):
     mock_upload.assert_not_called()
 
 
+def test_photo_declared_content_length_oversize_returns_413_without_reading_body(
+    monkeypatch,
+):
+    _enable_write(monkeypatch, True)
+    with patch(
+        "backend.routes.contribute.upload_product_image", new=AsyncMock()
+    ) as mock_upload:
+        with patch(
+            "starlette.datastructures.UploadFile.read", new=AsyncMock()
+        ) as mock_read:
+            resp = client.post(
+                "/api/scan/contribute/photo",
+                data={
+                    "code": CODE,
+                    "imagefield": "front_it",
+                    "consent_cc_bysa": "true",
+                },
+                files={"image": ("front.jpg", JPEG_BYTES, "image/jpeg")},
+                headers={"content-length": str(6 * 1024 * 1024)},
+            )
+    assert resp.status_code == 413
+    mock_upload.assert_not_called()
+    mock_read.assert_not_called()
+
+
 def test_photo_unsupported_type_returns_415(monkeypatch):
     _enable_write(monkeypatch, True)
     with patch(
@@ -165,6 +190,29 @@ def test_photo_heif_alias_returns_200(monkeypatch):
         resp = _post_photo(filename="front.heif", content=HEIC_BYTES, mime="image/heif")
     assert resp.status_code == 200
     mock_upload.assert_awaited_once()
+
+
+def test_photo_mif1_major_with_heic_compat_returns_200(monkeypatch):
+    _enable_write(monkeypatch, True)
+    content = b"\x00\x00\x00\x18ftypmif1\x00\x00\x00\x00heic" + b"\x00" * 100
+    with patch(
+        "backend.routes.contribute.upload_product_image",
+        new=AsyncMock(return_value={"status": 1, "reason": None}),
+    ) as mock_upload:
+        resp = _post_photo(filename="front.heic", content=content, mime="image/heic")
+    assert resp.status_code == 200
+    mock_upload.assert_awaited_once()
+
+
+def test_photo_mif1_major_without_heic_compat_returns_415(monkeypatch):
+    _enable_write(monkeypatch, True)
+    content = b"\x00\x00\x00\x18ftypmif1\x00\x00\x00\x00mif1" + b"\x00" * 100
+    with patch(
+        "backend.routes.contribute.upload_product_image", new=AsyncMock()
+    ) as mock_upload:
+        resp = _post_photo(filename="front.heic", content=content, mime="image/heic")
+    assert resp.status_code == 415
+    mock_upload.assert_not_called()
 
 
 def test_photo_empty_file_returns_415(monkeypatch):
