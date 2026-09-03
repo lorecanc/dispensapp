@@ -97,6 +97,10 @@ final class APIClient: Sendable {
         imagefield: String,
         consent: Bool
     ) async throws -> ContributeResult {
+        // Fail-fast locale: evita 30s di upload per un file che il backend rifiuterebbe con 413.
+        guard imageData.count <= 5 * 1024 * 1024 else {
+            throw APIError.http(status: 413, message: "Immagine troppo grande (max 5MB).")
+        }
         let url = try resolvedBaseURL().appending(path: "api/scan/contribute/photo")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"

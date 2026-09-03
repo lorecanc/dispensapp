@@ -133,6 +133,50 @@ def test_photo_success_returns_200(monkeypatch):
     mock_upload.assert_awaited_once()
 
 
+def test_photo_success_png_returns_200(monkeypatch):
+    _enable_write(monkeypatch, True)
+    with patch(
+        "backend.routes.contribute.upload_product_image",
+        new=AsyncMock(return_value={"status": 1, "reason": None}),
+    ) as mock_upload:
+        resp = _post_photo(filename="front.png", content=PNG_BYTES, mime="image/png")
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
+    mock_upload.assert_awaited_once()
+
+
+def test_photo_success_heic_returns_200(monkeypatch):
+    _enable_write(monkeypatch, True)
+    with patch(
+        "backend.routes.contribute.upload_product_image",
+        new=AsyncMock(return_value={"status": 1, "reason": None}),
+    ) as mock_upload:
+        resp = _post_photo(filename="front.heic", content=HEIC_BYTES, mime="image/heic")
+    assert resp.status_code == 200
+    mock_upload.assert_awaited_once()
+
+
+def test_photo_heif_alias_returns_200(monkeypatch):
+    _enable_write(monkeypatch, True)
+    with patch(
+        "backend.routes.contribute.upload_product_image",
+        new=AsyncMock(return_value={"status": 1, "reason": None}),
+    ) as mock_upload:
+        resp = _post_photo(filename="front.heif", content=HEIC_BYTES, mime="image/heif")
+    assert resp.status_code == 200
+    mock_upload.assert_awaited_once()
+
+
+def test_photo_empty_file_returns_415(monkeypatch):
+    _enable_write(monkeypatch, True)
+    with patch(
+        "backend.routes.contribute.upload_product_image", new=AsyncMock()
+    ) as mock_upload:
+        resp = _post_photo(filename="front.jpg", content=b"", mime="image/jpeg")
+    assert resp.status_code == 415
+    mock_upload.assert_not_called()
+
+
 def test_photo_off_rejection_returns_502(monkeypatch):
     _enable_write(monkeypatch, True)
     with patch(

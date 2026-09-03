@@ -125,8 +125,11 @@ _PHOTO_CONTENT_TYPES = {
     "image/heic": "heic",
     "image/heif": "heic",
 }
+# Brand HEIC restrittivi: mif1/msf1 (container HEIF generici) esclusi di proposito.
+# Un generico verrebbe comunque rifiutato da OFF dopo l'upload: meglio 415
+# fail-closed subito, senza traffico verso OFF.
 _HEIC_BRANDS = frozenset(
-    {b"heic", b"heix", b"hevc", b"hevx", b"heim", b"heis", b"hevm", b"hevs", b"mif1", b"msf1"}
+    {b"heic", b"heix", b"hevc", b"hevx", b"heim", b"heis", b"hevm", b"hevs"}
 )
 
 
@@ -164,6 +167,11 @@ async def contribute_scan_photo(
         raise HTTPException(status_code=422, detail="code non valido")
     if imagefield not in PHOTO_IMAGEFIELDS:
         raise HTTPException(status_code=422, detail="imagefield non valido")
+    # Pre-check fail-fast sul Content-Length dichiarato (include overhead
+    # multipart: +1KB di tolleranza) prima di leggere il body in memoria.
+    declared_length = request.headers.get("content-length", "")
+    if declared_length.isdigit() and int(declared_length) > MAX_PHOTO_BYTES + 1024:
+        raise HTTPException(status_code=413, detail="Immagine troppo grande (max 5MB)")
     content = await image.read()
     if len(content) > MAX_PHOTO_BYTES:
         raise HTTPException(status_code=413, detail="Immagine troppo grande (max 5MB)")

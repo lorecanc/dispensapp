@@ -347,6 +347,7 @@ struct ScanPreviewSheet: View {
         do {
             guard let data = try await item.loadTransferable(type: Data.self), !data.isEmpty else {
                 photoData = nil
+                photoError = .transport(URLError(.cannotDecodeContentData, userInfo: [NSLocalizedDescriptionKey: "Impossibile leggere la foto selezionata."]))
                 return
             }
             photoData = data
@@ -363,6 +364,11 @@ struct ScanPreviewSheet: View {
 
     private func sendPhoto(code: String) async {
         guard let data = photoData else { return }
+        // Ricalcola filename/mime dal contenuto: selectedImageField potrebbe
+        // essere cambiato dopo la scelta della foto (filename stale).
+        let (filename, mimeType) = Self.photoFilenameAndMime(data: data, code: code, imagefield: selectedImageField)
+        photoFilename = filename
+        photoMimeType = mimeType
         photoLoading = true
         photoError = nil
         photoSuccessMessage = nil
@@ -370,8 +376,8 @@ struct ScanPreviewSheet: View {
             let response = try await store.client.uploadPhoto(
                 code: code,
                 imageData: data,
-                filename: photoFilename,
-                mimeType: photoMimeType,
+                filename: filename,
+                mimeType: mimeType,
                 imagefield: selectedImageField,
                 consent: consentCCBYSA
             )
@@ -382,11 +388,14 @@ struct ScanPreviewSheet: View {
         photoLoading = false
     }
 
+    private static let jpegMagic: [UInt8] = [0xFF, 0xD8, 0xFF]
+    private static let pngMagic: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+
     private static func photoFilenameAndMime(data: Data, code: String, imagefield: String) -> (String, String) {
-        if data.starts(with: [0xFF, 0xD8, 0xFF]) {
+        if data.starts(with: jpegMagic) {
             return ("\(code)_\(imagefield).jpg", "image/jpeg")
         }
-        if data.starts(with: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) {
+        if data.starts(with: pngMagic) {
             return ("\(code)_\(imagefield).png", "image/png")
         }
         return ("\(code)_\(imagefield).heic", "image/heic")
