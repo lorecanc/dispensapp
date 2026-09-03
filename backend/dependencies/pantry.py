@@ -78,6 +78,24 @@ def get_pantry_context(
     return x_pantry_token
 
 
+def get_optional_context(
+    x_pantry_token: str | None = Header(default=None, alias="X-Pantry-Token"),
+) -> str | None:
+    """Contesto opzionale solo per route pubbliche (scan/suggestions).
+
+    Non solleva mai 401: ritorna il token se UUID valido, altrimenti None.
+    Mai usare per route scoped /pantries/{id}/*, che restano su
+    get_current_pantry stretto (401/403/404).
+    """
+    if not x_pantry_token:
+        return None
+    try:
+        uuid.UUID(x_pantry_token)
+    except (ValueError, AttributeError):
+        return None
+    return x_pantry_token
+
+
 def get_current_pantry(
     pantry_id: int,
     x_pantry_token: str | None = Header(default=None, alias="X-Pantry-Token"),

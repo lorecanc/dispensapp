@@ -3,6 +3,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
@@ -57,6 +58,16 @@ def create_pantry(
     db: Session = Depends(get_db),
     current_token: str = Depends(get_pantry_context),
 ):
+    # Idempotenza double-POST client: riusa esistente con stesso nome+owner.
+    # Senza vincolo UNIQUE in DB resta best-effort su retry sequenziali;
+    # il retry IntegrityError copre il caso di vincolo futuro/concorrenza.
+    existing = (
+        db.query(Pantry)
+        .filter(Pantry.name == body.name, Pantry.owner_token == current_token)
+        .first()
+    )
+    if existing:
+        return existing
     pantry = Pantry(name=body.name, owner_token=current_token)
     try:
         db.add(pantry)
@@ -68,6 +79,17 @@ def create_pantry(
         )
         db.commit()
         db.refresh(pantry)
+    except IntegrityError:
+        db.rollback()
+        retry = (
+            db.query(Pantry)
+            .filter(Pantry.name == body.name, Pantry.owner_token == current_token)
+            .first()
+        )
+        if retry:
+            return retry
+        logger.exception("Errore creazione pantry")
+        raise HTTPException(status_code=500, detail="Errore interno durante la creazione")
     except Exception:
         db.rollback()
         logger.exception("Errore creazione pantry")
@@ -116,20 +138,15 @@ def create_invite(
     return invite
 
 
-@router.post("/invites/{token}/accept", response_model=InviteOut)
-def accept_invite(
-    token: str,
-    db: Session = Depends(get_db),
-    current_token: str = Depends(get_pantry_context),
-):
-    # Claim atomico: un solo accept vince; gli altri (scaduto, usato,
-    # doppio click) vedono rowcount 0 -> 404 uniforme.
+def _claim_invite(db: Session, token_value: str, current_token: str) -> Invite:
+    """Claim atomico invito: un solo accept vince, gli altri vedono 404."""
+    # Nessun log del token (privacy).
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     try:
         updated = (
             db.query(Invite)
             .filter(
-                Invite.token == token,
+                Invite.token == token_value,
                 Invite.status == "pending",
                 Invite.expires_at > now,
             )
@@ -141,7 +158,7 @@ def accept_invite(
         if updated == 0:
             db.rollback()
             raise HTTPException(status_code=404, detail="Invito non trovato")
-        invite = db.query(Invite).filter(Invite.token == token).first()
+        invite = db.query(Invite).filter(Invite.token == token_value).first()
         if not invite:
             db.rollback()
             raise HTTPException(status_code=404, detail="Invito non trovato")
@@ -172,6 +189,29 @@ def accept_invite(
             status_code=500, detail="Errore interno durante l'accettazione"
         )
     return invite
+
+
+@router.post("/invites/accept", response_model=InviteOut)
+def accept_invite_body(
+    body: InviteCreate,
+    db: Session = Depends(get_db),
+    current_token: str = Depends(get_pantry_context),
+):
+    if not body.token:
+        raise HTTPException(status_code=422, detail="token mancante")
+    return _claim_invite(db, body.token, current_token)
+
+
+@router.post("/invites/{token}/accept", response_model=InviteOut)
+def accept_invite(
+    token: str,
+    db: Session = Depends(get_db),
+    current_token: str = Depends(get_pantry_context),
+    body: InviteCreate | None = None,
+):
+    # Legacy path-param; se body.token presente, preferisce il body.
+    token_value = body.token if body and body.token else token
+    return _claim_invite(db, token_value, current_token)
 
 
 @router.get("/pantries/{pantry_id}/members", response_model=list[MemberOut])

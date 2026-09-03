@@ -12,32 +12,6 @@ final class ShoppingStore {
     var pantryChecks: [Int: PantryCheckItem] = [:]
 
     let client = APIClient.shared
-    // Single selection condivisa via UserDefaults (default 1 personale, owner InventoryStore).
-    // Replica locale per plumbing T5; T6 aggiungerà picker UI.
-    var selectedPantryId: Int = {
-        let stored = UserDefaults.standard.integer(forKey: "selectedPantryId")
-        return stored == 0 ? 1 : stored
-    }() {
-        didSet {
-            if oldValue != selectedPantryId {
-                UserDefaults.standard.set(selectedPantryId, forKey: "selectedPantryId")
-                // Evita leak dati pantry precedente allo switch.
-                lists = []
-                selectedListId = nil
-                pantryChecks = [:]
-                suggestions = []
-                exportedMarkdown = nil
-                error = nil
-            }
-        }
-    }
-
-    func selectPantry(_ id: Int) {
-        selectedPantryId = id
-    }
-
-    // Alias compat: tutto il networking usa selectedPantryId.
-    var pantryId: Int { selectedPantryId }
 
     var selectedList: ShoppingList? {
         guard let id = selectedListId else { return lists.first }
@@ -46,7 +20,7 @@ final class ShoppingStore {
 
     // MARK: - Lists
 
-    func fetchLists() async {
+    func fetchLists(pantryId: Int) async {
         isLoading = true
         error = nil
         do {
@@ -59,26 +33,12 @@ final class ShoppingStore {
             }
         } catch {
             if Task.isCancelled { isLoading = false; return }
-            let apiError = error as? APIError ?? .transport(error)
-            // Hint già in APIError (401 -> "Token mancante"); logga per debug senza token value.
-            if case .http(let status, _) = apiError, status == 401 {
-                print("[ShoppingStore] 401 per pantry \(pantryId) — verifica header auth")
-            }
-            if case .notFound = apiError {
-                print("[ShoppingStore] Pantry \(pantryId) non trovata — log only")
-            }
-            if case .http(let status, _) = apiError, status == 404 {
-                print("[ShoppingStore] Pantry \(pantryId) 404 — come sopra, log only")
-            }
-            if case .http(let status, _) = apiError, status == 403 {
-                print("[ShoppingStore] 403 non membro pantry \(pantryId) — log only")
-            }
-            self.error = apiError
+            self.error = error as? APIError ?? .transport(error)
         }
         isLoading = false
     }
 
-    func createList(name: String = "Spesa") async {
+    func createList(pantryId: Int, name: String = "Spesa") async {
         error = nil
         do {
             let created = try await client.createShoppingList(pantryId: pantryId, name: name)
@@ -89,7 +49,7 @@ final class ShoppingStore {
         }
     }
 
-    func fetchItems(listId: Int) async {
+    func fetchItems(pantryId: Int, listId: Int) async {
         error = nil
         do {
             let refreshed = try await client.getShoppingList(pantryId: pantryId, listId: listId)
@@ -107,18 +67,18 @@ final class ShoppingStore {
 
     // MARK: - Items
 
-    func addItem(name: String, quantity: Int, compartment: String?) async {
+    func addItem(pantryId: Int, name: String, quantity: Int, compartment: String?) async {
         guard let listId = selectedList?.id else {
             // Auto-crea lista se mancante
-            await createList()
+            await createList(pantryId: pantryId)
             guard let newId = selectedList?.id else { return }
-            await addItemToList(listId: newId, name: name, quantity: quantity, compartment: compartment)
+            await addItemToList(pantryId: pantryId, listId: newId, name: name, quantity: quantity, compartment: compartment)
             return
         }
-        await addItemToList(listId: listId, name: name, quantity: quantity, compartment: compartment)
+        await addItemToList(pantryId: pantryId, listId: listId, name: name, quantity: quantity, compartment: compartment)
     }
 
-    private func addItemToList(listId: Int, name: String, quantity: Int, compartment: String?) async {
+    private func addItemToList(pantryId: Int, listId: Int, name: String, quantity: Int, compartment: String?) async {
         error = nil
         do {
             let item = try await client.addShoppingItem(
@@ -132,7 +92,7 @@ final class ShoppingStore {
         }
     }
 
-    func toggleChecked(item: ShoppingListItem) async {
+    func toggleChecked(pantryId: Int, item: ShoppingListItem) async {
         guard let listId = selectedList?.id else { return }
         // Toggle ottimistico per UI reattiva, revert su errore
         if let lIdx = lists.firstIndex(where: { $0.id == listId }),
@@ -157,7 +117,7 @@ final class ShoppingStore {
         }
     }
 
-    func deleteItem(itemId: Int) async {
+    func deleteItem(pantryId: Int, itemId: Int) async {
         guard let listId = selectedList?.id else { return }
         error = nil
         do {
@@ -173,7 +133,7 @@ final class ShoppingStore {
 
     // MARK: - Export
 
-    func exportMarkdown() async {
+    func exportMarkdown(pantryId: Int) async {
         guard let listId = selectedList?.id else { return }
         error = nil
         do {
@@ -185,7 +145,7 @@ final class ShoppingStore {
 
     // MARK: - Check pantry cross
 
-    func checkInPantry() async {
+    func checkInPantry(pantryId: Int) async {
         guard let listId = selectedList?.id else { return }
         error = nil
         do {

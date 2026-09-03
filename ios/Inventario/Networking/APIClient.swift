@@ -428,6 +428,45 @@ final class APIClient: Sendable {
         return try makeDecoder().decode([Pantry].self, from: data)
     }
 
+    func createPantry(name: String) async throws -> Pantry {
+        let url = try resolvedBaseURL().appending(path: "api/pantries")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["name": name])
+        let data = try await perform(request)
+        return try makeDecoder().decode(Pantry.self, from: data)
+    }
+
+    // Accetta invito: prova POST /invites/accept con body, fallback al path legacy.
+    // Mai log del token.
+    func acceptInvite(token: String) async throws -> Invite {
+        do {
+            let url = try resolvedBaseURL().appending(path: "api/invites/accept")
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: ["token": token])
+            let data = try await perform(request)
+            return try makeDecoder().decode(Invite.self, from: data)
+        } catch {
+            let isNotFound: Bool = {
+                if let api = error as? APIError {
+                    if case .notFound = api { return true }
+                    if case .http(let status, _) = api, status == 404 { return true }
+                }
+                return false
+            }()
+            if !isNotFound { throw error }
+            let url = try resolvedBaseURL().appending(path: "api/invites/\(token)/accept")
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            let data = try await perform(request)
+            return try makeDecoder().decode(Invite.self, from: data)
+        }
+    }
+
     // MARK: - Inventory pantry-scoped
 
     func listScoped(pantryId: Int) async throws -> [InventoryItem] {
@@ -494,12 +533,29 @@ final class APIClient: Sendable {
         return try makeDecoder().decode(InventoryItem.self, from: data)
     }
 
-    func updateScoped(pantryId: Int, id: Int, quantity: Int) async throws -> InventoryItem {
+    func updateScoped(
+        pantryId: Int,
+        id: Int,
+        name: String? = nil,
+        brand: String? = nil,
+        expirationDate: Date? = nil,
+        category: String? = nil,
+        quantity: Int? = nil
+    ) async throws -> InventoryItem {
         let url = try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/inventory/\(id)")
         var request = URLRequest(url: url)
         request.httpMethod = "PATCH"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["quantity": quantity])
+        var body: [String: Any?] = [
+            "name": name,
+            "brand": brand,
+            "category": category,
+            "quantity": quantity,
+        ]
+        if let expirationDate {
+            body["expiration_date"] = Self.makeDateFormatter().string(from: expirationDate)
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body.filter { $0.value != nil }.mapValues { $0! })
         let data = try await perform(request)
         return try makeDecoder().decode(InventoryItem.self, from: data)
     }
@@ -596,6 +652,17 @@ struct Pantry: Codable, Identifiable, Equatable, Sendable {
     }
 }
 
+struct Invite: Codable, Equatable, Sendable {
+    let id: Int
+    let pantryId: Int
+    let status: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, status
+        case pantryId = "pantry_id"
+    }
+}
+
 struct ConsumptionEvent: Codable, Identifiable, Equatable, Sendable {
     let id: Int
     let pantryId: Int
@@ -604,7 +671,6 @@ struct ConsumptionEvent: Codable, Identifiable, Equatable, Sendable {
     let barcode: String?
     let delta: Int
     let reason: String?
-    let actorToken: String?
     let createdAt: Date
 
     enum CodingKeys: String, CodingKey {
@@ -612,7 +678,6 @@ struct ConsumptionEvent: Codable, Identifiable, Equatable, Sendable {
         case pantryId = "pantry_id"
         case itemId = "item_id"
         case nameSnapshot = "name_snapshot"
-        case actorToken = "actor_token"
         case createdAt = "created_at"
     }
 }

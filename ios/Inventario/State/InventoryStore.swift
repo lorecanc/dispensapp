@@ -33,6 +33,10 @@ final class InventoryStore {
 
     let client = APIClient.shared
 
+    // Provision single-flight: un solo POST /pantries per token.
+    private var isProvisioning = false
+    private var provisionAttemptedToken: String?
+
     func selectPantry(_ id: Int) {
         selectedPantryId = id
     }
@@ -41,14 +45,55 @@ final class InventoryStore {
         do {
             let fetched = try await client.listPantries()
             guard !Task.isCancelled else { return }
+            if fetched.isEmpty {
+                await ensureProvisionedThenResync()
+                return
+            }
             pantries = fetched
             // Se la pantry selezionata non esiste più, torna alla prima disponibile.
-            if !fetched.isEmpty, !fetched.contains(where: { $0.id == selectedPantryId }) {
+            if !fetched.contains(where: { $0.id == selectedPantryId }) {
                 selectedPantryId = fetched[0].id
             }
         } catch {
             if Task.isCancelled { return }
+            // Solo se lista vuota e 401/403: un tentativo di provision, poi resync.
+            if pantries.isEmpty, let apiError = error as? APIError, isAuthFailure(apiError) {
+                await ensureProvisionedThenResync()
+                return
+            }
             // Non critico: la lista resta vuota e il picker mostra fallback.
+            if pantries.isEmpty { pantries = [Pantry(id: selectedPantryId, name: "Dispensa", createdAt: Date())] }
+        }
+    }
+
+    private func isAuthFailure(_ error: APIError) -> Bool {
+        if case .http(let status, _) = error, status == 401 || status == 403 {
+            return true
+        }
+        return false
+    }
+
+    private func ensureProvisionedThenResync() async {
+        if isProvisioning { return }
+        let token = PantryToken.value
+        if provisionAttemptedToken == token {
+            if pantries.isEmpty { pantries = [Pantry(id: selectedPantryId, name: "Dispensa", createdAt: Date())] }
+            return
+        }
+        isProvisioning = true
+        defer { isProvisioning = false }
+        provisionAttemptedToken = token
+        do {
+            let created = try await client.createPantry(name: "Dispensa")
+            guard !Task.isCancelled else { return }
+            let refetched = try await client.listPantries()
+            guard !Task.isCancelled else { return }
+            pantries = refetched.isEmpty ? [created] : refetched
+            if !pantries.contains(where: { $0.id == selectedPantryId }) {
+                selectedPantryId = pantries[0].id
+            }
+        } catch {
+            if Task.isCancelled { return }
             if pantries.isEmpty { pantries = [Pantry(id: selectedPantryId, name: "Dispensa", createdAt: Date())] }
         }
     }
@@ -132,28 +177,16 @@ final class InventoryStore {
         quantity: Int? = nil
     ) async {
         error = nil
-        guard let quantity else {
-            // Solo quantity è supportato dallo scoped PATCH; altri campi via legacy.
-            do {
-                let updated = try await client.update(
-                    id: id,
-                    name: name,
-                    brand: brand,
-                    expirationDate: expirationDate,
-                    category: category,
-                    quantity: nil
-                )
-                if let index = items.firstIndex(where: { $0.id == id }) {
-                    items[index] = updated
-                    items.sort { ($0.expirationDate ?? .distantFuture) < ($1.expirationDate ?? .distantFuture) }
-                }
-            } catch {
-                self.error = error as? APIError ?? .transport(error)
-            }
-            return
-        }
         do {
-            let updated = try await client.updateScoped(pantryId: selectedPantryId, id: id, quantity: quantity)
+            let updated = try await client.updateScoped(
+                pantryId: selectedPantryId,
+                id: id,
+                name: name,
+                brand: brand,
+                expirationDate: expirationDate,
+                category: category,
+                quantity: quantity
+            )
             guard !Task.isCancelled else { return }
             if let index = items.firstIndex(where: { $0.id == id }) {
                 items[index] = updated
@@ -215,7 +248,14 @@ final class InventoryStore {
             history[itemId] = events
         } catch {
             if Task.isCancelled { return }
-            // Storico non critico: 404 dopo consume-zero (item rimosso) conserva cached, mai banner errore.
+            // Storico non critico: 401/403/404 log + cache/[], mai banner errore.
+            if let apiError = error as? APIError {
+                if case .notFound = apiError {
+                    print("[InventoryStore] history non-critical — cache only")
+                } else if case .http(let status, _) = apiError, status == 401 || status == 403 || status == 404 {
+                    print("[InventoryStore] history non-critical — cache only")
+                }
+            }
             if history[itemId] == nil {
                 history[itemId] = []
             }

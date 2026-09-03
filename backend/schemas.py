@@ -210,7 +210,17 @@ class PantryOut(BaseModel):
 
 
 class InviteCreate(BaseModel):
-    pass
+    # Token opzionale: ignorato su create (server genera), usato solo per
+    # accept-by-body POST /invites/accept {token}.
+    token: Optional[str] = Field(default=None, max_length=64)
+
+    @field_validator("token")
+    @classmethod
+    def strip_token(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        stripped = v.strip()
+        return stripped or None
 
 
 class InviteOut(BaseModel):

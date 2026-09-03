@@ -105,7 +105,7 @@ struct ShoppingListView: View {
                                         }
                                         return Compartment.inferCompartment(fromName: sug.name).rawValue
                                     }()
-                                    Task { await store.addItem(name: sug.name, quantity: newItemQuantity, compartment: inferred) }
+                                    Task { await store.addItem(pantryId: pantryStore.selectedPantryId, name: sug.name, quantity: newItemQuantity, compartment: inferred) }
                                     newItemName = ""
                                     suggestionQuery = ""
                                     store.suggestions = []
@@ -161,7 +161,7 @@ struct ShoppingListView: View {
                                             .listRowSeparator(.hidden)
                                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                                 Button(role: .destructive) {
-                                                    Task { await store.deleteItem(itemId: item.id) }
+                                                    Task { await store.deleteItem(pantryId: pantryStore.selectedPantryId, itemId: item.id) }
                                                 } label: {
                                                     Label("Elimina", systemImage: "trash")
                                                 }
@@ -244,8 +244,8 @@ struct ShoppingListView: View {
         .navigationTitle("Spesa")
         .searchable(text: $suggestionQuery, prompt: "Cerca suggerimenti...")
         .refreshable {
-            await store.fetchLists()
-            await store.checkInPantry()
+            await store.fetchLists(pantryId: pantryStore.selectedPantryId)
+            await store.checkInPantry(pantryId: pantryStore.selectedPantryId)
         }
         .overlay(alignment: .top) {
             if let error = store.error {
@@ -263,13 +263,13 @@ struct ShoppingListView: View {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
                     Button {
-                        Task { await store.checkInPantry() }
+                        Task { await store.checkInPantry(pantryId: pantryStore.selectedPantryId) }
                     } label: {
                         Label("Verifica dispensa", systemImage: "checkmark.shield")
                     }
                     Button {
                         Task {
-                            await store.exportMarkdown()
+                            await store.exportMarkdown(pantryId: pantryStore.selectedPantryId)
                             showMarkdownSheet = true
                         }
                     } label: {
@@ -287,7 +287,7 @@ struct ShoppingListView: View {
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
-                    Task { await store.checkInPantry() }
+                    Task { await store.checkInPantry(pantryId: pantryStore.selectedPantryId) }
                 } label: {
                     Image(systemName: "checkmark.shield")
                 }
@@ -296,10 +296,9 @@ struct ShoppingListView: View {
         }
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         .task(id: pantryStore.selectedPantryId) {
-            // Single source pantry via @Environment; replica locale sincronizzata.
-            store.selectPantry(pantryStore.selectedPantryId)
-            await store.fetchLists()
-            await store.checkInPantry()
+            // Single source pantry via @Environment; ShoppingStore non ha stato proprio.
+            await store.fetchLists(pantryId: pantryStore.selectedPantryId)
+            await store.checkInPantry(pantryId: pantryStore.selectedPantryId)
         }
         .task(id: suggestionQuery) {
             if suggestionQuery.trimmingCharacters(in: .whitespaces).count < 2 {
@@ -357,7 +356,7 @@ struct ShoppingListView: View {
                     guard !newItemName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
                     let trimmed = newItemName.trimmingCharacters(in: .whitespaces)
                     // Nessun Picker comparto: inferenza lato backend/cliente da nome
-                    await store.addItem(name: trimmed, quantity: newItemQuantity, compartment: nil)
+                    await store.addItem(pantryId: pantryStore.selectedPantryId, name: trimmed, quantity: newItemQuantity, compartment: nil)
                     newItemName = ""
                     suggestionQuery = ""
                 }
@@ -381,7 +380,7 @@ struct ShoppingListView: View {
     private func shoppingRow(item: ShoppingListItem) -> some View {
         HStack(spacing: 12) {
             Button {
-                Task { await store.toggleChecked(item: item) }
+                Task { await store.toggleChecked(pantryId: pantryStore.selectedPantryId, item: item) }
             } label: {
                 Image(systemName: item.checked ? "checkmark.square.fill" : "square")
                     .font(.title3)
@@ -434,13 +433,13 @@ struct ShoppingListView: View {
         .opacity(item.checked ? 0.75 : 1)
         .contextMenu {
             Button {
-                Task { await store.toggleChecked(item: item) }
+                Task { await store.toggleChecked(pantryId: pantryStore.selectedPantryId, item: item) }
             } label: {
                 Label(item.checked ? "Segna da acquistare" : "Segna completato", systemImage: item.checked ? "square" : "checkmark.square")
             }
             .accessibilityLabel(item.checked ? "Segna da acquistare \(item.name)" : "Segna completato \(item.name)")
             Button(role: .destructive) {
-                Task { await store.deleteItem(itemId: item.id) }
+                Task { await store.deleteItem(pantryId: pantryStore.selectedPantryId, itemId: item.id) }
             } label: {
                 Label("Elimina", systemImage: "trash")
             }
@@ -569,7 +568,7 @@ struct ShoppingListView: View {
                     Button("Crea") {
                         Task {
                             let name = newListName.trimmingCharacters(in: .whitespaces)
-                            await store.createList(name: name.isEmpty ? "Spesa" : name)
+                            await store.createList(pantryId: pantryStore.selectedPantryId, name: name.isEmpty ? "Spesa" : name)
                             showCreateListSheet = false
                             newListName = ""
                         }

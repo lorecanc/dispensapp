@@ -138,7 +138,7 @@ class ConsumptionEvent(Base):
     barcode = Column(String, nullable=True)
     delta = Column(Integer, nullable=False)
     reason = Column(Text, nullable=True)
-    actor_token = Column(String(36), nullable=True)
+    # Privacy: actor_token non persistito (stop write + colonna rimossa).
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (

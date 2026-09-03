@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["inventory"])
 
 # Pantry di default per gli shim legacy /api/inventory*.
+# Shim deprecato: i client nuovi usano /api/pantries/{id}/inventory.
+# Il backfill (migration f1a2b3c4d5e6) mappa i NULL su MIN(id) esistente;
+# ID=1 vale solo per seed legacy, nessun cambio semantica scoped.
 DEFAULT_PANTRY_ID = 1
 
 
@@ -40,8 +43,9 @@ def _default_pantry_ctx(
 
 
 def _pantry_filter(pantry_id: int, allow_null: bool = False):
-    # Fallback legacy: le righe create prima di T3 hanno pantry_id NULL;
-    # backfill via migration, ma gli shim legacy includono anche NULL.
+    # Fallback legacy: le righe pre-T3 hanno pantry_id NULL; backfill su
+    # MIN(id) via migration, ma gli shim legacy includono anche NULL.
+    # Le route scoped passano allow_null=False (nessun cambio semantica).
     if allow_null:
         return or_(
             InventoryItem.pantry_id == pantry_id,
@@ -155,7 +159,7 @@ def _consume_scoped_item(
     db: Session,
     pantry_id: int,
     item_id: int,
-    token: str,
+    token: str,  # conservato per compat chiamate, non persistito (privacy)
     delta: int,
     reason: str | None,
     allow_null: bool = False,
@@ -205,7 +209,7 @@ def _consume_scoped_item(
             barcode=item.barcode,
             delta=-delta,
             reason=reason,
-            actor_token=token,
+            # Privacy: token non persistito (colonna actor_token rimossa).
         )
         remaining = getattr(item, "quantity", 0) or 0
         if remaining == 0:
@@ -245,7 +249,8 @@ def _history_scoped_items(
     db: Session, pantry_id: int, item_id: int, limit: int, offset: int
 ) -> list[ConsumptionEvent]:
     # Contratto A: la history è su pantry+item_id e non richiede la riga
-    # (cancellata quando il consumo arriva a zero).
+    # (cancellata quando il consumo arriva a zero). Auth resta stretta su
+    # get_current_pantry (401/403, nessun mask server).
     return (
         db.query(ConsumptionEvent)
         .filter(
