@@ -71,12 +71,13 @@ On startup it calls `Base.metadata.create_all(bind=engine)`, which creates all d
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "Accept", "X-Pantry-Token", "Idempotency-Key"],
 )
 ```
 
-CORS is configured via `CORSMiddleware` using the `CORS_ORIGINS` setting from `backend.config` (set to `["*"]`). All HTTP methods and headers are allowed. This is appropriate for development; a production deployment would restrict origins.
+CORS is configured via `CORSMiddleware` using the `CORS_ORIGINS` setting from `backend.config`. `CORS_ORIGINS` is a localhost allowlist for development plus extra domains from the `CORS_ORIGINS` env var, never `"*"` (see `backend/tests/test_cors.py`).
 
 ## Router Registration
 
