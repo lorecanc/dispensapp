@@ -1,5 +1,15 @@
 from datetime import date, timedelta, datetime, timezone
-from backend.models import InventoryItem
+from backend.models import InventoryItem, Pantry
+
+VALID_TOKEN = "00000000-0000-0000-0000-000000000000"
+HEADERS = {"X-Pantry-Token": VALID_TOKEN}
+
+
+def _create_pantry(db_session):
+    p = Pantry(id=1, name="La mia dispensa", owner_token=VALID_TOKEN)
+    db_session.add(p)
+    db_session.commit()
+    return p
 
 
 def _seed_inventory(db_session, count=5):
@@ -12,6 +22,7 @@ def _seed_inventory(db_session, count=5):
             expiration_date=today + timedelta(days=i),
             is_estimated=False,
             quantity=1,
+            pantry_id=1,
             created_at=datetime.now(timezone.utc),
         )
         db_session.add(item)
@@ -20,9 +31,10 @@ def _seed_inventory(db_session, count=5):
 
 
 def test_pagination_limit_offset(client, db_session):
+    _create_pantry(db_session)
     _seed_inventory(db_session, count=5)
     # limit 2 offset 0
-    resp = client.get("/api/inventory?limit=2&offset=0")
+    resp = client.get("/api/inventory?limit=2&offset=0", headers=HEADERS)
     assert resp.status_code == 200
     data = resp.json()
     assert len(data) == 2
@@ -31,7 +43,7 @@ def test_pagination_limit_offset(client, db_session):
     assert dates == sorted(dates)
 
     # offset 2
-    resp2 = client.get("/api/inventory?limit=2&offset=2")
+    resp2 = client.get("/api/inventory?limit=2&offset=2", headers=HEADERS)
     assert resp2.status_code == 200
     data2 = resp2.json()
     assert len(data2) == 2
@@ -41,38 +53,41 @@ def test_pagination_limit_offset(client, db_session):
     assert ids1.isdisjoint(ids2)
 
     # last page partial
-    resp3 = client.get("/api/inventory?limit=2&offset=4")
+    resp3 = client.get("/api/inventory?limit=2&offset=4", headers=HEADERS)
     assert resp3.status_code == 200
     assert len(resp3.json()) == 1
 
     # beyond total
-    resp4 = client.get("/api/inventory?limit=10&offset=10")
+    resp4 = client.get("/api/inventory?limit=10&offset=10", headers=HEADERS)
     assert resp4.status_code == 200
     assert resp4.json() == []
 
 
-def test_pagination_validation(client):
+def test_pagination_validation(client, db_session):
+    _create_pantry(db_session)
     # limit 0 => 422
-    resp = client.get("/api/inventory?limit=0&offset=0")
+    resp = client.get("/api/inventory?limit=0&offset=0", headers=HEADERS)
     assert resp.status_code == 422
     # limit 101 => 422 (le=100)
-    resp2 = client.get("/api/inventory?limit=101&offset=0")
+    resp2 = client.get("/api/inventory?limit=101&offset=0", headers=HEADERS)
     assert resp2.status_code == 422
     # offset negative => 422
-    resp3 = client.get("/api/inventory?limit=10&offset=-1")
+    resp3 = client.get("/api/inventory?limit=10&offset=-1", headers=HEADERS)
     assert resp3.status_code == 422
 
 
 def test_pagination_default_limit(client, db_session):
+    _create_pantry(db_session)
     _seed_inventory(db_session, count=3)
-    resp = client.get("/api/inventory")
+    resp = client.get("/api/inventory", headers=HEADERS)
     assert resp.status_code == 200
     # default 50, should return all 3
     assert len(resp.json()) == 3
 
 
 def test_pagination_limit_exceeds_total(client, db_session):
+    _create_pantry(db_session)
     _seed_inventory(db_session, count=2)
-    resp = client.get("/api/inventory?limit=100&offset=0")
+    resp = client.get("/api/inventory?limit=100&offset=0", headers=HEADERS)
     assert resp.status_code == 200
     assert len(resp.json()) == 2

@@ -1,39 +1,42 @@
 import Foundation
+import Security
 
-/// Persiste `X-Pantry-Token` in `UserDefaults` (key `pantryToken`).
-/// - Se mancante genera `UUID().uuidString` e salva.
-/// - Legacy compat: finché non c'è UI pantry picker, la pantry default creata da migration ha
-///   `owner_token = 00000000-0000-0000-0000-000000000000`. Per evitare 403 su pantry 1 al primo
-///   avvio, se il token generato/salvato != legacy, lo sovrascrive con il legacy token.
-///   Rimuovere questo fallback quando ci sarà gestione multi-pantry / membership.
-/// Sendable perché espone solo accesso statico thread-safe via `UserDefaults`.
+/// Persiste `X-Pantry-Token` in Keychain (`kSecClassGenericPassword`,
+/// `accessibleAfterFirstUnlockThisDeviceOnly`). Mai in UserDefaults, mai nei log.
+/// - Prima lettura: se Keychain vuoto, migra una tantum il valore legacy da
+///   UserDefaults `pantryToken` (conserva installazioni esistenti), altrimenti
+///   genera `UUID().uuidString` e salva.
+/// - Nessun fallback hardcoded a zero-UUID: ogni installazione ha il suo token.
+///   Nota backend: senza `POST /api/pantries` disponibile, la creazione pantry
+///   per-token al primo 401/403 non è implementata lato client; il backend deve
+///   provisionare la pantry per il token ricevuto, altrimenti la UI mostra 401/403.
+/// Sendable perché espone solo accesso statico thread-safe via Keychain.
 enum PantryToken: Sendable {
     static let headerName = "X-Pantry-Token"
-    static let legacyToken = "00000000-0000-0000-0000-000000000000"
+    private static let service = "Inventario"
+    private static let account = "pantryToken"
     private static let defaultsKey = "pantryToken"
 
     static var value: String {
         get {
-            if let existing = UserDefaults.standard.string(forKey: defaultsKey), !existing.isEmpty {
-                // Fallback legacy: forza 000... per compatibilità con pantry 1 esistente
-                if existing != legacyToken {
-                    // Sovrascrittura documentata — vedi fix 401 shopping-lists
-                    UserDefaults.standard.set(legacyToken, forKey: defaultsKey)
-                    return legacyToken
-                }
+            if let existing = readKeychain(), !existing.isEmpty {
                 return existing
             }
-            // Primo avvio: genera UUID come da spec, poi fallback a legacy per compatibilità
-            let generated = UUID().uuidString
-            if generated != legacyToken {
-                UserDefaults.standard.set(legacyToken, forKey: defaultsKey)
-                return legacyToken
+            // Migrazione una tantum da UserDefaults (installazioni pre-Keychain).
+            if let migrated = UserDefaults.standard.string(forKey: defaultsKey),
+               !migrated.isEmpty
+            {
+                writeKeychain(migrated)
+                UserDefaults.standard.removeObject(forKey: defaultsKey)
+                return migrated
             }
-            UserDefaults.standard.set(generated, forKey: defaultsKey)
+            let generated = UUID().uuidString
+            writeKeychain(generated)
             return generated
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: defaultsKey)
+            writeKeychain(newValue)
+            UserDefaults.standard.removeObject(forKey: defaultsKey)
         }
     }
 
@@ -45,6 +48,44 @@ enum PantryToken: Sendable {
 
     /// Reset per test / debug.
     static func reset() {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ]
+        SecItemDelete(query as CFDictionary)
         UserDefaults.standard.removeObject(forKey: defaultsKey)
+    }
+
+    private static func readKeychain() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess, let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private static func writeKeychain(_ token: String) {
+        guard let data = token.data(using: .utf8) else { return }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ]
+        SecItemDelete(query as CFDictionary)
+        let attributes: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+        ]
+        SecItemAdd(attributes as CFDictionary, nil)
     }
 }

@@ -79,11 +79,18 @@ def test_estimate_empty_tags_uses_default():
 
 
 def test_resolve_centralizzata_integration_via_api(client, db_session):
+    from backend.models import Pantry
+
+    p = Pantry(id=1, name="La mia dispensa", owner_token="00000000-0000-0000-0000-000000000000")
+    db_session.add(p)
+    db_session.commit()
+    headers = {"X-Pantry-Token": "00000000-0000-0000-0000-000000000000"}
     # senza expiration_date ma con categoria yogurts -> scadenza stimata 14 giorni da oggi
     today = date.today()
     resp = client.post(
         "/api/inventory",
         json={"barcode": "12345678", "name": "Yogurt Test", "category": "yogurts", "quantity": 1},
+        headers=headers,
     )
     assert resp.status_code == 201
     body = resp.json()
@@ -97,6 +104,7 @@ def test_resolve_centralizzata_integration_via_api(client, db_session):
     resp2 = client.post(
         "/api/inventory/manual",
         json={"name": "Manual Test", "expiration_date": explicit, "category": "pasta", "quantity": 1},
+        headers=headers,
     )
     assert resp2.status_code == 201
     body2 = resp2.json()

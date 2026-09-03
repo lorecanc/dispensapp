@@ -243,6 +243,7 @@ final class APIClient: Sendable {
         let url = try resolvedBaseURL().appending(path: "api/inventory/\(id)")
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
+        request = decorated(request)
 
         let (_, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -255,11 +256,37 @@ final class APIClient: Sendable {
 
     // MARK: - Export Markdown
 
+    func exportScoped(pantryId: Int) async throws -> String {
+        let url = try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/inventory/export")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("text/markdown", forHTTPHeaderField: "Accept")
+        request = decorated(request)
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.transport(URLError(.badServerResponse))
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            if httpResponse.statusCode == 404 {
+                throw APIError.notFound
+            }
+            throw APIError.http(status: httpResponse.statusCode, message: nil)
+        }
+        guard let markdown = String(data: data, encoding: .utf8) else {
+            throw APIError.decoding(DecodingError.dataCorrupted(
+                DecodingError.Context(codingPath: [], debugDescription: "Response is not valid UTF-8 text")
+            ))
+        }
+        return markdown
+    }
+
     func exportMarkdown() async throws -> String {
         let url = try resolvedBaseURL().appending(path: "api/inventory/export")
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("text/markdown", forHTTPHeaderField: "Accept")
+        request = decorated(request)
 
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -391,9 +418,137 @@ final class APIClient: Sendable {
 
     // MARK: - Pantry auth
 
+    // MARK: - Pantries (tipi file-scope in fondo al file)
+
+    func listPantries() async throws -> [Pantry] {
+        let url = try resolvedBaseURL().appending(path: "api/pantries")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        let data = try await perform(request)
+        return try makeDecoder().decode([Pantry].self, from: data)
+    }
+
+    // MARK: - Inventory pantry-scoped
+
+    func listScoped(pantryId: Int) async throws -> [InventoryItem] {
+        let url = try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/inventory")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        let data = try await perform(request)
+        return try makeDecoder().decode([InventoryItem].self, from: data)
+    }
+
+    func createScoped(
+        pantryId: Int,
+        barcode: String,
+        name: String,
+        brand: String?,
+        expirationDate: Date?,
+        category: String?,
+        imageURL: String?,
+        quantity: Int
+    ) async throws -> InventoryItem {
+        let url = try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/inventory")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: Any?] = [
+            "barcode": barcode,
+            "name": name,
+            "brand": brand,
+            "category": category,
+            "image_url": imageURL,
+            "quantity": quantity,
+        ]
+        if let expirationDate {
+            body["expiration_date"] = Self.makeDateFormatter().string(from: expirationDate)
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body.filter { $0.value != nil }.mapValues { $0! })
+        let data = try await perform(request)
+        return try makeDecoder().decode(InventoryItem.self, from: data)
+    }
+
+    func createManualScoped(
+        pantryId: Int,
+        name: String,
+        brand: String?,
+        expirationDate: Date?,
+        category: String?,
+        quantity: Int
+    ) async throws -> InventoryItem {
+        let url = try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/inventory/manual")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: Any?] = [
+            "name": name,
+            "brand": brand,
+            "category": category,
+            "quantity": quantity,
+        ]
+        if let expirationDate {
+            body["expiration_date"] = Self.makeDateFormatter().string(from: expirationDate)
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body.filter { $0.value != nil }.mapValues { $0! })
+        let data = try await perform(request)
+        return try makeDecoder().decode(InventoryItem.self, from: data)
+    }
+
+    func updateScoped(pantryId: Int, id: Int, quantity: Int) async throws -> InventoryItem {
+        let url = try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/inventory/\(id)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["quantity": quantity])
+        let data = try await perform(request)
+        return try makeDecoder().decode(InventoryItem.self, from: data)
+    }
+
+    func deleteScoped(pantryId: Int, id: Int) async throws {
+        let url = try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/inventory/\(id)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request = decorated(request)
+        let (_, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.transport(URLError(.badServerResponse))
+        }
+        guard httpResponse.statusCode == 204 || httpResponse.statusCode == 200 else {
+            if httpResponse.statusCode == 404 { throw APIError.notFound }
+            throw APIError.http(status: httpResponse.statusCode, message: nil)
+        }
+    }
+
+    // Consumo atomico server-side: 409 se quantità insufficiente.
+    func consume(pantryId: Int, itemId: Int, delta: Int = 1, reason: String? = nil) async throws -> InventoryItem {
+        let url = try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/inventory/\(itemId)/consume")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: Any] = ["delta": delta]
+        if let reason, !reason.isEmpty { body["reason"] = reason }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let data = try await perform(request)
+        return try makeDecoder().decode(InventoryItem.self, from: data)
+    }
+
+    func history(pantryId: Int, itemId: Int, limit: Int = 50) async throws -> [ConsumptionEvent] {
+        var comps = URLComponents(
+            url: try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/inventory/\(itemId)/history"),
+            resolvingAgainstBaseURL: false
+        )!
+        comps.queryItems = [URLQueryItem(name: "limit", value: "\(limit)")]
+        guard let url = comps.url else { throw APIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        let data = try await perform(request)
+        return try makeDecoder().decode([ConsumptionEvent].self, from: data)
+    }
+
     private func decorated(_ request: URLRequest) -> URLRequest {
         var req = request
-        if let path = req.url?.path, path.contains("/pantries/") || path.contains("/shopping-lists") {
+        // Tutte le /api/* richiedono X-Pantry-Token (auth sistemica, non solo /pantries/).
+        if let path = req.url?.path, path.contains("/api/") {
             if req.value(forHTTPHeaderField: PantryToken.headerName) == nil {
                 req.setValue(PantryToken.value, forHTTPHeaderField: PantryToken.headerName)
             }
@@ -425,5 +580,39 @@ final class APIClient: Sendable {
         }
 
         return data
+    }
+}
+
+// MARK: - Pantries (file-scope: condivisi con InventoryStore)
+
+struct Pantry: Codable, Identifiable, Equatable, Sendable {
+    let id: Int
+    let name: String
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id, name
+        case createdAt = "created_at"
+    }
+}
+
+struct ConsumptionEvent: Codable, Identifiable, Equatable, Sendable {
+    let id: Int
+    let pantryId: Int
+    let itemId: Int?
+    let nameSnapshot: String
+    let barcode: String?
+    let delta: Int
+    let reason: String?
+    let actorToken: String?
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id, barcode, delta, reason
+        case pantryId = "pantry_id"
+        case itemId = "item_id"
+        case nameSnapshot = "name_snapshot"
+        case actorToken = "actor_token"
+        case createdAt = "created_at"
     }
 }

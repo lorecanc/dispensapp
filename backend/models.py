@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Index, Integer, String
+from sqlalchemy import Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Index, Integer, String, Text
 
 from backend.database import Base
 
@@ -36,7 +36,7 @@ class Invite(Base):
     pantry_id = Column(
         Integer, ForeignKey("pantries.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    token = Column(String(36), nullable=False, unique=True, index=True)
+    token = Column(String(64), nullable=False, unique=True, index=True)
     created_by_token = Column(String(36), nullable=False)
     status = Column(String(10), nullable=False, default="pending", server_default="pending")
     expires_at = Column(
@@ -101,6 +101,7 @@ class InventoryItem(Base):
     __table_args__ = (
         Index("ix_inventory_items_pantry_expiration", "pantry_id", "expiration_date"),
         Index("ix_inventory_items_pantry_created", "pantry_id", "created_at"),
+        CheckConstraint("quantity >= 0", name="ck_inventory_items_quantity_nonnegative"),
     )
 
 
@@ -117,4 +118,29 @@ class ScanHistory(Base):
     __table_args__ = (
         Index("ix_scan_history_times_scanned", "times_scanned"),
         Index("ix_scan_history_name", "name"),
+    )
+
+
+# T1: ledger consumi append-only (no update/delete API); gestione expires a T2.
+class ConsumptionEvent(Base):
+    __tablename__ = "consumption_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    pantry_id = Column(
+        Integer, ForeignKey("pantries.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    item_id = Column(
+        Integer,
+        ForeignKey("inventory_items.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    name_snapshot = Column(String(200), nullable=False)
+    barcode = Column(String, nullable=True)
+    delta = Column(Integer, nullable=False)
+    reason = Column(Text, nullable=True)
+    actor_token = Column(String(36), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("ix_consumption_events_pantry_created", "pantry_id", "created_at"),
     )

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ShoppingListView: View {
+    @Environment(InventoryStore.self) private var pantryStore
     @State private var store = ShoppingStore()
     @State private var newItemName = ""
     @State private var newItemQuantity = 1
@@ -158,7 +159,7 @@ struct ShoppingListView: View {
                                             .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                                             .listRowBackground(Color.clear)
                                             .listRowSeparator(.hidden)
-                                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                                 Button(role: .destructive) {
                                                     Task { await store.deleteItem(itemId: item.id) }
                                                 } label: {
@@ -254,6 +255,11 @@ struct ShoppingListView: View {
             }
         }
         .toolbar {
+            // T6: picker pantry in header, selezione condivisa via @Environment.
+            ToolbarItem(placement: .topBarLeading) {
+                pantryPickerMenu
+            }
+            // Unico Menu overflow puntini.
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
                     Button {
@@ -289,7 +295,9 @@ struct ShoppingListView: View {
             }
         }
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
-        .task {
+        .task(id: pantryStore.selectedPantryId) {
+            // Single source pantry via @Environment; replica locale sincronizzata.
+            store.selectPantry(pantryStore.selectedPantryId)
             await store.fetchLists()
             await store.checkInPantry()
         }
@@ -310,6 +318,26 @@ struct ShoppingListView: View {
     }
 
     // MARK: - Add item form (solo nome + quantità)
+
+    // T6: picker pantry in header (personale/condivise), binding su store @Environment.
+    private var pantryPickerMenu: some View {
+        @Bindable var pantryStoreBindable = pantryStore
+        return Menu {
+            Picker("Dispensa", selection: $pantryStoreBindable.selectedPantryId) {
+                ForEach(pantryStore.pantries) { pantry in
+                    Text(pantry.name).tag(pantry.id)
+                }
+            }
+        } label: {
+            Label(pantryStore.selectedPantryName, systemImage: "house")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(Color.pantryMoss)
+                .lineLimit(1)
+        }
+        .tint(Color.pantryMoss)
+        .accessibilityLabel("Seleziona dispensa")
+        .accessibilityHint("Scegli tra dispensa personale e condivise")
+    }
 
     private var addItemSection: some View {
         VStack(spacing: 12) {
@@ -404,6 +432,20 @@ struct ShoppingListView: View {
         .padding(12)
         .pantryCardBackground(cornerRadius: 14)
         .opacity(item.checked ? 0.75 : 1)
+        .contextMenu {
+            Button {
+                Task { await store.toggleChecked(item: item) }
+            } label: {
+                Label(item.checked ? "Segna da acquistare" : "Segna completato", systemImage: item.checked ? "square" : "checkmark.square")
+            }
+            .accessibilityLabel(item.checked ? "Segna da acquistare \(item.name)" : "Segna completato \(item.name)")
+            Button(role: .destructive) {
+                Task { await store.deleteItem(itemId: item.id) }
+            } label: {
+                Label("Elimina", systemImage: "trash")
+            }
+            .accessibilityLabel("Elimina \(item.name)")
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(shoppingRowAccessibilityLabel(for: item))
         .accessibilityValue(item.checked ? "Completato, quantità \(item.quantity)" : "Da acquistare, quantità \(item.quantity)")

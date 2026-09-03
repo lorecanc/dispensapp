@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 from backend.routes.categories import router as categories_router
 from backend.routes.contribute import router as contribute_router
 from backend.routes.inventory import router as inventory_router
+from backend.routes.pantries import router as pantries_router
 from backend.routes.scan import router as scan_router
 from backend.routes.shopping import router as shopping_router
 from backend.routes.suggestions import router as suggestions_router
@@ -69,6 +70,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 app.include_router(scan_router)
 app.include_router(contribute_router)
 app.include_router(inventory_router)
+app.include_router(pantries_router)
 app.include_router(categories_router)
 app.include_router(shopping_router)
 app.include_router(suggestions_router)

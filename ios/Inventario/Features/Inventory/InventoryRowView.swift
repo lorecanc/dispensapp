@@ -117,7 +117,7 @@ struct InventoryRowView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityValue(accessibilityValue)
-        .accessibilityHint("Tocca per dettagli, scorri a destra per eliminare, a sinistra per segnare consumato")
+        .accessibilityHint("Tocca per dettagli, scorri a sinistra per eliminare, a destra per segnare consumato")
         .accessibilityAddTraits(.isButton)
         .dynamicTypeSize(.xSmall ... .accessibility3)
     }

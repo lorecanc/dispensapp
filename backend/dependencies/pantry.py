@@ -115,4 +115,7 @@ def get_current_pantry(
     if member:
         return PantryContext(x_pantry_token, pantry)
 
+    # 403 (non 404 uniforme): distingue "pantry inesistente" da "non membro"
+    # per compatibilità con iOS e test esistenti; il 404 uniforme anti-enumerazione
+    # resta una opzione futura se il client verrà aggiornato.
     raise HTTPException(status_code=403, detail="Non membro della pantry")
