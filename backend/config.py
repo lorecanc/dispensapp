@@ -1,5 +1,9 @@
+import logging
 import os
 from pathlib import Path
+from urllib.parse import urlparse
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_SHELF_LIFE = {
     "yogurts": 14,
@@ -236,6 +240,32 @@ COMPARTMENT_MAP: dict[str, str] = {
 _DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "inventory.db"
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{_DEFAULT_DB_PATH}")
 OFF_BASE_URL = "https://world.openfoodfacts.org/api/v0/product"
+# Scrittura OFF (contribuzione metadati): default staging .net, prod .org solo via env.
+_off_write_default = "https://world.openfoodfacts.net/cgi"
+_off_write_requested = os.getenv("OFF_WRITE_ENABLED", "false").lower() in ("1", "true", "yes", "on")
+_raw_off_write_base_url = os.getenv("OFF_WRITE_BASE_URL", _off_write_default).rstrip("/")
+_parsed = urlparse(_raw_off_write_base_url)
+_host = (_parsed.hostname or "").lower()
+_host_ok = _host.endswith("openfoodfacts.org") or _host.endswith("openfoodfacts.net")
+_scheme_ok = _parsed.scheme == "https" or (
+    _parsed.scheme == "http" and _host in ("localhost", "127.0.0.1")
+)
+_off_write_valid = _host_ok and _scheme_ok
+if not _off_write_valid:
+    logger.warning(
+        "OFF_WRITE_BASE_URL non valido o insicuro (%s): fallback a staging default",
+        _raw_off_write_base_url,
+    )
+OFF_WRITE_BASE_URL = _raw_off_write_base_url if _off_write_valid else _off_write_default
+_off_write_insecure = not _off_write_valid
+OFF_USER = os.getenv("OFF_USER", "")
+OFF_PASS = os.getenv("OFF_PASS", "")
+OFF_APP_NAME = os.getenv("OFF_APP_NAME", "DispensApp")
+OFF_APP_VERSION = os.getenv("OFF_APP_VERSION", "0.1.0")
+OFF_CONTACT_EMAIL = os.getenv("OFF_CONTACT_EMAIL", "")
+if _off_write_requested and (not OFF_USER or not OFF_PASS):
+    logger.warning("OFF_WRITE_ENABLED ma credenziali OFF_USER/OFF_PASS mancanti: scrittura disabilitata")
+OFF_WRITE_ENABLED = _off_write_requested and bool(OFF_USER and OFF_PASS) and not _off_write_insecure
 # CORS allowlist ristretta: solo localhost per sviluppo + domini da env var.
 # Imposta CORS_ORIGINS come lista comma-separated, es:
 #   CORS_ORIGINS="https://app.example.com,https://admin.example.com"

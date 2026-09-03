@@ -20,6 +20,16 @@ struct ScanPreviewSheet: View {
     @State private var showError = false
     @State private var errorMessage = ""
 
+    @State private var showContribute = false
+    @State private var contributeName = ""
+    @State private var contributeBrands = ""
+    @State private var contributeQuantity = ""
+    @State private var contributeCategories = ""
+    @State private var consentCCBYSA = false
+    @State private var contributeLoading = false
+    @State private var contributeSuccessMessage: String?
+    @State private var contributeError: APIError?
+
     var body: some View {
         NavigationStack {
             Group {
@@ -154,7 +164,109 @@ struct ScanPreviewSheet: View {
                 DatePicker("Data di scadenza", selection: $expirationDate, displayedComponents: .date)
                 QuantityStepper(quantity: $quantity)
             }
+
+            if result.needsEnrichment {
+                contributeSection(barcode: barcode)
+            }
         }
+    }
+
+    @ViewBuilder
+    private func contributeSection(barcode: String) -> some View {
+        Section("Arricchisci su Open Food Facts") {
+            if !showContribute {
+                Text("Questo prodotto manca o ha dati incompleti. Puoi contribuire alla community di Open Food Facts inviando nome, marca e altri dati: saranno pubblicati con licenza aperta CC BY-SA / ODbL.")
+                    .font(.subheadline)
+                    .foregroundStyle(Color.textSecondary)
+                Button("Arricchisci su Open Food Facts") {
+                    prefillContribute(from: scanResult)
+                    showContribute = true
+                }
+                .accessibilityLabel("Arricchisci su Open Food Facts")
+                .accessibilityHint("Apri il modulo di contribuzione")
+            } else {
+                TextField("Nome prodotto", text: $contributeName)
+                    .autocorrectionDisabled()
+                    .accessibilityLabel("Nome prodotto da contribuire")
+                TextField("Marca", text: $contributeBrands)
+                    .autocorrectionDisabled()
+                    .accessibilityLabel("Marca da contribuire")
+                TextField("Quantità (es. 500g)", text: $contributeQuantity)
+                    .autocorrectionDisabled()
+                    .accessibilityLabel("Quantità da contribuire")
+                TextField("Categorie (separate da virgola)", text: $contributeCategories, axis: .vertical)
+                    .autocorrectionDisabled()
+                    .accessibilityLabel("Categorie da contribuire")
+                Toggle(isOn: $consentCCBYSA) {
+                    Text("Acconsento alla pubblicazione dei dati con licenza CC BY-SA / ODbL su Open Food Facts. Obbligatorio per inviare.")
+                        .font(.footnote)
+                }
+                .accessibilityLabel("Consenso licenza CC BY-SA ODbL")
+                .accessibilityHint("Obbligatorio per inviare il contributo")
+
+                if contributeLoading {
+                    ProgressView("Invio in corso...")
+                        .accessibilityLabel("Invio contributo in corso")
+                } else if let message = contributeSuccessMessage {
+                    Label(message, systemImage: "checkmark.circle")
+                        .foregroundStyle(.green)
+                        .font(.subheadline)
+                        .accessibilityLabel("Contributo inviato: \(message)")
+                } else {
+                    if let contributeError {
+                        Text(contributeError.localizedDescription)
+                            .font(.subheadline)
+                            .foregroundStyle(.red)
+                            .accessibilityLabel("Errore contributo: \(contributeError.localizedDescription)")
+                    }
+                    Button(contributeError == nil ? "Invia contributo" : "Riprova") {
+                        Task { await sendContribute(code: barcode) }
+                    }
+                    .disabled(!consentCCBYSA || contributeLoading || isContributeEmpty)
+                    .accessibilityHint("Disponibile solo dopo aver dato il consenso alla licenza")
+                    if isContributeEmpty {
+                        Text("Inserisci almeno un campo")
+                            .font(.footnote)
+                            .foregroundStyle(Color.textSecondary)
+                    }
+                }
+            }
+        }
+    }
+
+    private func prefillContribute(from result: ScanResult?) {
+        contributeName = result?.name ?? name
+        contributeBrands = result?.brand ?? brand
+        if contributeQuantity.isEmpty { contributeQuantity = "" }
+        if contributeCategories.isEmpty { contributeCategories = result?.categories.joined(separator: ", ") ?? "" }
+        contributeSuccessMessage = nil
+        contributeError = nil
+    }
+
+    private var isContributeEmpty: Bool {
+        [contributeName, contributeBrands, contributeQuantity, contributeCategories].allSatisfy {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
+    private func sendContribute(code: String) async {
+        contributeLoading = true
+        contributeError = nil
+        contributeSuccessMessage = nil
+        do {
+            let response = try await store.client.contribute(
+                code: code,
+                productName: contributeName.trimmingCharacters(in: .whitespaces).nilIfEmpty,
+                brands: contributeBrands.trimmingCharacters(in: .whitespaces).nilIfEmpty,
+                quantity: contributeQuantity.trimmingCharacters(in: .whitespaces).nilIfEmpty,
+                categories: contributeCategories.trimmingCharacters(in: .whitespaces).nilIfEmpty,
+                consent: consentCCBYSA
+            )
+            contributeSuccessMessage = response.message ?? "Contributo inviato, grazie!"
+        } catch {
+            contributeError = error as? APIError ?? .transport(error)
+        }
+        contributeLoading = false
     }
 
     private func loadScanResult() async {

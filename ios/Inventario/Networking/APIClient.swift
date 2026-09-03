@@ -51,6 +51,44 @@ final class APIClient: Sendable {
         return try makeDecoder().decode(ScanResult.self, from: data)
     }
 
+    // MARK: - Contribute to Open Food Facts (via backend)
+
+    struct ContributeResult: Decodable, Sendable {
+        let ok: Bool
+        let code: String
+        let message: String?
+    }
+
+    func contribute(
+        code: String,
+        productName: String?,
+        brands: String?,
+        quantity: String?,
+        categories: String?,
+        lang: String = "it",
+        consent: Bool
+    ) async throws -> ContributeResult {
+        let url = try resolvedBaseURL().appending(path: "api/scan/contribute")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 15
+
+        var body: [String: Any] = [
+            "code": code,
+            "consent_cc_bysa": consent,
+            "lang": lang,
+        ]
+        if let productName, !productName.isEmpty { body["product_name"] = productName }
+        if let brands, !brands.isEmpty { body["brands"] = brands }
+        if let quantity, !quantity.isEmpty { body["quantity"] = quantity }
+        if let categories, !categories.isEmpty { body["categories"] = categories }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let data = try await perform(request)
+        return try makeDecoder().decode(ContributeResult.self, from: data)
+    }
+
     // MARK: - Create from scan
 
     func create(

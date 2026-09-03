@@ -13,4 +13,11 @@ struct ScanResult: Codable, Sendable {
         case barcode, name, brand, categories, found, message
         case imageURL = "image_url"
     }
+
+    /// True quando il prodotto manca o ha dati incompleti e vale la pena arricchirlo.
+    var needsEnrichment: Bool {
+        guard found else { return true }
+        if name?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true { return true }
+        return imageURL == nil
+    }
 }
