@@ -45,6 +45,7 @@ final class APIClient: Sendable {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(["barcode": barcode])
+        request.timeoutInterval = 10
 
         let data = try await perform(request)
         return try makeDecoder().decode(ScanResult.self, from: data)

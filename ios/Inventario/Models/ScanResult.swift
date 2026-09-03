@@ -1,6 +1,6 @@
 import Foundation
 
-struct ScanResult: Codable {
+struct ScanResult: Codable, Sendable {
     let barcode: String
     let name: String?
     let brand: String?

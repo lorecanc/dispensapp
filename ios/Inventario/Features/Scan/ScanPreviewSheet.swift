@@ -5,6 +5,7 @@ struct ScanPreviewSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let barcode: String
+    var result: ScanResult? = nil
 
     @State private var scanResult: ScanResult?
     @State private var isLoading = true
@@ -158,18 +159,27 @@ struct ScanPreviewSheet: View {
 
     private func loadScanResult() async {
         print("[ScanPreview] loadScanResult for barcode:", barcode)
+        if let result {
+            apply(result)
+            isLoading = false
+            return
+        }
         isLoading = true
         do {
             let result = try await store.client.scan(barcode: barcode)
-            scanResult = result
-            name = result.name ?? ""
-            brand = result.brand ?? ""
-            let rawCategory = result.categories.first ?? ""
-            selectedCategory = CategoryRegistry.validCategoryKeys.contains(rawCategory) ? rawCategory : ""
+            apply(result)
         } catch {
             self.error = error as? APIError ?? .transport(error)
         }
         isLoading = false
+    }
+
+    private func apply(_ result: ScanResult) {
+        scanResult = result
+        name = result.name ?? ""
+        brand = result.brand ?? ""
+        let rawCategory = result.categories.first ?? ""
+        selectedCategory = CategoryRegistry.validCategoryKeys.contains(rawCategory) ? rawCategory : ""
     }
 
     private func saveItem() async {
