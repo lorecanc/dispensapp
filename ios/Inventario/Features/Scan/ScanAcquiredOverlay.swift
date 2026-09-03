@@ -42,7 +42,7 @@ final class ScanAcquiredController {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         announce(code)
         let reduceMotion = UIAccessibility.isReduceMotionEnabled
-        withAnimation(reduceMotion ? .linear(0.2) : .spring(.bouncy)) {
+        withAnimation(reduceMotion ? .linear(duration: 0.2) : .spring(duration: 0.35, bounce: 0.4)) {
             pill = Pill(barcode: code)
         }
         dismissTask = Task { @MainActor [visibleDuration] in
@@ -57,7 +57,7 @@ final class ScanAcquiredController {
         dismissTask?.cancel()
         dismissTask = nil
         let reduceMotion = UIAccessibility.isReduceMotionEnabled
-        withAnimation(reduceMotion ? .linear(0.2) : .easeOut(duration: 0.6)) {
+        withAnimation(reduceMotion ? .linear(duration: 0.2) : .easeOut(duration: 0.6)) {
             pill = nil
         }
     }
@@ -102,7 +102,7 @@ struct ScanAcquiredOverlay: View {
         .dynamicTypeSize(.xSmall ... .accessibility2)
         .onAppear {
             let reduceMotion = UIAccessibility.isReduceMotionEnabled
-            withAnimation(reduceMotion ? .linear(0.2) : .spring(.bouncy)) {
+            withAnimation(reduceMotion ? .linear(duration: 0.2) : .spring(duration: 0.35, bounce: 0.4)) {
                 appeared = true
             }
         }

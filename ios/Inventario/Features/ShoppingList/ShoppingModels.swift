@@ -243,7 +243,6 @@ enum Compartment: String, CaseIterable, Hashable {
         "pulses": "legumes",
         "lentils": "legumes",
         "pastas": "pasta",
-        "flour": "flours",
         "sauces": "sauces-condiments",
         "condiments": "sauces-condiments",
         "oils": "oils-vinegars",
