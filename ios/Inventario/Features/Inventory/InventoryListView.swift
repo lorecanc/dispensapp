@@ -152,6 +152,10 @@ struct InventoryListView: View {
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
+                    NavigationLink(destination: ManualEntryView()) {
+                        Label("Inserimento manuale", systemImage: "pencil")
+                    }
+
                     Button {
                         showSettings = true
                     } label: {

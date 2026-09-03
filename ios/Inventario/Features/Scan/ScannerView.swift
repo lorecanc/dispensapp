@@ -203,6 +203,10 @@ struct ScannerViewWrapper: View {
             } message: {
                 Text("Per scansionare i codici a barre è necessario concedere l'accesso alla fotocamera.")
             }
+            .onDisappear {
+                bannerTask?.cancel()
+                bannerTask = nil
+            }
         }
     }
 
