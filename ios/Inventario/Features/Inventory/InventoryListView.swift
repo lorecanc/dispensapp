@@ -11,8 +11,6 @@ struct InventoryListView: View {
     @State private var showDeletePantryConfirm = false
     @State private var pendingDeletePantry: Pantry?
     @State private var showManageDeleteConfirm = false
-    @State private var newItemName = ""
-    @State private var newItemQuantity = 1
     @State private var expandedHistory: Set<Int> = []
 
     // MARK: - Filtering
@@ -67,20 +65,17 @@ struct InventoryListView: View {
                         .listRowSeparator(.hidden)
                 }
 
-                // Aggiunta sempre visibile: prima Section del form.
                 Section {
-                    addItemSection
-                } header: {
-                    Label("Aggiungi prodotto", systemImage: "plus.circle")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.pantryMoss)
-                        .textCase(nil)
+                    addProductPill
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                 }
 
                 if groupedItems.isEmpty {
                     if store.items.isEmpty {
                         EmptyStateView()
-                            .listRowInsets(EdgeInsets(top: 16, leading: 0, bottom: 0, trailing: 0))
+                            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
                     } else {
@@ -90,7 +85,7 @@ struct InventoryListView: View {
                             title: "Nessun risultato",
                             message: "Prova a cambiare ricerca o filtro categoria."
                         )
-                        .listRowInsets(EdgeInsets(top: 16, leading: 0, bottom: 0, trailing: 0))
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                     }
@@ -340,57 +335,31 @@ struct InventoryListView: View {
         }
     }
 
-    // MARK: - Inline add sempre visibile + T9 storico
+    // MARK: - T9 storico
 
-    private var addItemSection: some View {
-        VStack(spacing: 12) {
-            TextField("Nome prodotto", text: $newItemName, prompt: Text("Es. Pasta"))
-                .textInputAutocapitalization(.words)
-                .autocorrectionDisabled()
-                .submitLabel(.done)
-                .onSubmit { addCurrentItem() }
-                .overlay(alignment: .trailing) {
-                    if !newItemName.isEmpty {
-                        Button {
-                            newItemName = ""
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.secondary)
-                        }
-                        .accessibilityLabel("Cancella nome prodotto")
-                    }
-                }
-
-            QuantityStepper(quantity: $newItemQuantity)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            Button {
-                addCurrentItem()
-            } label: {
-                Label("Aggiungi in dispensa", systemImage: "plus.circle.fill")
-                    .frame(maxWidth: .infinity, minHeight: 44)
+    private var addProductPill: some View {
+        NavigationLink(destination: ManualEntryView()) {
+            HStack(spacing: 8) {
+                Label("Aggiungi prodotto", systemImage: "plus.circle.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.pantryMoss)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.textSecondary)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .tint(Color.pantryMoss)
-            .disabled(newItemName.trimmingCharacters(in: .whitespaces).isEmpty)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background {
+                Capsule()
+                    .fill(.regularMaterial)
+                    .overlay(Capsule().fill(Color.pantryCream.opacity(0.35)))
+                    .overlay(Capsule().strokeBorder(Color.pantryOat, lineWidth: 0.5))
+                    .shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 4)
+            }
         }
-    }
-
-    private func addCurrentItem() {
-        Task {
-            guard !newItemName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-            await store.addManual(
-                name: newItemName.trimmingCharacters(in: .whitespaces),
-                brand: nil,
-                expirationDate: nil,
-                category: nil,
-                quantity: newItemQuantity
-            )
-            guard store.error == nil else { return }
-            newItemName = ""
-            newItemQuantity = 1
-        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Aggiungi prodotto, apri inserimento manuale")
     }
 
     // T9: DisclosureGroup collassato di default, opacity 0.6, senza swipe delete.

@@ -12,6 +12,7 @@ struct ShoppingListView: View {
     @State private var showDeleteConfirm = false
     @State private var pendingDeleteList: ShoppingList?
     @State private var newListName = ""
+    @State private var isAddExpanded = false
     @State private var expandedCompartments: Set<String> = Set(Compartment.supermarketOrder.map(\.rawValue))
 
     // Raggruppamento per comparto inferito (se item ha compartment salvato usalo, altrimenti inferisci da nome)
@@ -54,7 +55,7 @@ struct ShoppingListView: View {
                         )
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 16, leading: 0, bottom: 0, trailing: 0))
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
 
                         Button {
                             showCreateListSheet = true
@@ -65,16 +66,52 @@ struct ShoppingListView: View {
                         .tint(Color.pantryMoss)
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                     }
                 } else {
-                    // Add item form — solo nome + quantità, senza Picker comparto
+                    // Add item: pill disclosure + card espandibile, add diretto su Invio
                     Section {
-                        addItemSection
-                    } header: {
-                        Label("Aggiungi prodotto", systemImage: "plus.circle")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Color.pantryMoss)
-                            .textCase(nil)
+                        VStack(spacing: 12) {
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    isAddExpanded.toggle()
+                                }
+                            } label: {
+                                HStack {
+                                    Label("Aggiungi prodotto", systemImage: "plus.circle")
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(Color.pantryMoss)
+                                    Spacer()
+                                    Image(systemName: "chevron.down")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(Color.pantryMoss)
+                                        .rotationEffect(.degrees(isAddExpanded ? 180 : 0))
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 14)
+                                .background {
+                                    Capsule()
+                                        .fill(.regularMaterial)
+                                        .overlay(Capsule().fill(Color.pantryCream.opacity(0.35)))
+                                        .overlay(Capsule().strokeBorder(Color.pantryOat, lineWidth: 0.5))
+                                        .shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 4)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(isAddExpanded ? "Comprimi aggiunta prodotto" : "Espandi aggiunta prodotto")
+                            .accessibilityValue(isAddExpanded ? "Espansa" : "Compressa")
+                            .accessibilityHint("Tocca per espandere o comprimere il modulo di aggiunta")
+
+                            if isAddExpanded {
+                                addItemSection
+                                    .padding(12)
+                                    .pantryCardBackground(cornerRadius: 14)
+                                    .transition(.opacity.combined(with: .move(edge: .top)))
+                            }
+                        }
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                     }
                     .listSectionSeparator(.hidden, edges: .bottom)
 
@@ -92,10 +129,14 @@ struct ShoppingListView: View {
                                         }
                                         return Compartment.inferCompartment(fromName: sug.name).rawValue
                                     }()
-                                    Task { await store.addItem(pantryId: pantryStore.selectedPantryId, name: sug.name, quantity: newItemQuantity, compartment: inferred) }
-                                    newItemName = ""
-                                    suggestionQuery = ""
-                                    store.suggestions = []
+                                    Task {
+                                        await store.addItem(pantryId: pantryStore.selectedPantryId, name: sug.name, quantity: newItemQuantity, compartment: inferred)
+                                        if store.error == nil {
+                                            newItemName = ""
+                                            suggestionQuery = ""
+                                            store.suggestions = []
+                                        }
+                                    }
                                 } label: {
                                     HStack {
                                         VStack(alignment: .leading, spacing: 2) {
@@ -136,6 +177,7 @@ struct ShoppingListView: View {
                                 .padding(.vertical, 8)
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
+                                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                         }
                     } else {
                         ForEach(groupedItems, id: \.0) { compartment, items in
@@ -289,6 +331,7 @@ struct ShoppingListView: View {
                 return
             }
             try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled else { return }
             await store.fetchSuggestions(q: suggestionQuery)
         }
         .sheet(isPresented: $showMarkdownSheet) {
@@ -349,6 +392,19 @@ struct ShoppingListView: View {
                 .textInputAutocapitalization(.words)
                 .autocorrectionDisabled()
                 .submitLabel(.done)
+                .accessibilityHint("Invio per aggiungere")
+                .onSubmit {
+                    Task {
+                        guard !newItemName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                        let trimmed = newItemName.trimmingCharacters(in: .whitespaces)
+                        await store.addItem(pantryId: pantryStore.selectedPantryId, name: trimmed, quantity: newItemQuantity, compartment: nil)
+                        if store.error == nil {
+                            newItemName = ""
+                            suggestionQuery = ""
+                            store.suggestions = []
+                        }
+                    }
+                }
                 .onChange(of: newItemName) { _, new in
                     if new.count >= 2 { suggestionQuery = new }
                 }
@@ -358,24 +414,6 @@ struct ShoppingListView: View {
                 Spacer()
             }
             .frame(maxWidth: .infinity)
-
-            Button {
-                Task {
-                    guard !newItemName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-                    let trimmed = newItemName.trimmingCharacters(in: .whitespaces)
-                    // Nessun Picker comparto: inferenza lato backend/cliente da nome
-                    await store.addItem(pantryId: pantryStore.selectedPantryId, name: trimmed, quantity: newItemQuantity, compartment: nil)
-                    newItemName = ""
-                    suggestionQuery = ""
-                }
-            } label: {
-                Label("Aggiungi", systemImage: "plus.circle.fill")
-                    .frame(maxWidth: .infinity, minHeight: 44)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .tint(Color.pantryMoss)
-            .disabled(newItemName.trimmingCharacters(in: .whitespaces).isEmpty)
         }
     }
 

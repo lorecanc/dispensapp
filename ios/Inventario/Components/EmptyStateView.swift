@@ -60,8 +60,6 @@ struct EmptyStateView: View {
                 )
                 .shadow(color: .black.opacity(0.06), radius: 10, x: 0, y: 4)
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 12)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title), \(message)")
         .accessibilityHint("Stato vuoto della dispensa")
