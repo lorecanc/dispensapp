@@ -73,6 +73,20 @@ final class InventoryStore {
         return false
     }
 
+    // Transienti (network-error/5xx): permettono retry al prossimo fetch.
+    // Non-transienti (401/empty, 4xx, decode) restano sticky per-token.
+    private func isTransientProvisionError(_ error: Error) -> Bool {
+        guard let apiError = error as? APIError else { return false }
+        switch apiError {
+        case .transport, .offline:
+            return true
+        case .http(let status, _):
+            return status == 429 || status >= 500
+        default:
+            return false
+        }
+    }
+
     private func ensureProvisionedThenResync() async {
         if isProvisioning { return }
         let token = PantryToken.value
@@ -94,6 +108,7 @@ final class InventoryStore {
             }
         } catch {
             if Task.isCancelled { return }
+            if isTransientProvisionError(error) { provisionAttemptedToken = nil }
             if pantries.isEmpty { pantries = [Pantry(id: selectedPantryId, name: "Dispensa", createdAt: Date())] }
         }
     }

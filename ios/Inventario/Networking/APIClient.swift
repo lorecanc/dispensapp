@@ -462,6 +462,7 @@ final class APIClient: Sendable {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: ["token": token])
             let data = try await perform(request)
             return try makeDecoder().decode(Invite.self, from: data)
         }

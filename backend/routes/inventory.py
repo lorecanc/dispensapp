@@ -159,7 +159,6 @@ def _consume_scoped_item(
     db: Session,
     pantry_id: int,
     item_id: int,
-    token: str,  # conservato per compat chiamate, non persistito (privacy)
     delta: int,
     reason: str | None,
     allow_null: bool = False,
@@ -448,7 +447,7 @@ def consume_scoped_inventory(
     ctx: PantryContext = Depends(get_current_pantry),
 ):
     return _consume_scoped_item(
-        db, pantry_id, item_id, ctx.token, body.delta, body.reason
+        db, pantry_id, item_id, body.delta, body.reason
     )
 
 
@@ -478,7 +477,7 @@ def consume_inventory(
     ctx: PantryContext = Depends(_default_pantry_ctx),
 ):
     return _consume_scoped_item(
-        db, DEFAULT_PANTRY_ID, item_id, ctx.token, body.delta, body.reason,
+        db, DEFAULT_PANTRY_ID, item_id, body.delta, body.reason,
         allow_null=True,
     )
 

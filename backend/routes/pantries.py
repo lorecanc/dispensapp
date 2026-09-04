@@ -55,18 +55,22 @@ def list_pantries(
 @router.post("/pantries", response_model=PantryOut, status_code=201)
 def create_pantry(
     body: PantryCreate,
+    response: Response,
     db: Session = Depends(get_db),
     current_token: str = Depends(get_pantry_context),
 ):
     # Idempotenza double-POST client: riusa esistente con stesso nome+owner.
     # Senza vincolo UNIQUE in DB resta best-effort su retry sequenziali;
-    # il retry IntegrityError copre il caso di vincolo futuro/concorrenza.
+    # in concorrenza due POST paralleli possono duplicare (race su SELECT).
+    # TODO: UNIQUE(name, owner_token) + retry IntegrityError già pronto sotto.
+    # Il retry IntegrityError copre il caso di vincolo futuro/concorrenza.
     existing = (
         db.query(Pantry)
         .filter(Pantry.name == body.name, Pantry.owner_token == current_token)
         .first()
     )
     if existing:
+        response.status_code = 200
         return existing
     pantry = Pantry(name=body.name, owner_token=current_token)
     try:
@@ -87,6 +91,7 @@ def create_pantry(
             .first()
         )
         if retry:
+            response.status_code = 200
             return retry
         logger.exception("Errore creazione pantry")
         raise HTTPException(status_code=500, detail="Errore interno durante la creazione")
@@ -114,6 +119,7 @@ def create_invite(
     ctx: PantryContext = Depends(get_current_pantry),
     body: InviteCreate | None = None,
 ):
+    # TODO(prod): rate-limit create_invite per pantry/owner (abuso inviti).
     pantry = ctx.pantry
     token = ctx.token
     if not _is_owner(db, pantry, token):
