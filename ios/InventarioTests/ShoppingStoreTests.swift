@@ -74,23 +74,19 @@ final class ShoppingStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testDeleteItemRemovesFromListAndPantryChecks() async {
+    func testDeleteItemRemovesFromList() async {
         let store = ShoppingStore()
         let item1 = makeItem(id: 1, checked: false)
         let item2 = makeItem(id: 2, checked: true)
         store.lists = [makeList(id: 1, items: [item1, item2])]
         store.selectedListId = 1
-        store.pantryChecks = [1: PantryCheckItem(id: 1, name: "Latte", inPantry: true, status: "ok")]
 
         // Simula deleteItem locale (senza rete)
         if let lIdx = store.lists.firstIndex(where: { $0.id == 1 }) {
             store.lists[lIdx].items.removeAll { $0.id == 1 }
-            store.pantryChecks.removeValue(forKey: 1)
         }
         XCTAssertEqual(store.lists[0].items.count, 1)
         XCTAssertEqual(store.lists[0].items[0].id, 2)
-        XCTAssertNil(store.pantryChecks[1])
-        XCTAssertNotNil(store.pantryChecks[2] == nil ? nil : nil) // just check 1 removed; 2 was never there
     }
 
     @MainActor

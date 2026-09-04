@@ -292,6 +292,7 @@ enum Compartment: String, CaseIterable, Hashable {
         (["acqua", "succo", "bevanda", "bibita", "cola", "aranciata", "caffè", "caffe", "tè", "the", "tisana"], .bevande),
         (["vino", "birra", "prosecco", "champagne", "whisky", "vodka", "liquore", "alcol"], .cantina),
         (["detersivo", "sapone", "shampoo", "bagnoschiuma", "dentifricio", "candeggina", "igiene", "puliz"], .igieneECasa),
+        (["pasta", "spaghetti", "riso", "farina", "olio", "passata", "pelati", "legumi", "ceci", "lenticchie", "fagioli", "biscotti", "cioccolato", "marmellata", "sale", "zucchero", "scatolame", "tonno"], .dispensaSecca),
     ]
 
     /// Replica backend: inferisce comparto da categoria canonica.

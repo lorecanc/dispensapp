@@ -9,7 +9,6 @@ final class ShoppingStore {
     var error: APIError?
     var exportedMarkdown: String?
     var suggestions: [Suggestion] = []
-    var pantryChecks: [Int: PantryCheckItem] = [:]
 
     let client = APIClient.shared
 
@@ -54,19 +53,15 @@ final class ShoppingStore {
         error = nil
         let snapshotLists = lists
         let snapshotSelection = selectedListId
-        let snapshotChecks = pantryChecks
-        let removed = lists[index]
         lists.remove(at: index)
         if selectedListId == id {
             selectedListId = lists.first?.id
         }
-        for item in removed.items { pantryChecks.removeValue(forKey: item.id) }
         do {
             try await client.deleteShoppingList(pantryId: pantryId, listId: id)
         } catch {
             lists = snapshotLists
             selectedListId = snapshotSelection
-            pantryChecks = snapshotChecks
             if Task.isCancelled { return }
             self.error = error as? APIError ?? .transport(error)
         }
@@ -147,7 +142,6 @@ final class ShoppingStore {
             try await client.deleteShoppingItem(pantryId: pantryId, listId: listId, itemId: itemId)
             if let lIdx = lists.firstIndex(where: { $0.id == listId }) {
                 lists[lIdx].items.removeAll { $0.id == itemId }
-                pantryChecks.removeValue(forKey: itemId)
             }
         } catch {
             self.error = error as? APIError ?? .transport(error)
@@ -161,21 +155,6 @@ final class ShoppingStore {
         error = nil
         do {
             exportedMarkdown = try await client.exportShoppingMarkdown(pantryId: pantryId, listId: listId)
-        } catch {
-            self.error = error as? APIError ?? .transport(error)
-        }
-    }
-
-    // MARK: - Check pantry cross
-
-    func checkInPantry(pantryId: Int) async {
-        guard let listId = selectedList?.id else { return }
-        error = nil
-        do {
-            let results = try await client.checkShoppingList(pantryId: pantryId, listId: listId)
-            var map: [Int: PantryCheckItem] = [:]
-            for r in results { map[r.id] = r }
-            pantryChecks = map
         } catch {
             self.error = error as? APIError ?? .transport(error)
         }

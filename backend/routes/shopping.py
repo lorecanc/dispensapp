@@ -144,7 +144,8 @@ def add_item(
     lst = _get_list_or_404(db, pantry_id, list_id)
     compartment = body.compartment
     if not compartment:
-        compartment = infer_compartment(name=body.name)
+        category = getattr(body, "category", None)
+        compartment = infer_compartment(name=body.name, category=category)
     item = ShoppingListItem(
         shopping_list_id=lst.id,
         name=body.name,

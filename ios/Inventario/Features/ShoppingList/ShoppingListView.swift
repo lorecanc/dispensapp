@@ -225,43 +225,6 @@ struct ShoppingListView: View {
                         }
                     }
 
-                    // Markdown preview card — riflette nuovi headings ## 🥬 Ortofrutta etc. dal backend
-                    if let md = store.exportedMarkdown {
-                        Section {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(md)
-                                    .font(.caption.monospaced())
-                                    .foregroundStyle(Color.textPrimary)
-                                    .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(12)
-                                    .background {
-                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                            .fill(.thinMaterial)
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                                    .strokeBorder(Color.borderTerra, lineWidth: 0.5)
-                                            )
-                                    }
-
-                                ShareLink(item: md, preview: SharePreview("Lista Spesa", image: Image(systemName: "cart"))) {
-                                    Label("Condividi markdown", systemImage: "square.and.arrow.up")
-                                        .frame(maxWidth: .infinity)
-                                }
-                                .buttonStyle(.bordered)
-                                .tint(Color.pantryMoss)
-                            }
-                            .pantryCardBackground(cornerRadius: 14)
-                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
-                        } header: {
-                            Label("Export Markdown", systemImage: "doc.text")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(Color.pantryMoss)
-                                .textCase(nil)
-                        }
-                    }
                 }
             }
             .listStyle(.insetGrouped)
@@ -274,7 +237,6 @@ struct ShoppingListView: View {
         .searchable(text: $suggestionQuery, prompt: "Cerca suggerimenti...")
         .refreshable {
             await store.fetchLists(pantryId: pantryStore.selectedPantryId)
-            await store.checkInPantry(pantryId: pantryStore.selectedPantryId)
         }
         .overlay(alignment: .top) {
             if let error = store.error {
@@ -287,16 +249,7 @@ struct ShoppingListView: View {
             ToolbarItem(placement: .topBarLeading) {
                 listManagementMenu
             }
-            // Singola azione verifica + unico Menu overflow (nessun duplicato).
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    Task { await store.checkInPantry(pantryId: pantryStore.selectedPantryId) }
-                } label: {
-                    Image(systemName: "checkmark.shield")
-                }
-                .tint(Color.pantryMoss)
-                .accessibilityLabel("Verifica dispensa")
-            }
+            // Unico Menu overflow (nessun duplicato).
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button {
@@ -323,7 +276,6 @@ struct ShoppingListView: View {
         .task(id: pantryStore.selectedPantryId) {
             // Single source pantry via @Environment; ShoppingStore non ha stato proprio.
             await store.fetchLists(pantryId: pantryStore.selectedPantryId)
-            await store.checkInPantry(pantryId: pantryStore.selectedPantryId)
         }
         .task(id: suggestionQuery) {
             if suggestionQuery.trimmingCharacters(in: .whitespaces).count < 2 {
@@ -462,8 +414,6 @@ struct ShoppingListView: View {
 
             Spacer(minLength: 8)
 
-            pantryCheckBadge(for: item)
-
             if item.checked {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(Color.pantryMoss.opacity(0.6))
@@ -497,60 +447,8 @@ struct ShoppingListView: View {
     private func shoppingRowAccessibilityLabel(for item: ShoppingListItem) -> String {
         var parts = [item.name, "quantità \(item.quantity)"]
         parts.append(Compartment.resolved(for: item).label)
-        if let check = store.pantryChecks[item.id] {
-            if !check.inPantry { parts.append("Da comprare") }
-            else if check.status == "expired" { parts.append("Scaduto") }
-            else if check.status == "expiring_soon" { parts.append("In scadenza") }
-            else { parts.append("In dispensa") }
-        }
         parts.append(item.checked ? "segnato" : "non segnato")
         return parts.joined(separator: ", ")
-    }
-
-    @ViewBuilder
-    private func pantryCheckBadge(for item: ShoppingListItem) -> some View {
-        if let check = store.pantryChecks[item.id] {
-            if !check.inPantry {
-                Label("Da comprare", systemImage: "cart.badge.questionmark")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color.pantryStone)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background {
-                        Capsule().fill(Color.pantryStone.opacity(0.14))
-                            .overlay(Capsule().fill(.thinMaterial).opacity(0.35))
-                    }
-                    .overlay(Capsule().strokeBorder(Color.pantryStone.opacity(0.28), lineWidth: 0.5))
-                    .accessibilityLabel("Da comprare")
-                    .accessibilityHint("Prodotto non presente in dispensa")
-            } else if check.status == "expiring_soon" || check.status == "expired" {
-                Label(check.status == "expired" ? "Scaduto" : "In scadenza", systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color.statusSoon)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background {
-                        Capsule().fill(Color.statusSoon.opacity(0.14))
-                            .overlay(Capsule().fill(.thinMaterial).opacity(0.35))
-                    }
-                    .overlay(Capsule().strokeBorder(Color.statusSoon.opacity(0.28), lineWidth: 0.5))
-                    .accessibilityLabel(check.status == "expired" ? "Scaduto in dispensa" : "In scadenza in dispensa")
-                    .accessibilityHint("Prodotto presente ma vicino alla scadenza")
-            } else {
-                Label("In dispensa", systemImage: "checkmark.circle.fill")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color.statusFresh)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background {
-                        Capsule().fill(Color.statusFresh.opacity(0.14))
-                            .overlay(Capsule().fill(.thinMaterial).opacity(0.35))
-                    }
-                    .overlay(Capsule().strokeBorder(Color.statusFresh.opacity(0.28), lineWidth: 0.5))
-                    .accessibilityLabel("In dispensa")
-                    .accessibilityHint("Prodotto già presente e fresco")
-            }
-        }
     }
 
     // MARK: - Sheets

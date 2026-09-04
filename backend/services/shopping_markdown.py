@@ -14,11 +14,12 @@ _COMPARTMENT_ICONS: dict[str, str] = {
     "Igiene e Casa": "🧹",
 }
 
-# Mappatura legacy frigo/cantina/dispensa -> nuovi comparti (compatibilità)
+# Mappatura legacy frigo/cantina/dispensa/altro -> nuovi comparti (compatibilità, come iOS normalized)
 _LEGACY_MAP: dict[str, str] = {
     "frigo": "Latticini e Uova",
     "cantina": "Cantina",
     "dispensa": "Dispensa Secca",
+    "altro": "Dispensa Secca",
 }
 
 

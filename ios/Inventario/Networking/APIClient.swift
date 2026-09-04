@@ -419,15 +419,6 @@ final class APIClient: Sendable {
         return markdown
     }
 
-    func checkShoppingList(pantryId: Int, listId: Int) async throws -> [PantryCheckItem] {
-        let url = try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/shopping-lists/\(listId)/check")
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        let data = try await perform(request)
-        let decoded = try makeDecoder().decode(PantryCheckResponse.self, from: data)
-        return decoded.items
-    }
-
     // MARK: - Suggestions
 
     func fetchSuggestions(q: String) async throws -> [Suggestion] {
