@@ -11,9 +11,27 @@ from backend.config import (
     OFF_PASS,
     OFF_USER,
     OFF_WRITE_BASE_URL,
+    off_basic_auth,
+    off_user_agent,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_lang(lang: str) -> str:
+    raw = (lang or "it").strip().lower().replace("_", "-") or "it"
+    return (raw.split("-")[0][:2] or "it")
+
+
+def _parse_off_status(data: dict) -> int:
+    status = data.get("status", 0)
+    if isinstance(status, str):
+        if status.strip().lower() in ("ok", "status ok"):
+            return 1
+    try:
+        return int(status)
+    except (TypeError, ValueError):
+        return 0
 
 
 async def fetch_product(barcode: str) -> Optional[dict]:
@@ -60,13 +78,12 @@ async def contribute_product(
     Solleva httpx.HTTPError su errori di trasporto (il chiamante mappa a 502).
     """
     url = f"{OFF_WRITE_BASE_URL}/product_jqm2.pl"
-    lang = (lang or "it").strip().lower() or "it"
+    lang = _normalize_lang(lang)
     form: dict[str, str] = {
         "code": code,
         "user_id": OFF_USER,
         "password": OFF_PASS,
         "lc": lang,
-        "cc": lang,
         "lang": lang,
         "comment": comment or f"Contributo via {OFF_APP_NAME} {OFF_APP_VERSION}",
         "app_name": OFF_APP_NAME,
@@ -86,11 +103,14 @@ async def contribute_product(
         form["add_labels"] = labels
     if quantity:
         form["quantity"] = quantity
-    contact = OFF_CONTACT_EMAIL.strip() if OFF_CONTACT_EMAIL else ""
-    user_agent = f"{OFF_APP_NAME}/{OFF_APP_VERSION} ({contact})" if contact else f"{OFF_APP_NAME}/{OFF_APP_VERSION}"
+    user_agent = off_user_agent()
+    basic_auth = off_basic_auth(OFF_WRITE_BASE_URL)
+    post_kwargs: dict = {"headers": {"User-Agent": user_agent}}
+    if basic_auth is not None:
+        post_kwargs["auth"] = basic_auth
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.post(url, data=form, headers={"User-Agent": user_agent})
+            response = await client.post(url, data=form, **post_kwargs)
             response.raise_for_status()
             data = response.json()
             if not isinstance(data, dict):
@@ -99,11 +119,7 @@ async def contribute_product(
         # Mai includere la password nei log
         logger.warning("OFF contribute failed for %s: %s", code, exc)
         raise
-    status = data.get("status", 0)
-    try:
-        status = int(status)
-    except (TypeError, ValueError):
-        status = 0
+    status = _parse_off_status(data)
     reason = data.get("status_verbose") or data.get("reason")
     logger.info("OFF contribute for %s: status=%s", code, status)
     return {"status": status, "reason": reason}
@@ -129,12 +145,15 @@ async def upload_product_image(
         "user_id": OFF_USER,
         "password": OFF_PASS,
     }
-    contact = OFF_CONTACT_EMAIL.strip() if OFF_CONTACT_EMAIL else ""
-    user_agent = f"{OFF_APP_NAME}/{OFF_APP_VERSION} ({contact})" if contact else f"{OFF_APP_NAME}/{OFF_APP_VERSION}"
-    files = {"image": (filename or "upload", image_bytes, mime)}
+    user_agent = off_user_agent()
+    files = {f"imgupload_{imagefield}": (filename or "upload", image_bytes, mime)}
+    basic_auth = off_basic_auth(OFF_WRITE_BASE_URL)
+    post_kwargs = {"data": form, "files": files, "headers": {"User-Agent": user_agent}}
+    if basic_auth is not None:
+        post_kwargs["auth"] = basic_auth
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(url, data=form, files=files, headers={"User-Agent": user_agent})
+            response = await client.post(url, **post_kwargs)
             response.raise_for_status()
             data = response.json()
             if not isinstance(data, dict):
@@ -143,11 +162,7 @@ async def upload_product_image(
         # Mai includere password o bytes nei log
         logger.warning("OFF image upload failed for %s (%s): %s", code, imagefield, exc)
         raise
-    status = data.get("status", 0)
-    try:
-        status = int(status)
-    except (TypeError, ValueError):
-        status = 0
+    status = _parse_off_status(data)
     reason = data.get("status_verbose") or data.get("reason")
     logger.info("OFF image upload for %s (%s): status=%s", code, imagefield, status)
     return {"status": status, "reason": reason}

@@ -26,6 +26,9 @@ struct ScanPreviewSheet: View {
     @State private var contributeBrands = ""
     @State private var contributeQuantity = ""
     @State private var contributeCategories = ""
+    @State private var contributeLabels = ""
+    @State private var contributeGenericName = ""
+    @State private var contributeComment = ""
     @State private var consentCCBYSA = false
     @State private var contributeLoading = false
     @State private var contributeSuccessMessage: String?
@@ -206,8 +209,17 @@ struct ScanPreviewSheet: View {
                 TextField("Categorie (separate da virgola)", text: $contributeCategories, axis: .vertical)
                     .autocorrectionDisabled()
                     .accessibilityLabel("Categorie da contribuire")
+                TextField("Etichette (separate da virgola)", text: $contributeLabels, axis: .vertical)
+                    .autocorrectionDisabled()
+                    .accessibilityLabel("Etichette da contribuire")
+                TextField("Nome generico", text: $contributeGenericName)
+                    .autocorrectionDisabled()
+                    .accessibilityLabel("Nome generico da contribuire")
+                TextField("Commento", text: $contributeComment, axis: .vertical)
+                    .autocorrectionDisabled()
+                    .accessibilityLabel("Commento da contribuire")
                 Toggle(isOn: $consentCCBYSA) {
-                    Text("Acconsento alla pubblicazione dei dati con licenza CC BY-SA / ODbL su Open Food Facts. Obbligatorio per inviare.")
+                    Text("Acconsento alla pubblicazione di dati e foto con licenza CC BY-SA / ODbL su Open Food Facts, con cessione irrevocabile delle foto come da termini OFF. Obbligatorio per inviare.")
                         .font(.footnote)
                 }
                 .accessibilityLabel("Consenso licenza CC BY-SA ODbL")
@@ -245,7 +257,7 @@ struct ScanPreviewSheet: View {
                 Text("Foto prodotto")
                     .font(.headline)
                     .accessibilityLabel("Foto prodotto")
-                Text("Aggiungi una foto (max 5MB, JPEG/PNG/HEIC): sarà pubblicata con licenza aperta CC BY-SA / ODbL.")
+                Text("Aggiungi una foto (max 5MB, JPEG/PNG/HEIC): sarà pubblicata con licenza aperta CC BY-SA / ODbL con cessione irrevocabile come da termini OFF.")
                     .font(.footnote)
                     .foregroundStyle(Color.textSecondary)
                 PhotosPicker(
@@ -317,9 +329,21 @@ struct ScanPreviewSheet: View {
     }
 
     private var isContributeEmpty: Bool {
-        [contributeName, contributeBrands, contributeQuantity, contributeCategories].allSatisfy {
+        [contributeName, contributeBrands, contributeQuantity, contributeCategories, contributeLabels, contributeGenericName].allSatisfy {
             $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
+    }
+
+    /// app_uuid stabile per installazione, riusando UserDefaults (come APIConfig)
+    /// senza nuove dipendenze: generato una volta e riusato per ogni contribute().
+    private static func persistedAppUUID() -> String {
+        let key = "contributeAppUUID"
+        if let existing = UserDefaults.standard.string(forKey: key), !existing.isEmpty {
+            return existing
+        }
+        let generated = UUID().uuidString
+        UserDefaults.standard.set(generated, forKey: key)
+        return generated
     }
 
     private func sendContribute(code: String) async {
@@ -333,6 +357,10 @@ struct ScanPreviewSheet: View {
                 brands: contributeBrands.trimmingCharacters(in: .whitespaces).nilIfEmpty,
                 quantity: contributeQuantity.trimmingCharacters(in: .whitespaces).nilIfEmpty,
                 categories: contributeCategories.trimmingCharacters(in: .whitespaces).nilIfEmpty,
+                labels: contributeLabels.trimmingCharacters(in: .whitespaces).nilIfEmpty,
+                genericName: contributeGenericName.trimmingCharacters(in: .whitespaces).nilIfEmpty,
+                comment: contributeComment.trimmingCharacters(in: .whitespaces).nilIfEmpty,
+                appUUID: Self.persistedAppUUID(),
                 consent: consentCCBYSA
             )
             contributeSuccessMessage = response.message ?? "Contributo inviato, grazie!"

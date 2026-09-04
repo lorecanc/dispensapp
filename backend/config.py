@@ -246,7 +246,11 @@ _off_write_requested = os.getenv("OFF_WRITE_ENABLED", "false").lower() in ("1", 
 _raw_off_write_base_url = os.getenv("OFF_WRITE_BASE_URL", _off_write_default).rstrip("/")
 _parsed = urlparse(_raw_off_write_base_url)
 _host = (_parsed.hostname or "").lower()
-_host_ok = _host.endswith("openfoodfacts.org") or _host.endswith("openfoodfacts.net")
+_host_ok = (
+    _host in ("openfoodfacts.org", "openfoodfacts.net")
+    or _host.endswith(".openfoodfacts.org")
+    or _host.endswith(".openfoodfacts.net")
+)
 _scheme_ok = _parsed.scheme == "https" or (
     _parsed.scheme == "http" and _host in ("localhost", "127.0.0.1")
 )
@@ -263,6 +267,39 @@ OFF_PASS = os.getenv("OFF_PASS", "")
 OFF_APP_NAME = os.getenv("OFF_APP_NAME", "DispensApp")
 OFF_APP_VERSION = os.getenv("OFF_APP_VERSION", "0.1.0")
 OFF_CONTACT_EMAIL = os.getenv("OFF_CONTACT_EMAIL", "")
+# Basic auth dello staging OFF (world.openfoodfacts.net protetto da off:off).
+# Separata dall'account applicativo OFF_USER/OFF_PASS (su staging usare un
+# account creato sullo staging, non quello di prod). Overridabile via env.
+OFF_STAGING_BASIC_USER = os.getenv("OFF_STAGING_BASIC_USER", "off")
+OFF_STAGING_BASIC_PASS = os.getenv("OFF_STAGING_BASIC_PASS", "off")
+
+
+def is_off_staging_base_url(url: str | None = None) -> bool:
+    """True se l'host è lo staging OFF (*.openfoodfacts.net)."""
+    raw = url if url is not None else OFF_WRITE_BASE_URL
+    try:
+        host = (urlparse(raw).hostname or "").lower()
+    except (TypeError, ValueError):
+        return False
+    return host == "openfoodfacts.net" or host.endswith(".openfoodfacts.net")
+
+
+def off_basic_auth(url: str | None = None) -> tuple[str, str] | None:
+    """Credenziali Basic solo per staging OFF, altrimenti None."""
+    if not is_off_staging_base_url(url):
+        return None
+    if not OFF_STAGING_BASIC_USER or not OFF_STAGING_BASIC_PASS:
+        return None
+    return (OFF_STAGING_BASIC_USER, OFF_STAGING_BASIC_PASS)
+
+
+def off_user_agent() -> str:
+    """User-Agent con nome/versione app e contatto opzionale."""
+    base = f"{OFF_APP_NAME}/{OFF_APP_VERSION}"
+    contact = OFF_CONTACT_EMAIL.strip() if OFF_CONTACT_EMAIL else ""
+    return f"{base} ({contact})" if contact else base
+
+
 if _off_write_requested and (not OFF_USER or not OFF_PASS):
     logger.warning("OFF_WRITE_ENABLED ma credenziali OFF_USER/OFF_PASS mancanti: scrittura disabilitata")
 OFF_WRITE_ENABLED = _off_write_requested and bool(OFF_USER and OFF_PASS) and not _off_write_insecure

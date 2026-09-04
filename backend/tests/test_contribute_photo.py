@@ -71,7 +71,7 @@ def test_photo_invalid_imagefield_returns_422(monkeypatch):
     with patch(
         "backend.routes.contribute.upload_product_image", new=AsyncMock()
     ) as mock_upload:
-        resp = _post_photo(imagefield="front_en")
+        resp = _post_photo(imagefield="face")
     assert resp.status_code == 422
     mock_upload.assert_not_called()
 
@@ -317,7 +317,7 @@ async def test_upload_product_image_posts_multipart(monkeypatch):
     assert capture["data"]["user_id"] == "testuser"
     assert capture["data"]["password"] == "s3cret-test-pw"
     assert "DispensApp/0.1.0" in capture["headers"]["User-Agent"]
-    name, payload, mime = capture["files"]["image"]
+    name, payload, mime = capture["files"]["imgupload_front_it"]
     assert name == "front.jpg"
     assert payload == JPEG_BYTES
     assert mime == "image/jpeg"

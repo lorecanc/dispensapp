@@ -58,7 +58,8 @@ All constants in [`config.py`](./config.py). `DATABASE_URL` is env-configurable.
 | `OFF_BASE_URL` | `https://world.openfoodfacts.org/api/v0/product` | Open Food Facts API endpoint (sola lettura) |
 | `OFF_WRITE_ENABLED` | `false` (`OFF_WRITE_ENABLED` env) | Abilita `POST /api/scan/contribute` e `/photo`. Resta `false` senza `OFF_USER`/`OFF_PASS` |
 | `OFF_WRITE_BASE_URL` | `https://world.openfoodfacts.net/cgi` (`OFF_WRITE_BASE_URL` env) | Staging OFF per scrittura; prod `https://world.openfoodfacts.org/cgi` solo via env |
-| `OFF_USER` / `OFF_PASS` | `""` (env, mai loggata) | Credenziali account OFF personale per la scrittura |
+| `OFF_USER` / `OFF_PASS` | `""` (env, mai loggata) | Credenziali account OFF personale per la scrittura. Su staging usare un account creato sullo staging, non quello di produzione |
+| `OFF_STAGING_BASIC_USER` / `OFF_STAGING_BASIC_PASS` | `off` / `off` (env) | Basic auth dell'host staging `world.openfoodfacts.net` (protetto da `off:off`): inviata solo su host `*.openfoodfacts.net`, mai su produzione |
 | `OFF_APP_NAME` / `OFF_APP_VERSION` | `DispensApp` / `0.1.0` (env) | Identificano il client in `comment` e `User-Agent` |
 | `OFF_CONTACT_EMAIL` | `""` (env) | Contatto opzionale aggiunto allo `User-Agent` |
 | `CORS_ORIGINS` | localhost dev origins + `CORS_ORIGINS` env (comma-separated) | Allowed CORS origins |
@@ -69,7 +70,9 @@ All constants in [`config.py`](./config.py). `DATABASE_URL` is env-configurable.
 
 ### Scrittura Open Food Facts (OFF_WRITE)
 
-Contributi disabilitati di default. Copia `.env.example` (root) in `.env` e imposta `OFF_WRITE_ENABLED=true` + `OFF_USER`/`OFF_PASS` (account OFF personale). Base di default: staging `https://world.openfoodfacts.net/cgi`; prod `https://world.openfoodfacts.org/cgi` solo via env esplicito. Host non `openfoodfacts.org`/`.net` o scheme non-https → fallback a staging con warning. Esempio staging in `.env.example`, modulo iOS: `APIClient.contribute` / `APIClient.uploadPhoto`.
+Contributi disabilitati di default. Copia `.env.example` (root) in `.env` e imposta `OFF_WRITE_ENABLED=true` + `OFF_USER`/`OFF_PASS` (account OFF personale; su staging un account creato sullo staging). Base di default: staging `https://world.openfoodfacts.net/cgi`; prod `https://world.openfoodfacts.org/cgi` solo via env esplicito. Host non `openfoodfacts.org`/`.net` o scheme non-https → fallback a staging con warning. Lo staging è protetto da Basic auth `off:off` (env `OFF_STAGING_BASIC_USER`/`OFF_STAGING_BASIC_PASS`), inviata solo su host `*.openfoodfacts.net`. Ogni richiesta OFF usa `User-Agent: OFF_APP_NAME/OFF_APP_VERSION (OFF_CONTACT_EMAIL)` (contatto omesso se vuoto). Esempio staging in `.env.example`, modulo iOS: `APIClient.contribute` / `APIClient.uploadPhoto`.
+
+Metadati via `POST {base}/product_jqm2.pl` (form: `code`, `user_id`, `password`, `lc`/`lang` a 2 lettere, `comment`, `app_name`, `app_version`, `app_uuid` opzionale persistita dal client, `product_name_{lc}`/`generic_name_{lc}`, solo campi `add_brands`/`add_categories`/`add_labels` mai quelli nudi, `quantity`). Foto via `POST {base}/product_image_upload.pl` (form `code`/`imagefield`/`user_id`/`password` + file `imgupload_{imagefield}`). Il consenso `consent_cc_bysa=true` è obbligatorio: le foto inviate a OFF sono pubblicate con licenza CC BY-SA irrevocabile.
 
 ## Project Layout
 
@@ -117,10 +120,10 @@ Invio metadati/foto a OFF (staging di default) via `backend/routes/contribute.py
 
 | Method | Path | Content-Type | Parametri | Risposta ok |
 |--------|------|--------------|-----------|-------------|
-| POST | `/api/scan/contribute` | `application/json` | `code`, `consent_cc_bysa`, `lang` (default `it`), almeno uno tra `product_name`/`brands`/`quantity`/`categories` | `200 {"ok": true, "code", "message"}` |
-| POST | `/api/scan/contribute/photo` | `multipart/form-data` | `code`, `imagefield` (`front_it`/`ingredients_it`/`nutrition_it`/`packaging_it`), `consent_cc_bysa`, `image` (JPEG/PNG/HEIC, max 5MB, magic-byte verificati) | `200 {"ok": true, "code", "message"}` |
+| POST | `/api/scan/contribute` | `application/json` | `code`, `consent_cc_bysa`, `lang` (2 lettere, default `it`; `it-IT` normalizzato a `it`), almeno uno tra `product_name`/`brands`/`quantity`/`categories` (+ `labels`/`generic_name`/`comment`/`app_uuid` opzionali) | `200 {"ok": true, "code", "message"}` |
+| POST | `/api/scan/contribute/photo` | `multipart/form-data` | `code`, `imagefield` (`front`/`ingredients`/`nutrition`/`packaging`/`other` + suffisso opzionale `_<lc>` a 2 lettere, es. `front_it`), `consent_cc_bysa`, `image` (JPEG/PNG/HEIC, max 5MB, magic-byte verificati) | `200 {"ok": true, "code", "message"}` |
 
-Limiti foto: allowlist 4 viste, max 5MB (`413`), tipi JPEG/PNG/HEIC con mismatch dichiarato/rilevato → `415`, `imagefield`/`code` non validi → `422`, rifiuto OFF → `502`. iOS: `APIClient.contribute(code:productName:brands:quantity:categories:lang:consent:)` e `APIClient.uploadPhoto(code:imageData:filename:mimeType:imagefield:consent:)` (timeout 15s/30s).
+Limiti foto: `imagefield` fail-closed via regex `^(front|ingredients|nutrition|packaging|other)(_[a-z]{2})?$`, non validi → `422`; max 5MB (`413`, con pre-check sul `Content-Length` dichiarato); tipi JPEG/PNG/HEIC con mismatch dichiarato/rilevato → `415`; minimo 640x160 px solo per JPEG/PNG con dimensioni determinabili (`422`), HEIC accettato senza check dimensioni (niente dipendenze esterne); `code` non valido → `422`, rifiuto OFF → `502`. iOS: `APIClient.contribute(code:productName:brands:quantity:categories:lang:consent:)` e `APIClient.uploadPhoto(code:imageData:filename:mimeType:imagefield:consent:)` (timeout 15s/30s).
 
 ### `POST /api/inventory`
 

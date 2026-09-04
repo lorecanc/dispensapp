@@ -67,6 +67,10 @@ final class APIClient: Sendable {
         brands: String?,
         quantity: String?,
         categories: String?,
+        labels: String? = nil,
+        genericName: String? = nil,
+        comment: String? = nil,
+        appUUID: String? = nil,
         lang: String = "it",
         consent: Bool
     ) async throws -> ContributeResult {
@@ -85,6 +89,10 @@ final class APIClient: Sendable {
         if let brands, !brands.isEmpty { body["brands"] = brands }
         if let quantity, !quantity.isEmpty { body["quantity"] = quantity }
         if let categories, !categories.isEmpty { body["categories"] = categories }
+        if let labels, !labels.isEmpty { body["labels"] = labels }
+        if let genericName, !genericName.isEmpty { body["generic_name"] = genericName }
+        if let comment, !comment.isEmpty { body["comment"] = comment }
+        if let appUUID, !appUUID.isEmpty { body["app_uuid"] = appUUID }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let data = try await perform(request)
@@ -499,6 +507,41 @@ final class APIClient: Sendable {
         }
     }
 
+    // Crea invito (owner-only server-side). Mai log del token.
+    func createInvite(pantryId: Int) async throws -> Invite {
+        let url = try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/invites")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [:] as [String: String])
+        let data = try await perform(request)
+        return try makeDecoder().decode(Invite.self, from: data)
+    }
+
+    func listMembers(pantryId: Int) async throws -> [PantryMember] {
+        let url = try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/members")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        let data = try await perform(request)
+        return try makeDecoder().decode([PantryMember].self, from: data)
+    }
+
+    // Mai log del token.
+    func removeMember(pantryId: Int, memberToken: String) async throws {
+        let url = try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/members/\(memberToken)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request = decorated(request)
+        let (_, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.transport(URLError(.badServerResponse))
+        }
+        guard httpResponse.statusCode == 204 || httpResponse.statusCode == 200 else {
+            if httpResponse.statusCode == 404 { throw APIError.notFound }
+            throw APIError.http(status: httpResponse.statusCode, message: nil)
+        }
+    }
+
     // MARK: - Inventory pantry-scoped
 
     func listScoped(pantryId: Int) async throws -> [InventoryItem] {
@@ -687,11 +730,28 @@ struct Pantry: Codable, Identifiable, Equatable, Sendable {
 struct Invite: Codable, Equatable, Sendable {
     let id: Int
     let pantryId: Int
+    let token: String
     let status: String
+    let expiresAt: Date
+    let createdAt: Date
 
     enum CodingKeys: String, CodingKey {
-        case id, status
+        case id, status, token
         case pantryId = "pantry_id"
+        case expiresAt = "expires_at"
+        case createdAt = "created_at"
+    }
+}
+
+struct PantryMember: Codable, Equatable, Sendable {
+    let pantryId: Int
+    let role: String
+    let joinedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case role
+        case pantryId = "pantry_id"
+        case joinedAt = "joined_at"
     }
 }
 

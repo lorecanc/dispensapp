@@ -42,6 +42,10 @@ class ContributeRequest(BaseModel):
     brands: Optional[str] = Field(default=None, max_length=200)
     quantity: Optional[str] = Field(default=None, max_length=64)
     categories: Optional[str] = Field(default=None, max_length=500)
+    labels: Optional[str] = Field(default=None, max_length=500)
+    generic_name: Optional[str] = Field(default=None, max_length=200)
+    comment: Optional[str] = Field(default=None, max_length=500)
+    app_uuid: Optional[str] = Field(default=None, max_length=64)
     consent_cc_bysa: bool
     lang: str = Field(default="it", max_length=8, pattern=LANG_PATTERN)
 
@@ -56,7 +60,10 @@ class ContributeRequest(BaseModel):
         parts = s.split("-")
         return parts[0].lower() + (f"-{parts[1].upper()}" if len(parts) > 1 else "")
 
-    @field_validator("product_name", "brands", "quantity", "categories")
+    @field_validator(
+        "product_name", "brands", "quantity", "categories",
+        "labels", "generic_name", "comment", "app_uuid",
+    )
     @classmethod
     def strip_optional(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
@@ -66,7 +73,15 @@ class ContributeRequest(BaseModel):
 
     @model_validator(mode="after")
     def at_least_one_field(self):
-        fields = (self.product_name, self.brands, self.quantity, self.categories)
+        # Solo campi prodotto; comment/app_uuid sono metadati e non bastano.
+        fields = (
+            self.product_name,
+            self.generic_name,
+            self.brands,
+            self.quantity,
+            self.categories,
+            self.labels,
+        )
         if all(f is None or not f.strip() for f in fields):
             raise ValueError("Almeno un campo da contribuire")
         return self
@@ -98,8 +113,12 @@ async def contribute_scan(body: ContributeRequest, request: Request):
             product_name=body.product_name,
             brands=body.brands,
             categories=body.categories,
+            labels=body.labels,
             quantity=body.quantity,
+            generic_name=body.generic_name,
             lang=body.lang,
+            comment=body.comment,
+            app_uuid=body.app_uuid,
         )
     except (httpx.HTTPError, ValueError):
         logger.warning("Contribuzione OFF fallita per %s: errore trasporto", body.code)
@@ -117,7 +136,65 @@ async def contribute_scan(body: ContributeRequest, request: Request):
     return ContributeResponse(ok=True, code=body.code, message="Contributo inviato a Open Food Facts")
 
 
-PHOTO_IMAGEFIELDS = frozenset({"front_it", "ingredients_it", "nutrition_it", "packaging_it"})
+# Viste OFF ammesse con suffisso lingua opzionale (_lc, 2 lettere minuscole)
+# e forme senza suffisso per retrocompatibilità (es. front, front_it,
+# front_en, other, other_it). Fail-closed: tutto il resto -> 422.
+_PHOTO_IMAGEFIELD_RE = re.compile(r"^(?:front|ingredients|nutrition|packaging|other)(?:_[a-z]{2})?$")
+
+
+def _is_valid_imagefield(v: str) -> bool:
+    return bool(_PHOTO_IMAGEFIELD_RE.match(v or ""))
+
+
+def _safe_filename(raw: str | None, fallback: str) -> str:
+    if not raw:
+        return fallback
+    cleaned = raw.replace("\r", "").replace("\n", "").replace('"', "").replace("'", "")
+    cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", cleaned)[:128]
+    return cleaned or fallback
+
+
+def _photo_dimensions(data: bytes, kind: str) -> Optional[tuple[int, int]]:
+    if kind == "png":
+        if len(data) < 24 or data[12:16] != b"IHDR":
+            return None
+        w = int.from_bytes(data[16:20], "big")
+        h = int.from_bytes(data[20:24], "big")
+        return (w, h)
+    if kind == "jpeg":
+        # Scansione marker JPEG fino al primo SOF con dimensioni.
+        pos = 2
+        n = len(data)
+        while pos + 4 <= n:
+            if data[pos] != 0xFF:
+                return None
+            marker = data[pos + 1]
+            pos += 2
+            if marker in (0xD8, 0xD9, 0x01) or 0xD0 <= marker <= 0xD7:
+                continue
+            if pos + 2 > n:
+                return None
+            seg_len = int.from_bytes(data[pos : pos + 2], "big")
+            if seg_len < 2 or pos + seg_len > n:
+                return None
+            if marker in (
+                0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7,
+                0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF,
+            ):
+                if seg_len >= 7:
+                    h = int.from_bytes(data[pos + 3 : pos + 5], "big")
+                    w = int.from_bytes(data[pos + 5 : pos + 7], "big")
+                    return (w, h)
+                return None
+            pos += seg_len
+        return None
+    # HEIC: box ispe/ispe richiederebbe parsing meta completo; senza
+    # dipendenze esterne si accetta senza controllo dimensioni.
+    return None
+
+
+_MIN_PHOTO_WIDTH = 640
+_MIN_PHOTO_HEIGHT = 160
 MAX_PHOTO_BYTES = 5 * 1024 * 1024
 _PHOTO_CONTENT_TYPES = {
     "image/jpeg": "jpeg",
@@ -174,7 +251,7 @@ async def contribute_scan_photo(
         )
     if not re.match(BARCODE_PATTERN, code or ""):
         raise HTTPException(status_code=422, detail="code non valido")
-    if imagefield not in PHOTO_IMAGEFIELDS:
+    if not _is_valid_imagefield(imagefield):
         raise HTTPException(status_code=422, detail="imagefield non valido")
     # Pre-check fail-fast sul Content-Length dichiarato (include overhead
     # multipart: +1KB di tolleranza) prima di leggere il body in memoria.
@@ -198,11 +275,17 @@ async def contribute_scan_photo(
         detected_kind,
         declared if declared in ("image/heic", "image/heif") else "image/heic",
     )
+    dims = _photo_dimensions(content, detected_kind)
+    if dims is not None and (dims[0] < _MIN_PHOTO_WIDTH or dims[1] < _MIN_PHOTO_HEIGHT):
+        raise HTTPException(
+            status_code=422,
+            detail="Immagine troppo piccola (minimo 640x160 px)",
+        )
     try:
         result = await upload_product_image(
             code=code,
             image_bytes=content,
-            filename=image.filename or f"{code}_{imagefield}",
+            filename=_safe_filename(image.filename, f"{code}_{imagefield}"),
             mime=mime,
             imagefield=imagefield,
         )
