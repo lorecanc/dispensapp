@@ -118,6 +118,20 @@ def get_shopping_list(
     )
 
 
+@router.delete("/{list_id}", status_code=204)
+def delete_shopping_list(
+    pantry_id: int,
+    list_id: int,
+    db: Session = Depends(get_db),
+    current_token: str = Depends(get_current_pantry),
+):
+    _get_pantry_or_404(db, pantry_id)
+    lst = _get_list_or_404(db, pantry_id, list_id)
+    db.delete(lst)
+    db.commit()
+    return Response(status_code=204)
+
+
 @router.post("/{list_id}/items", response_model=ShoppingListItemOut, status_code=201)
 def add_item(
     pantry_id: int,

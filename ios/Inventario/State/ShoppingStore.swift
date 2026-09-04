@@ -49,6 +49,29 @@ final class ShoppingStore {
         }
     }
 
+    func deleteShoppingList(pantryId: Int, id: Int) async {
+        guard let index = lists.firstIndex(where: { $0.id == id }) else { return }
+        error = nil
+        let snapshotLists = lists
+        let snapshotSelection = selectedListId
+        let snapshotChecks = pantryChecks
+        let removed = lists[index]
+        lists.remove(at: index)
+        if selectedListId == id {
+            selectedListId = lists.first?.id
+        }
+        for item in removed.items { pantryChecks.removeValue(forKey: item.id) }
+        do {
+            try await client.deleteShoppingList(pantryId: pantryId, listId: id)
+        } catch {
+            lists = snapshotLists
+            selectedListId = snapshotSelection
+            pantryChecks = snapshotChecks
+            if Task.isCancelled { return }
+            self.error = error as? APIError ?? .transport(error)
+        }
+    }
+
     func fetchItems(pantryId: Int, listId: Int) async {
         error = nil
         do {

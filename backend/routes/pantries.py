@@ -112,6 +112,30 @@ def get_pantry(
     return pantry
 
 
+@router.delete("/pantries/{pantry_id}", status_code=204)
+def delete_pantry(
+    pantry_id: int,
+    db: Session = Depends(get_db),
+    ctx: PantryContext = Depends(get_current_pantry),
+):
+    pantry = ctx.pantry
+    token = ctx.token
+    if not _is_owner(db, pantry, token):
+        raise HTTPException(
+            status_code=403, detail="Solo l'owner può eliminare la pantry"
+        )
+    try:
+        db.delete(pantry)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Errore eliminazione pantry %s", pantry_id)
+        raise HTTPException(
+            status_code=500, detail="Errore interno durante la cancellazione"
+        )
+    return Response(status_code=204)
+
+
 @router.post("/pantries/{pantry_id}/invites", response_model=InviteOut, status_code=201)
 def create_invite(
     pantry_id: int,

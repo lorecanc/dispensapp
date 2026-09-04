@@ -8,6 +8,9 @@ struct ShoppingListView: View {
     @State private var suggestionQuery = ""
     @State private var showMarkdownSheet = false
     @State private var showCreateListSheet = false
+    @State private var showManageListsSheet = false
+    @State private var showDeleteConfirm = false
+    @State private var pendingDeleteList: ShoppingList?
     @State private var newListName = ""
     @State private var expandedCompartments: Set<String> = Set(Compartment.supermarketOrder.map(\.rawValue))
 
@@ -38,8 +41,6 @@ struct ShoppingListView: View {
     }
 
     var body: some View {
-        @Bindable var storeBindable = store
-
         ZStack {
             Color.pantryCream.ignoresSafeArea()
 
@@ -66,20 +67,6 @@ struct ShoppingListView: View {
                         .listRowSeparator(.hidden)
                     }
                 } else {
-                    // Lista selector se più liste
-                    if store.lists.count > 1 {
-                        Section {
-                            Picker("Lista", selection: $storeBindable.selectedListId) {
-                                ForEach(store.lists) { list in
-                                    Text(list.name).tag(Optional(list.id))
-                                }
-                            }
-                            .pickerStyle(.menu)
-                            .tint(Color.pantryMoss)
-                        }
-                        .listRowBackground(Color.clear)
-                    }
-
                     // Add item form — solo nome + quantità, senza Picker comparto
                     Section {
                         addItemSection
@@ -241,7 +228,7 @@ struct ShoppingListView: View {
             .listSectionSpacing(12)
             .tint(Color.pantryOat)
         }
-        .navigationTitle("Spesa")
+        .navigationTitle(store.selectedList?.name ?? "Spesa")
         .searchable(text: $suggestionQuery, prompt: "Cerca suggerimenti...")
         .refreshable {
             await store.fetchLists(pantryId: pantryStore.selectedPantryId)
@@ -255,18 +242,21 @@ struct ShoppingListView: View {
             }
         }
         .toolbar {
-            // T6: picker pantry in header, selezione condivisa via @Environment.
             ToolbarItem(placement: .topBarLeading) {
-                pantryPickerMenu
+                listManagementMenu
             }
-            // Unico Menu overflow puntini.
-            ToolbarItem(placement: .navigationBarTrailing) {
+            // Singola azione verifica + unico Menu overflow (nessun duplicato).
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    Task { await store.checkInPantry(pantryId: pantryStore.selectedPantryId) }
+                } label: {
+                    Image(systemName: "checkmark.shield")
+                }
+                .tint(Color.pantryMoss)
+                .accessibilityLabel("Verifica dispensa")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    Button {
-                        Task { await store.checkInPantry(pantryId: pantryStore.selectedPantryId) }
-                    } label: {
-                        Label("Verifica dispensa", systemImage: "checkmark.shield")
-                    }
                     Button {
                         Task {
                             await store.exportMarkdown(pantryId: pantryStore.selectedPantryId)
@@ -284,14 +274,7 @@ struct ShoppingListView: View {
                     Image(systemName: "ellipsis.circle")
                 }
                 .tint(Color.pantryMoss)
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    Task { await store.checkInPantry(pantryId: pantryStore.selectedPantryId) }
-                } label: {
-                    Image(systemName: "checkmark.shield")
-                }
-                .tint(Color.pantryMoss)
+                .accessibilityLabel("Altre azioni spesa")
             }
         }
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
@@ -311,6 +294,9 @@ struct ShoppingListView: View {
         .sheet(isPresented: $showMarkdownSheet) {
             markdownSheet
         }
+        .sheet(isPresented: $showManageListsSheet) {
+            manageListsSheet
+        }
         .sheet(isPresented: $showCreateListSheet) {
             createListSheet
         }
@@ -318,30 +304,51 @@ struct ShoppingListView: View {
 
     // MARK: - Add item form (solo nome + quantità)
 
-    // T6: picker pantry in header (personale/condivise), binding su store @Environment.
-    private var pantryPickerMenu: some View {
-        @Bindable var pantryStoreBindable = pantryStore
+    // Gestione liste: Picker nel Menu leading + sheet di gestione (tap nome).
+    private var listManagementMenu: some View {
+        @Bindable var storeBindable = store
         return Menu {
-            Picker("Dispensa", selection: $pantryStoreBindable.selectedPantryId) {
-                ForEach(pantryStore.pantries) { pantry in
-                    Text(pantry.name).tag(pantry.id)
+            Picker("Lista", selection: $storeBindable.selectedListId) {
+                ForEach(store.lists) { list in
+                    Text(list.name).tag(Optional(list.id))
                 }
             }
+            Divider()
+            Button {
+                showManageListsSheet = true
+            } label: {
+                Label("Gestisci liste", systemImage: "list.bullet")
+            }
+            Button {
+                showCreateListSheet = true
+            } label: {
+                Label("Nuova lista", systemImage: "plus")
+            }
         } label: {
-            Label(pantryStore.selectedPantryName, systemImage: "house")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(Color.pantryMoss)
-                .lineLimit(1)
+            HStack(spacing: 4) {
+                Text(store.selectedList?.name ?? "Spesa")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Color.pantryMoss)
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.pantryMoss)
+            }
+            .contentShape(Rectangle())
         }
         .tint(Color.pantryMoss)
-        .accessibilityLabel("Seleziona dispensa")
-        .accessibilityHint("Scegli tra dispensa personale e condivise")
+        .accessibilityLabel("Gestisci liste della spesa")
+        .accessibilityHint("Cambia lista attiva o gestisci le liste")
+        .accessibilityValue(store.selectedList?.name ?? "Spesa")
     }
 
     private var addItemSection: some View {
         VStack(spacing: 12) {
-            TextField("Nome prodotto", text: $newItemName)
+            TextField("Nome prodotto", text: $newItemName, prompt: Text("Es. Pasta"))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .textInputAutocapitalization(.words)
                 .autocorrectionDisabled()
+                .submitLabel(.done)
                 .onChange(of: newItemName) { _, new in
                     if new.count >= 2 { suggestionQuery = new }
                 }
@@ -350,6 +357,7 @@ struct ShoppingListView: View {
                 QuantityStepper(quantity: $newItemQuantity)
                 Spacer()
             }
+            .frame(maxWidth: .infinity)
 
             Button {
                 Task {
@@ -362,17 +370,13 @@ struct ShoppingListView: View {
                 }
             } label: {
                 Label("Aggiungi", systemImage: "plus.circle.fill")
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.borderedProminent)
+            .controlSize(.large)
             .tint(Color.pantryMoss)
             .disabled(newItemName.trimmingCharacters(in: .whitespaces).isEmpty)
         }
-        .padding(12)
-        .pantryCardBackground(cornerRadius: 14)
-        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
     }
 
     // MARK: - Row
@@ -544,6 +548,68 @@ struct ShoppingListView: View {
                 }
             }
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+        }
+    }
+
+    private var manageListsSheet: some View {
+        NavigationStack {
+            List {
+                Section("Liste") {
+                    ForEach(store.lists) { list in
+                        HStack {
+                            Button {
+                                store.selectedListId = list.id
+                            } label: {
+                                HStack {
+                                    Text(list.name)
+                                        .foregroundStyle(Color.textPrimary)
+                                    Spacer()
+                                    if store.selectedListId == list.id {
+                                        Image(systemName: "checkmark")
+                                            .foregroundStyle(Color.pantryMoss)
+                                    }
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Seleziona lista \(list.name)")
+                            Button(role: .destructive) {
+                                pendingDeleteList = list
+                                showDeleteConfirm = true
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .tint(Color.statusExpired)
+                            .accessibilityLabel("Elimina lista \(list.name)")
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Gestisci liste")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Chiudi") { showManageListsSheet = false }
+                }
+            }
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .confirmationDialog(
+                "Elimina lista?",
+                isPresented: $showDeleteConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Elimina", role: .destructive) {
+                    if let list = pendingDeleteList {
+                        Task {
+                            await store.deleteShoppingList(pantryId: pantryStore.selectedPantryId, id: list.id)
+                        }
+                        pendingDeleteList = nil
+                    }
+                }
+                Button("Annulla", role: .cancel) { pendingDeleteList = nil }
+            } message: {
+                Text("La lista verrà eliminata definitivamente.")
+            }
         }
     }
 

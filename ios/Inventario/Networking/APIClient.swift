@@ -372,6 +372,22 @@ final class APIClient: Sendable {
         }
     }
 
+    func deleteShoppingList(pantryId: Int, listId: Int) async throws {
+        let url = try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/shopping-lists/\(listId)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request = decorated(request)
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.transport(URLError(.badServerResponse))
+        }
+        guard httpResponse.statusCode == 204 || httpResponse.statusCode == 200 else {
+            if httpResponse.statusCode == 404 { throw APIError.notFound }
+            let body = (try? JSONDecoder().decode([String: String].self, from: data)).flatMap { $0["detail"] ?? $0["message"] }
+            throw APIError.http(status: httpResponse.statusCode, message: body)
+        }
+    }
+
     func exportShoppingMarkdown(pantryId: Int, listId: Int) async throws -> String {
         let url = try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/shopping-lists/\(listId)/export")
         var request = URLRequest(url: url)
@@ -436,6 +452,21 @@ final class APIClient: Sendable {
         request.httpBody = try JSONSerialization.data(withJSONObject: ["name": name])
         let data = try await perform(request)
         return try makeDecoder().decode(Pantry.self, from: data)
+    }
+
+    func deletePantry(id: Int) async throws {
+        let url = try resolvedBaseURL().appending(path: "api/pantries/\(id)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request = decorated(request)
+        let (_, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.transport(URLError(.badServerResponse))
+        }
+        guard httpResponse.statusCode == 204 || httpResponse.statusCode == 200 else {
+            if httpResponse.statusCode == 404 { throw APIError.notFound }
+            throw APIError.http(status: httpResponse.statusCode, message: nil)
+        }
     }
 
     // Accetta invito: prova POST /invites/accept con body, fallback al path legacy.

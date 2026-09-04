@@ -7,7 +7,10 @@ struct InventoryListView: View {
     @State private var showSettings = false
     @State private var showDetailItem: InventoryItem?
     @State private var showScanner = false
-    @State private var showAddForm = false
+    @State private var showManagePantries = false
+    @State private var showDeletePantryConfirm = false
+    @State private var pendingDeletePantry: Pantry?
+    @State private var showManageDeleteConfirm = false
     @State private var newItemName = ""
     @State private var newItemQuantity = 1
     @State private var expandedHistory: Set<Int> = []
@@ -64,17 +67,14 @@ struct InventoryListView: View {
                         .listRowSeparator(.hidden)
                 }
 
-                // T7: inline form come spesa, aperto dal + ovale in primaryAction
-                if showAddForm {
-                    Section {
-                        addItemSection
-                    } header: {
-                        Label("Aggiungi prodotto", systemImage: "plus.circle")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Color.pantryMoss)
-                            .textCase(nil)
-                    }
-                    .listSectionSeparator(.hidden, edges: .bottom)
+                // Aggiunta sempre visibile: prima Section del form.
+                Section {
+                    addItemSection
+                } header: {
+                    Label("Aggiungi prodotto", systemImage: "plus.circle")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.pantryMoss)
+                        .textCase(nil)
                 }
 
                 if groupedItems.isEmpty {
@@ -174,18 +174,14 @@ struct InventoryListView: View {
                 }
             }
         }
-        .navigationTitle("Dispensa")
+        .navigationTitle(store.selectedPantryName)
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         .toolbar {
-            // T6: picker pantry in header (personale/condivise), binding su store @Environment.
+            // Leading: gestione dispense (selezione + gestione).
             ToolbarItem(placement: .topBarLeading) {
                 pantryPickerMenu
             }
-            // T7: + ovale in primaryAction, Label con testo, chrome Glass solo qui.
-            ToolbarItem(placement: .primaryAction) {
-                addOvalButton
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showScanner = true
                 } label: {
@@ -195,7 +191,7 @@ struct InventoryListView: View {
                 .accessibilityLabel("Scansiona codice a barre")
             }
             // Unico Menu overflow puntini.
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     NavigationLink(destination: ManualEntryView()) {
                         Label("Inserimento manuale", systemImage: "pencil")
@@ -228,6 +224,21 @@ struct InventoryListView: View {
         .sheet(isPresented: $showScanner) {
             ScannerViewWrapper()
         }
+        .sheet(isPresented: $showManagePantries) {
+            managePantriesSheet
+        }
+        .confirmationDialog(
+            "Elimina dispensa?",
+            isPresented: $showDeletePantryConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Elimina", role: .destructive) {
+                Task { await store.deletePantry(id: store.selectedPantryId) }
+            }
+            Button("Annulla", role: .cancel) {}
+        } message: {
+            Text("La dispensa \(store.selectedPantryName) verrà eliminata.")
+        }
         .task {
             await store.fetchPantries()
         }
@@ -236,7 +247,7 @@ struct InventoryListView: View {
         }
     }
 
-    // MARK: - T6 pantry picker (header)
+    // MARK: - Pantry picker + gestione
 
     private var pantryPickerMenu: some View {
         @Bindable var storeBindable = store
@@ -246,91 +257,140 @@ struct InventoryListView: View {
                     Text(pantry.name).tag(pantry.id)
                 }
             }
+            Divider()
+            Button {
+                showManagePantries = true
+            } label: {
+                Label("Gestisci dispense", systemImage: "folder.badge.gearshape")
+            }
+            Button(role: .destructive) {
+                showDeletePantryConfirm = true
+            } label: {
+                Label("Elimina dispensa", systemImage: "trash")
+            }
         } label: {
-            Label(store.selectedPantryName, systemImage: "house")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(Color.pantryMoss)
-                .lineLimit(1)
+            HStack(spacing: 4) {
+                Label(store.selectedPantryName, systemImage: "house")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Color.pantryMoss)
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.pantryMoss)
+            }
         }
         .tint(Color.pantryMoss)
-        .accessibilityLabel("Seleziona dispensa")
-        .accessibilityHint("Scegli tra dispensa personale e condivise")
+        .accessibilityLabel("Gestione dispense, \(store.selectedPantryName)")
+        .accessibilityHint("Scegli la dispensa, gestisci l'elenco o elimina quella corrente")
     }
 
-    // T7: + ovale 44pt+, glassProminent iOS 26, fallback chrome pre-26.
-    @ViewBuilder
-    private var addOvalButton: some View {
-        if #available(iOS 26.0, *) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) { showAddForm.toggle() }
-            } label: {
-                Label(showAddForm ? "Chiudi" : "Aggiungi", systemImage: "plus")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(minWidth: 44, minHeight: 44)
-                    .padding(.horizontal, 12)
+    private var managePantriesSheet: some View {
+        NavigationStack {
+            List {
+                ForEach(store.pantries) { pantry in
+                    HStack {
+                        Text(pantry.name)
+                        Spacer()
+                        if pantry.id == store.selectedPantryId {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(Color.pantryMoss)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        store.selectPantry(pantry.id)
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) {
+                            pendingDeletePantry = pantry
+                            showManageDeleteConfirm = true
+                        } label: {
+                            Label("Elimina", systemImage: "trash")
+                        }
+                    }
+                }
             }
-            .buttonStyle(.glassProminent)
-            .tint(Color.pantryMoss)
-            .accessibilityLabel(showAddForm ? "Chiudi modulo aggiunta" : "Aggiungi prodotto")
-            .accessibilityHint("Apre il modulo inline come nella spesa")
-        } else {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) { showAddForm.toggle() }
-            } label: {
-                Label(showAddForm ? "Chiudi" : "Aggiungi", systemImage: "plus")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(minWidth: 44, minHeight: 44)
-                    .padding(.horizontal, 12)
+            .navigationTitle("Gestisci dispense")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Chiudi") {
+                        showManagePantries = false
+                    }
+                }
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(Color.white)
-            .background(Color.pantryMoss, in: Capsule())
-            .tint(Color.pantryMoss)
-            .accessibilityLabel(showAddForm ? "Chiudi modulo aggiunta" : "Aggiungi prodotto")
-            .accessibilityHint("Apre il modulo inline come nella spesa")
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .confirmationDialog(
+                "Elimina dispensa?",
+                isPresented: $showManageDeleteConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Elimina", role: .destructive) {
+                    if let pantry = pendingDeletePantry {
+                        Task {
+                            await store.deletePantry(id: pantry.id)
+                        }
+                        pendingDeletePantry = nil
+                    }
+                }
+                Button("Annulla", role: .cancel) { pendingDeletePantry = nil }
+            } message: {
+                Text("La dispensa verrà eliminata definitivamente.")
+            }
         }
     }
 
-    // MARK: - T7 inline add (come spesa) + T9 storico
+    // MARK: - Inline add sempre visibile + T9 storico
 
     private var addItemSection: some View {
         VStack(spacing: 12) {
-            TextField("Nome prodotto", text: $newItemName)
+            TextField("Nome prodotto", text: $newItemName, prompt: Text("Es. Pasta"))
+                .textInputAutocapitalization(.words)
                 .autocorrectionDisabled()
+                .submitLabel(.done)
+                .onSubmit { addCurrentItem() }
+                .overlay(alignment: .trailing) {
+                    if !newItemName.isEmpty {
+                        Button {
+                            newItemName = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                        }
+                        .accessibilityLabel("Cancella nome prodotto")
+                    }
+                }
 
-            HStack(spacing: 12) {
-                QuantityStepper(quantity: $newItemQuantity)
-                Spacer()
-            }
+            QuantityStepper(quantity: $newItemQuantity)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             Button {
-                Task {
-                    guard !newItemName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-                    await store.addManual(
-                        name: newItemName.trimmingCharacters(in: .whitespaces),
-                        brand: nil,
-                        expirationDate: nil,
-                        category: nil,
-                        quantity: newItemQuantity
-                    )
-                    guard store.error == nil else { return }
-                    newItemName = ""
-                    newItemQuantity = 1
-                    withAnimation(.easeInOut(duration: 0.2)) { showAddForm = false }
-                }
+                addCurrentItem()
             } label: {
                 Label("Aggiungi in dispensa", systemImage: "plus.circle.fill")
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.borderedProminent)
+            .controlSize(.large)
             .tint(Color.pantryMoss)
             .disabled(newItemName.trimmingCharacters(in: .whitespaces).isEmpty)
         }
-        .padding(12)
-        .pantryCardBackground(cornerRadius: 14)
-        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
+    }
+
+    private func addCurrentItem() {
+        Task {
+            guard !newItemName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+            await store.addManual(
+                name: newItemName.trimmingCharacters(in: .whitespaces),
+                brand: nil,
+                expirationDate: nil,
+                category: nil,
+                quantity: newItemQuantity
+            )
+            guard store.error == nil else { return }
+            newItemName = ""
+            newItemQuantity = 1
+        }
     }
 
     // T9: DisclosureGroup collassato di default, opacity 0.6, senza swipe delete.

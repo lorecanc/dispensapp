@@ -41,6 +41,38 @@ final class InventoryStore {
         selectedPantryId = id
     }
 
+    func deletePantry(id: Int) async {
+        guard let index = pantries.firstIndex(where: { $0.id == id }) else { return }
+        error = nil
+        let snapshotPantries = pantries
+        let snapshotSelection = selectedPantryId
+        let snapshotItems = items
+        let snapshotHistory = history
+        let snapshotExport = exportedMarkdown
+        let wasSelected = (selectedPantryId == id)
+        pantries.remove(at: index)
+        if wasSelected {
+            if let first = pantries.first {
+                selectedPantryId = first.id
+            } else {
+                items = []
+                history = [:]
+                exportedMarkdown = nil
+            }
+        }
+        do {
+            try await client.deletePantry(id: id)
+        } catch {
+            pantries = snapshotPantries
+            selectedPantryId = snapshotSelection
+            items = snapshotItems
+            history = snapshotHistory
+            exportedMarkdown = snapshotExport
+            if Task.isCancelled { return }
+            self.error = error as? APIError ?? .transport(error)
+        }
+    }
+
     func fetchPantries() async {
         do {
             let fetched = try await client.listPantries()
