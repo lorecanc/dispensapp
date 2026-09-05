@@ -92,7 +92,7 @@ struct ShoppingListView: View {
                                 .background {
                                     Capsule()
                                         .fill(.regularMaterial)
-                                        .overlay(Capsule().fill(Color.pantryCream.opacity(0.35)))
+                                        .overlay(Capsule().fill(Color.pantryLinen.opacity(0.35)))
                                         .overlay(Capsule().strokeBorder(Color.pantryOat, lineWidth: 0.5))
                                 }
                             }

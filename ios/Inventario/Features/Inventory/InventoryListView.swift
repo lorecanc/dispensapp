@@ -15,6 +15,15 @@ struct InventoryListView: View {
     @State private var showHistorySheet = false
     @State private var showAddChoice = false
     @State private var showManual = false
+    @State private var showJoinPantry = false
+    @State private var pendingAdd: AddMethod?
+
+    /// Scelta dal foglio "Aggiungi prodotto". L'azione effettiva è rimandata
+    /// alla chiusura del foglio (onChange su showAddChoice) per evitare la
+    /// race iOS 17 in cui il secondo sheet viene inghiottito dal primo.
+    private enum AddMethod {
+        case scanner, manual
+    }
 
     // MARK: - Filtering
 
@@ -247,7 +256,9 @@ struct InventoryListView: View {
             // Unico Menu overflow puntini.
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    NavigationLink(destination: ManualEntryView()) {
+                    Button {
+                        showManual = true
+                    } label: {
                         Label("Inserimento manuale", systemImage: "pencil")
                     }
 
@@ -258,6 +269,13 @@ struct InventoryListView: View {
                     }
                     .accessibilityLabel("Invita membri")
                     .accessibilityHint("Apri inviti e membri: chi ha il link può unirsi")
+
+                    Button {
+                        showJoinPantry = true
+                    } label: {
+                        Label("Unisciti a una dispensa", systemImage: "link.badge.plus")
+                    }
+                    .accessibilityHint("Apri la schermata per unirti a una dispensa con un codice invito")
 
                     Button {
                         showSettings = true
@@ -304,6 +322,9 @@ struct InventoryListView: View {
         }
         .sheet(isPresented: $showInviteMembers) {
             InviteMembersSheet()
+        }
+        .sheet(isPresented: $showJoinPantry) {
+            JoinPantrySheet()
         }
         .sheet(isPresented: $showHistorySheet) {
             historySheet
@@ -450,30 +471,81 @@ struct InventoryListView: View {
             .background {
                 Capsule()
                     .fill(.regularMaterial)
-                    .overlay(Capsule().fill(Color.pantryCream.opacity(0.35)))
+                    .overlay(Capsule().fill(Color.pantryLinen.opacity(0.35)))
                     .overlay(Capsule().strokeBorder(Color.pantryOat, lineWidth: 0.5))
             }
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Aggiungi prodotto")
         .accessibilityHint("Scegli tra scansione codice e inserimento manuale")
-        .confirmationDialog(
-            "Aggiungi prodotto",
-            isPresented: $showAddChoice,
-            titleVisibility: .visible
-        ) {
-            Button {
+        .sheet(isPresented: $showAddChoice) {
+            addChoiceSheet
+        }
+        .onChange(of: showAddChoice) { _, isPresented in
+            guard !isPresented, let pending = pendingAdd else { return }
+            pendingAdd = nil
+            switch pending {
+            case .scanner:
                 showScanner = true
+            case .manual:
+                showManual = true
+            }
+        }
+    }
+
+    private var addChoiceSheet: some View {
+        VStack(spacing: 12) {
+            Text("Aggiungi prodotto")
+                .font(.headline)
+                .foregroundStyle(Color.textPrimary)
+                .accessibilityAddTraits(.isHeader)
+
+            Button {
+                pendingAdd = .scanner
+                showAddChoice = false
             } label: {
                 Label("Scansiona", systemImage: "barcode.viewfinder")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.pantryMoss)
             }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background {
+                Capsule()
+                    .fill(.regularMaterial)
+                    .overlay(Capsule().fill(Color.pantryLinen.opacity(0.35)))
+            }
+            .overlay(Capsule().strokeBorder(Color.pantryOat, lineWidth: 0.5))
+            .accessibilityLabel("Scansiona codice a barre")
+            .accessibilityHint("Apri la camera per scansionare un codice a barre")
+
             Button {
-                showManual = true
+                pendingAdd = .manual
+                showAddChoice = false
             } label: {
                 Label("Inserimento manuale", systemImage: "pencil")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.pantryMoss)
             }
-            Button("Annulla", role: .cancel) {}
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background {
+                Capsule()
+                    .fill(.regularMaterial)
+                    .overlay(Capsule().fill(Color.pantryLinen.opacity(0.35)))
+            }
+            .overlay(Capsule().strokeBorder(Color.pantryOat, lineWidth: 0.5))
+            .accessibilityLabel("Inserimento manuale")
+            .accessibilityHint("Apri il modulo per inserire un prodotto a mano")
+
+            Button("Annulla") { showAddChoice = false }
+                .font(.body.weight(.semibold))
+                .foregroundStyle(Color.textPrimary)
         }
+        .padding()
+        .presentationDetents([.height(280)])
+        .presentationDragIndicator(.visible)
+        .dynamicTypeSize(.xSmall ... .accessibility2)
     }
 
     // MARK: - Storico consumati (sheet da menu ellipsis)
@@ -586,7 +658,7 @@ struct InventoryListView: View {
         Button(action: action) {
             Text(label)
                 .font(.subheadline.weight(isSelected ? .semibold : .regular))
-                .foregroundStyle(isSelected ? Color.white : Color.textPrimary)
+                .foregroundStyle(isSelected ? Color.pantryLinen : Color.textPrimary)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .background {

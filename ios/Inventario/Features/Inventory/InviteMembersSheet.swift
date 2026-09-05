@@ -5,20 +5,13 @@ import UIKit
 struct InviteMembersSheet: View {
     @Environment(InventoryStore.self) private var store
     @Environment(\.dismiss) private var dismiss
-    @State private var tokenInput = ""
-    @State private var showAcceptConfirm = false
     @State private var didCopy = false
-
-    private var trimmedToken: String {
-        tokenInput.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
 
     var body: some View {
         NavigationStack {
             List {
                 inviteSection
                 membersSection
-                acceptSection
             }
             .navigationTitle("Membri dispensa")
             .navigationBarTitleDisplayMode(.inline)
@@ -30,21 +23,7 @@ struct InviteMembersSheet: View {
             .task(id: store.selectedPantryId) {
                 await store.fetchMembers(pantryId: store.selectedPantryId)
             }
-            .confirmationDialog(
-                "Accettare l'invito?",
-                isPresented: $showAcceptConfirm,
-                titleVisibility: .visible
-            ) {
-                Button("Accetta") {
-                    Task {
-                        await store.acceptInviteToken(trimmedToken)
-                        tokenInput = ""
-                    }
-                }
-                Button("Annulla", role: .cancel) {}
-            } message: {
-                Text("La dispensa condivisa verrà aggiunta al tuo elenco.")
-            }
+            .onChange(of: store.inviteLink) { _, _ in didCopy = false }
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
@@ -119,7 +98,7 @@ struct InviteMembersSheet: View {
         case .http(let status, _):
             switch status {
             case 401, 403:
-                return "Solo l'owner può invitare/rimuovere."
+                return "Solo il proprietario può invitare o rimuovere persone."
             case 404, 410:
                 return "Link scaduto, chiedine uno nuovo."
             case 409:
@@ -148,7 +127,7 @@ struct InviteMembersSheet: View {
             } else {
                 ForEach(Array(store.members.enumerated()), id: \.offset) { _, member in
                     HStack {
-                        Text(member.role.capitalized)
+                        Text(roleLabel(member.role))
                             .font(.subheadline.weight(.medium))
                         Spacer()
                         Text(member.joinedAt.formatted(date: .abbreviated, time: .omitted))
@@ -159,7 +138,7 @@ struct InviteMembersSheet: View {
                 .accessibilityLabel("Lista membri")
                 .accessibilityHint("Elenco dei membri in sola lettura")
             }
-            Text("Solo l'owner può rimuovere membri.")
+            Text("Solo il proprietario può rimuovere membri.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         } header: {
@@ -167,29 +146,12 @@ struct InviteMembersSheet: View {
         }
     }
 
-    // Accettazione via token incollato, con conferma. Token mai persistito né loggato.
-    // Campo e valore sanitizzato svuotati dopo l'uso.
-    private var acceptSection: some View {
-        Section("Accetta invito") {
-            TextField("Incolla il token ricevuto", text: $tokenInput)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .frame(minHeight: 44)
-                .accessibilityLabel("Token invito")
-                .accessibilityHint("Incolla il token ricevuto, poi tocca Accetta invito")
-            Button("Accetta invito") {
-                showAcceptConfirm = true
-            }
-            .frame(minHeight: 44)
-            .accessibilityLabel("Accetta invito")
-            .accessibilityHint("Conferma e unisciti alla dispensa condivisa")
-            .disabled(trimmedToken.isEmpty || store.isInviteLoading)
-            if trimmedToken.isEmpty {
-                Text("Incolla un token valido per continuare.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
+    // Ruoli in chiaro per l'utente; fallback capitalized per ruoli sconosciuti.
+    private func roleLabel(_ role: String) -> String {
+        switch role {
+        case "owner": return "Proprietario"
+        case "editor": return "Collaboratore"
+        default: return role.capitalized
         }
-        .dynamicTypeSize(.xSmall ... .accessibility2)
     }
 }

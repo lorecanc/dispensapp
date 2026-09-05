@@ -46,13 +46,13 @@ struct EmptyStateView: View {
         }
         .padding(28)
         .frame(maxWidth: .infinity)
-        // Card Material: regularMaterial + PantryCream 0.35 + PantryOat 0.5 + liquid glass radius
+        // Card Material: regularMaterial + PantryLinen 0.35 + PantryOat 0.5 + liquid glass radius
         .background {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .fill(.regularMaterial)
                 .overlay(
                     RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .fill(Color.pantryCream.opacity(0.35))
+                        .fill(Color.pantryLinen.opacity(0.35))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 20, style: .continuous)

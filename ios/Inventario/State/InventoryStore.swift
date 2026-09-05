@@ -35,6 +35,10 @@ final class InventoryStore {
                 archivedIDs = []
                 exportedMarkdown = nil
                 error = nil
+                currentInvite = nil
+                inviteLink = nil
+                members = []
+                inviteError = nil
             }
         }
     }
@@ -95,6 +99,10 @@ final class InventoryStore {
                 history = [:]
                 archivedIDs = []
                 exportedMarkdown = nil
+                currentInvite = nil
+                inviteLink = nil
+                members = []
+                inviteError = nil
             }
         }
         do {

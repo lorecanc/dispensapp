@@ -34,7 +34,7 @@ struct InventoryRowView: View {
                     .background {
                         Capsule()
                             .fill(.thinMaterial)
-                            .overlay(Capsule().fill(Color.pantryCream.opacity(0.45)))
+                            .overlay(Capsule().fill(Color.pantryLinen.opacity(0.45)))
                     }
                     .overlay(
                         Capsule()
@@ -68,13 +68,13 @@ struct InventoryRowView: View {
             }
         }
         .padding(12)
-        // Material content: regularMaterial + PantryCream 0.35 + PantryOat 0.5 + cornerRadius 18 liquid glass
+        // Material content: regularMaterial + PantryLinen 0.35 + PantryOat 0.5 + cornerRadius 18 liquid glass
         .background {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(.regularMaterial)
                 .overlay(
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(Color.pantryCream.opacity(0.35))
+                        .fill(Color.pantryLinen.opacity(0.35))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
