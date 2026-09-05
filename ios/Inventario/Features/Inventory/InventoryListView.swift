@@ -8,6 +8,7 @@ struct InventoryListView: View {
     @State private var showDetailItem: InventoryItem?
     @State private var showScanner = false
     @State private var showManagePantries = false
+    @State private var showInviteMembers = false
     @State private var showDeletePantryConfirm = false
     @State private var pendingDeletePantry: Pantry?
     @State private var showManageDeleteConfirm = false
@@ -193,6 +194,14 @@ struct InventoryListView: View {
                     }
 
                     Button {
+                        showInviteMembers = true
+                    } label: {
+                        Label("Invita membri", systemImage: "person.badge.plus")
+                    }
+                    .accessibilityLabel("Invita membri")
+                    .accessibilityHint("Apri inviti e membri: chi ha il link può unirsi")
+
+                    Button {
                         showSettings = true
                     } label: {
                         Label("Impostazioni", systemImage: "gearshape")
@@ -221,6 +230,9 @@ struct InventoryListView: View {
         }
         .sheet(isPresented: $showManagePantries) {
             managePantriesSheet
+        }
+        .sheet(isPresented: $showInviteMembers) {
+            InviteMembersSheet()
         }
         .confirmationDialog(
             "Elimina dispensa?",

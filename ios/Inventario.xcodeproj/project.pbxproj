@@ -42,6 +42,7 @@
 		F42E22A930D4270B6B5CB47A /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4691E650C9C1DB67287BB813 /* APIClient.swift */; };
 		F5F60718293A4B5C6D7E8F91 /* ScanAcquiredOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F60718293A4B5C6D7E8F90 /* ScanAcquiredOverlay.swift */; };
 		D4D5E6F708192A3B4C5D6E80 /* ScanSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D5E6F708192A3B4C5D6E7F /* ScanSessionStore.swift */; };
+		B1C2D3E4F5A60718293A4B5C /* InviteMembersSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* InviteMembersSheet.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -93,6 +94,7 @@
 		F3414A7B3B2A8CD0426620F8 /* APIConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIConfig.swift; sourceTree = "<group>"; };
 		E5F60718293A4B5C6D7E8F90 /* ScanAcquiredOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanAcquiredOverlay.swift; sourceTree = "<group>"; };
 		C4D5E6F708192A3B4C5D6E7F /* ScanSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanSessionStore.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5C /* InviteMembersSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InviteMembersSheet.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -200,6 +202,7 @@
 			children = (
 				640EB2695C90E2057ECB8B87 /* InventoryListView.swift */,
 				98345B3FAD226587DD32DE11 /* InventoryRowView.swift */,
+				A1B2C3D4E5F60718293A4B5C /* InviteMembersSheet.swift */,
 				6DE95F58595DDAFF67148BE5 /* ItemDetailView.swift */,
 				5DD53C315DE36316C64F620F /* StatusBadge.swift */,
 			);
@@ -364,6 +367,7 @@
 				922C23E35FA6B684AF86A527 /* InventarioApp.swift in Sources */,
 				14EADDB3DACA140100659701 /* InventoryItem.swift in Sources */,
 				3C4FB9A0751785C2F16C3429 /* InventoryListView.swift in Sources */,
+				B1C2D3E4F5A60718293A4B5C /* InviteMembersSheet.swift in Sources */,
 				31D92617EBB6EEC940D617F8 /* InventoryRowView.swift in Sources */,
 				42431B8E4A51ED357523C9F2 /* InventoryStore.swift in Sources */,
 				4FCCFE05EEA9CA294279F84F /* ItemDetailView.swift in Sources */,

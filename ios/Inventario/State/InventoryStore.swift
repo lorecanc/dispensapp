@@ -309,6 +309,77 @@ final class InventoryStore {
         }
     }
 
+    // Inviti/membri (punto 1 UI). Token mai in log, errori o UserDefaults.
+    var currentInvite: Invite?
+    var inviteLink: String?
+    var members: [PantryMember] = []
+    var isInviteLoading = false
+    var inviteError: APIError?
+
+    func createInvite(pantryId: Int) async {
+        isInviteLoading = true
+        inviteError = nil
+        do {
+            let invite = try await client.createInvite(pantryId: pantryId)
+            guard !Task.isCancelled else { isInviteLoading = false; return }
+            currentInvite = invite
+            inviteLink = "inventario://invite?token=\(invite.token)"
+        } catch {
+            if Task.isCancelled { isInviteLoading = false; return }
+            inviteError = error as? APIError ?? .transport(error)
+        }
+        isInviteLoading = false
+    }
+
+    func fetchMembers(pantryId: Int) async {
+        isInviteLoading = true
+        inviteError = nil
+        do {
+            let fetched = try await client.listMembers(pantryId: pantryId)
+            guard !Task.isCancelled else { isInviteLoading = false; return }
+            members = fetched
+        } catch {
+            if Task.isCancelled { isInviteLoading = false; return }
+            inviteError = error as? APIError ?? .transport(error)
+        }
+        isInviteLoading = false
+    }
+
+    // Conferma di rimozione demandata alla UI.
+    func removeMember(pantryId: Int, memberToken: String) async {
+        isInviteLoading = true
+        inviteError = nil
+        do {
+            try await client.removeMember(pantryId: pantryId, memberToken: memberToken)
+            guard !Task.isCancelled else { isInviteLoading = false; return }
+            members = try await client.listMembers(pantryId: pantryId)
+            guard !Task.isCancelled else { isInviteLoading = false; return }
+        } catch {
+            if Task.isCancelled { isInviteLoading = false; return }
+            inviteError = error as? APIError ?? .transport(error)
+        }
+        isInviteLoading = false
+    }
+
+    func acceptInviteToken(_ token: String) async {
+        var sanitized = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        defer { sanitized = "" }
+        guard !sanitized.isEmpty else { return }
+        isInviteLoading = true
+        inviteError = nil
+        do {
+            _ = try await client.acceptInvite(token: sanitized)
+            guard !Task.isCancelled else { isInviteLoading = false; return }
+            await fetchPantries()
+            guard !Task.isCancelled else { isInviteLoading = false; return }
+            await refresh()
+        } catch {
+            if Task.isCancelled { isInviteLoading = false; return }
+            inviteError = error as? APIError ?? .transport(error)
+        }
+        isInviteLoading = false
+    }
+
     func exportMarkdown() async {
         error = nil
         do {
