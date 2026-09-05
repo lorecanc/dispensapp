@@ -452,7 +452,6 @@ struct InventoryListView: View {
                     .fill(.regularMaterial)
                     .overlay(Capsule().fill(Color.pantryCream.opacity(0.35)))
                     .overlay(Capsule().strokeBorder(Color.pantryOat, lineWidth: 0.5))
-                    .shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 4)
             }
         }
         .buttonStyle(.plain)
@@ -605,7 +604,6 @@ struct InventoryListView: View {
                     Capsule()
                         .strokeBorder(isSelected ? Color.pantryMoss : Color.pantryOat, lineWidth: 0.5)
                 )
-                .shadow(color: .black.opacity(isSelected ? 0.12 : 0.04), radius: 4, x: 0, y: 2)
         }
         .buttonStyle(.plain)
         // Material per non-selected: thinMaterial + PantryCream + PantryOat 0.5

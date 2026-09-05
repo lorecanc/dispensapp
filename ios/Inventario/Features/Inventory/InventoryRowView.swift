@@ -80,7 +80,6 @@ struct InventoryRowView: View {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .strokeBorder(Color.pantryOat, lineWidth: 0.5)
                 )
-                .shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 4)
         }
         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         // Accessibilità: VoiceOver combina nome, categoria, stato, quantità

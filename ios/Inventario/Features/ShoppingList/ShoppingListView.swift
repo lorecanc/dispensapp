@@ -94,7 +94,6 @@ struct ShoppingListView: View {
                                         .fill(.regularMaterial)
                                         .overlay(Capsule().fill(Color.pantryCream.opacity(0.35)))
                                         .overlay(Capsule().strokeBorder(Color.pantryOat, lineWidth: 0.5))
-                                        .shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 4)
                                 }
                             }
                             .buttonStyle(.plain)

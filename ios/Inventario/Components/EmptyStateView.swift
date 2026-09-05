@@ -58,7 +58,6 @@ struct EmptyStateView: View {
                     RoundedRectangle(cornerRadius: 20, style: .continuous)
                         .strokeBorder(Color.pantryOat, lineWidth: 0.5)
                 )
-                .shadow(color: .black.opacity(0.06), radius: 10, x: 0, y: 4)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title), \(message)")
