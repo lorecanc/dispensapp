@@ -81,6 +81,24 @@ final class InventoryStore {
         selectedPantryId = id
     }
 
+    func createPantry(name: String) async {
+        error = nil
+        do {
+            let created = try await client.createPantry(name: name)
+            guard !Task.isCancelled else { return }
+            // POST /api/pantries è idempotente per name+owner: può ritornare un id già in lista.
+            if !pantries.contains(where: { $0.id == created.id }) {
+                pantries.append(created)
+            }
+            // Append PRIMA della selezione: il didSet + .task(id:) riavviano refresh()
+            // e il gate in refresh (pantries.contains) richiede la pantry già presente.
+            selectedPantryId = created.id
+        } catch {
+            if Task.isCancelled { return }
+            setError(from: error)
+        }
+    }
+
     func deletePantry(id: Int) async {
         guard let index = pantries.firstIndex(where: { $0.id == id }) else { return }
         error = nil

@@ -8,6 +8,9 @@ struct InventoryListView: View {
     @State private var showDetailItem: InventoryItem?
     @State private var showScanner = false
     @State private var showManagePantries = false
+    @State private var showCreatePantry = false
+    @State private var newPantryName = ""
+    @State private var isCreatingPantry = false
     @State private var showInviteMembers = false
     @State private var showDeletePantryConfirm = false
     @State private var pendingDeletePantry: Pantry?
@@ -320,6 +323,9 @@ struct InventoryListView: View {
         .sheet(isPresented: $showManagePantries) {
             managePantriesSheet
         }
+        .sheet(isPresented: $showCreatePantry) {
+            createPantrySheet
+        }
         .sheet(isPresented: $showInviteMembers) {
             InviteMembersSheet()
         }
@@ -370,6 +376,12 @@ struct InventoryListView: View {
             }
             Divider()
             Button {
+                showCreatePantry = true
+            } label: {
+                Label("Nuova dispensa", systemImage: "plus")
+            }
+            .accessibilityHint("Crea una nuova dispensa e la seleziona")
+            Button {
                 showManagePantries = true
             } label: {
                 Label("Gestisci dispense", systemImage: "folder.badge.gearshape")
@@ -392,7 +404,7 @@ struct InventoryListView: View {
         }
         .tint(Color.pantryMoss)
         .accessibilityLabel("Gestione dispense, \(store.selectedPantryName)")
-        .accessibilityHint("Scegli la dispensa, gestisci l'elenco o elimina quella corrente")
+        .accessibilityHint("Scegli la dispensa, creala, gestisci l'elenco o elimina quella corrente")
     }
 
     private var managePantriesSheet: some View {
@@ -448,6 +460,51 @@ struct InventoryListView: View {
             } message: {
                 Text("La dispensa verrà eliminata definitivamente.")
             }
+        }
+    }
+
+    private var createPantrySheet: some View {
+        NavigationStack {
+            Form {
+                Section("Nome dispensa") {
+                    TextField("Es. Dispensa estiva", text: $newPantryName)
+                        .accessibilityLabel("Nome dispensa")
+                        .autocorrectionDisabled()
+                    if store.isOffline {
+                        Text("Non disponibile offline")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("Nuova dispensa")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Annulla") {
+                        showCreatePantry = false
+                        newPantryName = ""
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Crea") {
+                        guard !isCreatingPantry else { return }
+                        isCreatingPantry = true
+                        Task {
+                            let name = newPantryName.trimmingCharacters(in: .whitespaces)
+                            await store.createPantry(name: name.isEmpty ? "Dispensa" : name)
+                            isCreatingPantry = false
+                            showCreatePantry = false
+                            newPantryName = ""
+                        }
+                    }
+                    .tint(Color.pantryMoss)
+                    .disabled(isCreatingPantry || store.isOffline)
+                }
+            }
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            // Sheet chiusa via swipe durante il Task: niente flag bloccato a true.
+            .onDisappear { isCreatingPantry = false }
         }
     }
 
