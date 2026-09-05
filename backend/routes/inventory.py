@@ -17,7 +17,7 @@ from backend.schemas import (
     InventoryOut,
     InventoryUpdate,
 )
-from backend.services.compartment import infer_compartment
+from backend.services.compartment import infer_compartment, suggest_category
 from backend.services.expiration import resolve_expiration
 from backend.services.markdown_export import to_markdown
 
@@ -62,25 +62,36 @@ def _create_scoped_item(
     *,
     manual: bool,
 ) -> InventoryItem:
+    # Categoria interna: esplicita normalizzata; se assente, auto-assegnazione
+    # ON dai tag OFF (nessun tag utile -> None, comportamento preesistente).
+    category = normalize_category(body.category)
+    if category is None:
+        category = suggest_category(body.off_category_tags)
     expiration_date, is_estimated = resolve_expiration(
         expiration_date=body.expiration_date,
         category=body.category,
-        off_category_tags=None,
+        off_category_tags=body.off_category_tags,
         allow_none=manual,
     )
     compartment = body.compartment
     if not compartment:
-        compartment = infer_compartment(name=body.name, category=body.category)
+        compartment = infer_compartment(
+            name=body.name,
+            category=body.category,
+            off_category_tags=body.off_category_tags,
+        )
     item = InventoryItem(
         barcode=None if manual else body.barcode,  # type: ignore[attr-defined]
         name=body.name,
         brand=body.brand,
         expiration_date=expiration_date,
         is_estimated=is_estimated,
-        category=normalize_category(body.category),
+        category=category,
         image_url=str(body.image_url) if body.image_url else None,
         quantity=body.quantity,
         compartment=compartment,
+        # storage_location: NULL = derivato dal client via categoria (by design).
+        storage_location=body.storage_location,
         pantry_id=pantry_id,
         created_by_token=token,
     )

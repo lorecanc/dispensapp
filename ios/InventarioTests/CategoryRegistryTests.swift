@@ -135,6 +135,95 @@ final class CategoryRegistryTests: XCTestCase {
         XCTAssertNil(response.compartments)
     }
 
+    // MARK: - Storage location (default di reparto per categoria)
+
+    private func makeStorageResponse() -> CategoriesResponse {
+        CategoriesResponse(
+            categories: [
+                CategoriesResponse.Category(
+                    key: "gelato", label: "Gelato", shelfLifeDays: 365,
+                    compartment: "Surgelati", storageLocation: "freezer"
+                ),
+                // Entry senza storage_location: non entra nella mappa.
+                CategoriesResponse.Category(
+                    key: "sushi", label: "Sushi", shelfLifeDays: 1,
+                    compartment: nil, storageLocation: nil
+                ),
+            ],
+            defaultShelfLifeDays: nil,
+            labels: nil,
+            compartments: nil,
+            compartmentMap: ["gelato": "Surgelati"],
+            storageLocationLabels: ["freezer": "Congelatore"]
+        )
+    }
+
+    func testStorageLocationKnownAndFallback() {
+        XCTAssertEqual(CategoryRegistry.storageLocation(for: "yogurts"), "frigo")
+        XCTAssertEqual(CategoryRegistry.storageLocation(for: "frozen-foods"), "freezer")
+        XCTAssertEqual(CategoryRegistry.storageLocation(for: "pasta"), "dispensa")
+        // Chiavi sconosciute (o senza mappatura embedded) → dispensa.
+        XCTAssertEqual(CategoryRegistry.storageLocation(for: "scoops"), "dispensa")
+        XCTAssertEqual(CategoryRegistry.storageLocation(for: ""), "dispensa")
+    }
+
+    /// Payload con storage_location/etichette → le mappe diventano i valori del payload.
+    func testUpdateWithStorageFieldsReplacesMaps() {
+        CategoryRegistry.update(with: makeStorageResponse())
+        XCTAssertEqual(CategoryRegistry.storageDefaults, ["gelato": "freezer"])
+        XCTAssertEqual(CategoryRegistry.storageLabels, ["freezer": "Congelatore"])
+        XCTAssertEqual(CategoryRegistry.storageLocation(for: "gelato"), "freezer")
+        XCTAssertEqual(CategoryRegistry.storageLocation(for: "sushi"), "dispensa")
+        // Snapshot sostituito: le chiavi embedded non sono più nella mappa default.
+        XCTAssertEqual(CategoryRegistry.storageLocation(for: "yogurts"), "dispensa")
+    }
+
+    /// Guardia anti-wipe: una risposta senza i campi additivi non azzera le mappe,
+    /// né quelle embedded né quelle di un update precedente.
+    func testUpdateWithoutStorageFieldsKeepsCurrentMaps() {
+        // Da snapshot embedded: i default sopravvivono.
+        CategoryRegistry.update(with: makeResponse())
+        XCTAssertEqual(CategoryRegistry.storageLocation(for: "yogurts"), "frigo")
+        XCTAssertEqual(CategoryRegistry.storageLocation(for: "frozen-foods"), "freezer")
+
+        // Con snapshot non-embedded: vince l'ultimo payload valido, non l'embedded.
+        CategoryRegistry.update(with: makeStorageResponse())
+        XCTAssertEqual(CategoryRegistry.storageDefaults, ["gelato": "freezer"])
+        CategoryRegistry.update(with: makeResponse())
+        XCTAssertEqual(CategoryRegistry.storageDefaults, ["gelato": "freezer"])
+        XCTAssertEqual(CategoryRegistry.storageLabels, ["freezer": "Congelatore"])
+        // categories/compartments invece sono sostituiti normalmente.
+        XCTAssertEqual(CategoryRegistry.validCategoryKeys, ["vegan"])
+    }
+
+    func testResetRestoresEmbeddedStorageMaps() {
+        CategoryRegistry.update(with: makeStorageResponse())
+        XCTAssertNil(CategoryRegistry.storageDefaults["yogurts"])
+        CategoryRegistry.resetToEmbedded()
+        XCTAssertEqual(CategoryRegistry.storageDefaults["yogurts"], "frigo")
+        XCTAssertEqual(CategoryRegistry.storageLocation(for: "frozen-foods"), "freezer")
+        XCTAssertEqual(CategoryRegistry.storageLabels,
+                       ["frigo": "Frigo", "freezer": "Freezer", "dispensa": "Dispensa"])
+    }
+
+    /// I campi additivi decodificano da JSON e possono restare assenti.
+    func testDecodesStorageLocationFields() throws {
+        let json = """
+        {
+          "categories": [
+            { "key": "gelato", "label": "Gelato", "storage_location": "freezer" },
+            { "key": "sushi", "label": "Sushi" }
+          ],
+          "compartment_map": {},
+          "storage_location_labels": { "freezer": "Congelatore" }
+        }
+        """
+        let response = try JSONDecoder().decode(CategoriesResponse.self, from: Data(json.utf8))
+        XCTAssertEqual(response.categories[0].storageLocation, "freezer")
+        XCTAssertNil(response.categories[1].storageLocation)
+        XCTAssertEqual(response.storageLocationLabels, ["freezer": "Congelatore"])
+    }
+
     // MARK: - ShoppingModels integrate col registry
 
     func testInferCompartmentFromCategoryUsesRegistryMap() {

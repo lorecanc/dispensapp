@@ -98,3 +98,57 @@ def test_scan_category_normalization():
     body = resp.json()
     assert body["found"] is True
     assert "en:" not in " ".join(body["categories"])
+
+
+def test_scan_suggested_category_from_pnns_group():
+    """Tag non mappabili + pnns_group latte/dairy → suggested_category fresh-milk."""
+    payload = {
+        "barcode": "8076809514381",
+        "name": "Latte Intero",
+        "brand": None,
+        "categories": ["organic", "vegan"],  # nessun tag mappa a categoria interna
+        "pnns_group": "milk-and-dairy-products",
+        "image_url": None,
+    }
+
+    with patch("backend.routes.scan.fetch_product") as mock_fetch:
+        mock_fetch.return_value = payload
+        resp = _call_scan()
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["found"] is True
+    assert body["suggested_category"] == "fresh-milk"
+
+
+def test_scan_suggested_category_null_when_nothing_maps():
+    """Nessun tag mappabile e nessun pnns_group → suggested_category null."""
+    payload = {
+        "barcode": "8076809514381",
+        "name": "Prodotto Ignoto",
+        "brand": None,
+        "categories": ["organic", "vegan"],
+        "image_url": None,
+    }
+
+    with patch("backend.routes.scan.fetch_product") as mock_fetch:
+        mock_fetch.return_value = payload
+        resp = _call_scan()
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["found"] is True
+    assert body["suggested_category"] is None
+
+
+def test_scan_not_found_suggested_category_null():
+    """Ramo found=false → campo suggested_category presente e null."""
+    with patch("backend.routes.scan.fetch_product") as mock_fetch:
+        mock_fetch.return_value = {"found": False}
+        resp = _call_scan()
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["found"] is False
+    assert "suggested_category" in body
+    assert body["suggested_category"] is None

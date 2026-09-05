@@ -21,6 +21,10 @@ struct OutboxStore {
             let imageURL: String?
             let quantity: Int
             let tempId: Int
+            /// Campi additivi (T11): entry vecchie su disco senza chiavi → nil,
+            /// il replay le invia identiche ai valori pre-upgrade.
+            var offTags: [String]? = nil
+            var storageLocation: String? = nil
         }
         struct Consume: Codable, Equatable {
             var itemId: Int

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from backend.database import get_db
 from backend.models import ScanHistory
 from backend.schemas import ScanRequest, ScanResponse
+from backend.services.compartment import suggest_category
 from backend.services.off import fetch_product
 
 logger = logging.getLogger(__name__)
@@ -72,6 +73,10 @@ async def scan_barcode(body: ScanRequest, db: Session = Depends(get_db)):
     # bloccare l'event loop; nessun oggetto ORM esce dal thread.
     await anyio.to_thread.run_sync(persist_history)
 
+    # Suggerimento categoria interna (tag OFF + gruppo PNNS); None-safe:
+    # suggest_category tollera input mancanti e ritorna None senza match.
+    suggested = suggest_category(result.get("categories"), result.get("pnns_group"))
+
     return ScanResponse(
         found=True,
         barcode=result["barcode"],
@@ -79,4 +84,5 @@ async def scan_barcode(body: ScanRequest, db: Session = Depends(get_db)):
         brand=result.get("brand"),
         categories=result.get("categories", []),
         image_url=result.get("image_url"),
+        suggested_category=suggested,
     )

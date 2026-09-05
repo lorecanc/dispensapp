@@ -60,11 +60,26 @@ async def fetch_product(barcode: str) -> Optional[dict]:
     if status != 1 or product is None:
         return {"found": False}
 
+    # pnns_groups_1: testo libero ("Milk and dairy products") o tag "en:…";
+    # normalizziamo a slug lowercase con trattini per combaciare con le chiavi
+    # di PNNS_TO_INTERNAL (config). Le enumerazioni con virgola ("Fish, meat
+    # and eggs") perdono virgole e connettore "and": la tassonomia OFF live
+    # canonizza quel gruppo come "Fish Meat Eggs" -> slug "fish-meat-eggs".
+    # None se assente/vuoto/non stringa.
+    raw_pnns = product.get("pnns_groups_1")
+    pnns_group = None
+    if isinstance(raw_pnns, str):
+        slug = raw_pnns.split(":")[-1].strip().lower()
+        if "," in slug:
+            slug = slug.replace(",", "").replace(" and ", " ")
+        pnns_group = slug.replace(" ", "-") or None
+
     return {
         "barcode": barcode,
         "name": product.get("product_name", ""),
         "brand": product.get("brands") or None,
         "categories": [c.split(":")[-1] for c in product.get("categories_tags", [])],
+        "pnns_group": pnns_group,
         "image_url": product.get("image_front_small_url") or None,
     }
 

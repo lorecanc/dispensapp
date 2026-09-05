@@ -13,6 +13,8 @@ struct ManualEntryView: View {
     @State private var name: String = ""
     @State private var brand: String = ""
     @State private var selectedCategory: String = ""
+    @State private var selectedStorage: String = ""
+    @State private var storageTouched = false
     @State private var expirationDate = Date().addingTimeInterval(86400 * 30)
     @State private var quantity = 1
     @State private var isSaving = false
@@ -35,6 +37,20 @@ struct ManualEntryView: View {
 
             Section {
                 CategoryPicker(selection: $selectedCategory)
+                Picker("Conservazione", selection: storageBinding) {
+                    ForEach(CategoryRegistry.storageCodes, id: \.self) { code in
+                        Label {
+                            Text(CategoryRegistry.storageLabel(for: code))
+                        } icon: {
+                            if let icon = CategoryRegistry.storageIcon(for: code) {
+                                Image(systemName: icon)
+                            }
+                        }
+                        .tag(code)
+                    }
+                }
+                .accessibilityLabel("Conservazione")
+                .accessibilityHint("Il default segue la categoria; tocca per sovrascrivere")
                 DatePicker("Data di scadenza", selection: $expirationDate, displayedComponents: .date)
                 QuantityStepper(quantity: $quantity)
             }
@@ -93,6 +109,18 @@ struct ManualEntryView: View {
         }
     }
 
+    // MARK: - Conservazione (T12)
+
+    /// Stesso pattern di ScanPreviewSheet (T11): finché l'utente non tocca il
+    /// picker il valore mostrato è derivato dalla categoria; solo la selezione
+    /// utente viene inviata (nil altrimenti → il backend persiste la derivazione).
+    private var storageBinding: Binding<String> {
+        Binding(
+            get: { storageTouched ? selectedStorage : CategoryRegistry.storageLocation(for: selectedCategory) },
+            set: { selectedStorage = $0; storageTouched = true }
+        )
+    }
+
     private func saveItem() async {
         isSaving = true
         await store.addManual(
@@ -100,7 +128,8 @@ struct ManualEntryView: View {
             brand: brand.trimmingCharacters(in: .whitespaces).nilIfEmpty,
             expirationDate: expirationDate,
             category: selectedCategory.nilIfEmpty,
-            quantity: quantity
+            quantity: quantity,
+            storageLocation: storageTouched ? selectedStorage : nil
         )
         isSaving = false
         if let error = store.error {

@@ -3,7 +3,7 @@ import SwiftUI
 struct InventoryListView: View {
     @Environment(InventoryStore.self) private var store
     @State private var searchText = ""
-    @State private var selectedCategory: String? = nil
+    @State private var selectedCompartment: Compartment? = nil
     @State private var showSettings = false
     @State private var showDetailItem: InventoryItem?
     @State private var showScanner = false
@@ -39,7 +39,7 @@ struct InventoryListView: View {
             items: store.items,
             archivedIDs: store.archivedIDs,
             searchText: searchText,
-            selectedCategory: selectedCategory
+            selectedCompartment: selectedCompartment
         )
     }
 
@@ -50,7 +50,7 @@ struct InventoryListView: View {
     private struct FilterKey: Hashable {
         let itemsFingerprint: Int
         let searchText: String
-        let selectedCategory: String?
+        let selectedCompartment: Compartment?
         let archivedIDs: Set<Int>
     }
 
@@ -72,7 +72,7 @@ struct InventoryListView: View {
         return FilterKey(
             itemsFingerprint: hasher.finalize(),
             searchText: searchText,
-            selectedCategory: selectedCategory,
+            selectedCompartment: selectedCompartment,
             archivedIDs: store.archivedIDs
         )
     }
@@ -81,7 +81,7 @@ struct InventoryListView: View {
         items: [InventoryItem],
         archivedIDs: Set<Int>,
         searchText: String,
-        selectedCategory: String?
+        selectedCompartment: Compartment?
     ) -> [(ItemStatus, [InventoryItem])] {
         let filtered = items.filter { item in
             guard !archivedIDs.contains(item.id) else { return false }
@@ -93,13 +93,16 @@ struct InventoryListView: View {
                     || (item.brand?.localizedCaseInsensitiveContains(searchText) ?? false)
                     || (item.category?.localizedCaseInsensitiveContains(searchText) ?? false)
             }
-            let matchesCategory: Bool
-            if let selectedCategory {
-                matchesCategory = item.category == selectedCategory
+            // T13: filtro per comparto via CategoryRegistry.compartmentMap.
+            // Category nil/sconosciuta -> visibile solo con "Tutti" (nil).
+            let matchesCompartment: Bool
+            if let selectedCompartment {
+                guard let category = item.category else { return false }
+                matchesCompartment = CategoryRegistry.compartmentMap[category] == selectedCompartment.rawValue
             } else {
-                matchesCategory = true
+                matchesCompartment = true
             }
-            return matchesSearch && matchesCategory
+            return matchesSearch && matchesCompartment
         }
         let grouped = Dictionary(grouping: filtered) {
             ItemStatus.from(statusString: $0.status)
@@ -110,9 +113,9 @@ struct InventoryListView: View {
         }
     }
 
-    // Single source per chip: CategoryRegistry
-    private var categoryOptions: [(key: String, label: String)] {
-        CategoryRegistry.categories
+    // Single source per chip: ordine canonico supermarketOrder (ShoppingModels).
+    private var compartmentOptions: [Compartment] {
+        Compartment.supermarketOrder
     }
 
     var body: some View {
@@ -122,9 +125,9 @@ struct InventoryListView: View {
             Color.pantryCream.ignoresSafeArea()
 
             List {
-                // MARK: Category filter chips — single source CategoryRegistry
+                // MARK: Compartment filter chips — single source Compartment.supermarketOrder
                 Section {
-                    categoryFilterBar
+                    compartmentFilterBar
                         .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 4, trailing: 0))
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
@@ -148,7 +151,7 @@ struct InventoryListView: View {
                         EmptyStateView(
                             imageName: "magnifyingglass",
                             title: "Nessun risultato",
-                            message: "Prova a cambiare ricerca o filtro categoria."
+                            message: "Prova a cambiare ricerca o filtro reparto."
                         )
                         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                         .listRowBackground(Color.clear)
@@ -359,7 +362,7 @@ struct InventoryListView: View {
                 items: store.items,
                 archivedIDs: store.archivedIDs,
                 searchText: searchText,
-                selectedCategory: selectedCategory
+                selectedCompartment: selectedCompartment
             )
         }
     }
@@ -678,30 +681,30 @@ struct InventoryListView: View {
         store.history[id]?.first?.nameSnapshot ?? "Prodotto #\(id)"
     }
 
-    // MARK: - Category filter chips
+    // MARK: - Compartment filter chips
 
-    private var categoryFilterBar: some View {
+    private var compartmentFilterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                categoryChip(label: "Tutti", isSelected: selectedCategory == nil) {
+                compartmentChip(label: "Tutti", isSelected: selectedCompartment == nil) {
                     withAnimation(.easeInOut(duration: 0.2)) {
-                        selectedCategory = nil
+                        selectedCompartment = nil
                     }
                 }
                 .accessibilityLabel("Filtro Tutti")
-                .accessibilityHint("Mostra tutti i prodotti senza filtro categoria")
-                .accessibilityValue(selectedCategory == nil ? "Selezionato" : "Non selezionato")
-                .accessibilityAddTraits(selectedCategory == nil ? .isSelected : [])
+                .accessibilityHint("Mostra tutti i prodotti senza filtro reparto")
+                .accessibilityValue(selectedCompartment == nil ? "Selezionato" : "Non selezionato")
+                .accessibilityAddTraits(selectedCompartment == nil ? .isSelected : [])
 
-                ForEach(categoryOptions, id: \.key) { option in
-                    let isSelected = selectedCategory == option.key
-                    categoryChip(label: option.label, isSelected: isSelected) {
+                ForEach(compartmentOptions, id: \.self) { compartment in
+                    let isSelected = selectedCompartment == compartment
+                    compartmentChip(label: compartment.label, icon: compartment.icon, isSelected: isSelected) {
                         withAnimation(.easeInOut(duration: 0.2)) {
-                            selectedCategory = isSelected ? nil : option.key
+                            selectedCompartment = isSelected ? nil : compartment
                         }
                     }
-                    .accessibilityLabel("Filtro \(option.label)")
-                    .accessibilityHint("Filtra la dispensa per categoria \(option.label)")
+                    .accessibilityLabel("Filtro \(compartment.label)")
+                    .accessibilityHint("Filtra la dispensa per reparto \(compartment.label)")
                     .accessibilityValue(isSelected ? "Selezionato" : "Non selezionato")
                     .accessibilityAddTraits(isSelected ? .isSelected : [])
                 }
@@ -711,28 +714,42 @@ struct InventoryListView: View {
         }
     }
 
-    private func categoryChip(label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+    private func compartmentChip(
+        label: String,
+        icon: String? = nil,
+        isSelected: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
-            Text(label)
-                .font(.subheadline.weight(isSelected ? .semibold : .regular))
-                .foregroundStyle(isSelected ? Color.pantryLinen : Color.textPrimary)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background {
-                    Capsule()
-                        .fill(isSelected ? Color.pantryMoss : Color.pantryCream)
-                        .overlay {
-                            if !isSelected {
-                                Capsule()
-                                    .fill(.thinMaterial)
-                                    .opacity(0.55)
-                            }
-                        }
+            Group {
+                if let icon {
+                    Label(label, systemImage: icon)
+                } else {
+                    Text(label)
                 }
-                .overlay(
-                    Capsule()
-                        .strokeBorder(isSelected ? Color.pantryMoss : Color.pantryOat, lineWidth: 0.5)
-                )
+            }
+            .font(.subheadline.weight(isSelected ? .semibold : .regular))
+            .foregroundStyle(isSelected ? Color.pantryLinen : Color.textPrimary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background {
+                Capsule()
+                    .fill(isSelected ? Color.pantryMoss : Color.pantryCream)
+                    .overlay {
+                        if !isSelected {
+                            Capsule()
+                                .fill(.thinMaterial)
+                                .opacity(0.55)
+                        }
+                    }
+            }
+            .overlay(
+                Capsule()
+                    .strokeBorder(isSelected ? Color.pantryMoss : Color.pantryOat, lineWidth: 0.5)
+            )
+            // T13: hit target HIG >=44pt; la capsule resta sul contenuto.
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         // Material per non-selected: thinMaterial + PantryCream + PantryOat 0.5

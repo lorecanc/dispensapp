@@ -15,6 +15,8 @@ struct ScanPreviewSheet: View {
     @State private var name: String = ""
     @State private var brand: String = ""
     @State private var selectedCategory: String = ""
+    @State private var selectedStorage: String = "dispensa"
+    @State private var storageTouched = false
     @State private var expirationDate = Date().addingTimeInterval(86400 * 30)
     @State private var quantity = 1
     @State private var isSaving = false
@@ -173,6 +175,20 @@ struct ScanPreviewSheet: View {
 
             Section {
                 CategoryPicker(selection: $selectedCategory)
+                Picker("Conservazione", selection: storageBinding) {
+                    ForEach(CategoryRegistry.storageCodes, id: \.self) { code in
+                        Label {
+                            Text(CategoryRegistry.storageLabel(for: code))
+                        } icon: {
+                            if let icon = CategoryRegistry.storageIcon(for: code) {
+                                Image(systemName: icon)
+                            }
+                        }
+                        .tag(code)
+                    }
+                }
+                .accessibilityLabel("Conservazione")
+                .accessibilityHint("Il default segue la categoria; tocca per sovrascrivere")
                 DatePicker("Data di scadenza", selection: $expirationDate, displayedComponents: .date)
                 QuantityStepper(quantity: $quantity)
             }
@@ -450,8 +466,26 @@ struct ScanPreviewSheet: View {
         scanResult = result
         name = result.name ?? ""
         brand = result.brand ?? ""
-        let rawCategory = result.categories.first ?? ""
-        selectedCategory = CategoryRegistry.validCategoryKeys.contains(rawCategory) ? rawCategory : ""
+        // T11: la categoria suggerita dal backend (se valida) vince sul vecchio
+        // fallback (primo tag OFF con chiave valida); backend datati → nil.
+        let validKeys = CategoryRegistry.validCategoryKeys
+        let suggested = result.suggestedCategory.flatMap { validKeys.contains($0) ? $0 : nil }
+        let rawCategory = suggested ?? result.categories.first ?? ""
+        selectedCategory = validKeys.contains(rawCategory) ? rawCategory : ""
+        selectedStorage = CategoryRegistry.storageLocation(for: selectedCategory)
+        storageTouched = false
+    }
+
+    // MARK: - Conservazione (T11)
+
+    /// Finché l'utente non tocca il picker il valore mostrato è derivato dalla
+    /// categoria; solo la selezione utente segna `storageTouched` (e viene inviata,
+    /// nil altrimenti → il backend persiste la derivazione).
+    private var storageBinding: Binding<String> {
+        Binding(
+            get: { storageTouched ? selectedStorage : CategoryRegistry.storageLocation(for: selectedCategory) },
+            set: { selectedStorage = $0; storageTouched = true }
+        )
     }
 
     private func saveItem() async {
@@ -463,7 +497,9 @@ struct ScanPreviewSheet: View {
             expirationDate: expirationDate,
             category: selectedCategory.nilIfEmpty,
             imageURL: scanResult?.imageURL,
-            quantity: quantity
+            quantity: quantity,
+            offTags: scanResult?.categories,
+            storageLocation: storageTouched ? selectedStorage : nil
         )
         isSaving = false
         if let error = store.error {

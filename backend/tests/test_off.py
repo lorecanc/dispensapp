@@ -55,8 +55,75 @@ async def test_fetch_product_valid():
         "name": "Spaghetti",
         "brand": "Barilla",
         "categories": ["pasta", "italian-cuisine"],
+        "pnns_group": None,
         "image_url": "https://example.com/pic.jpg",
     }
+
+
+@pytest.mark.asyncio
+async def test_fetch_product_pnns_free_text():
+    """pnns_groups_1 free text is slugified to a PNNS_TO_INTERNAL key."""
+    data = {
+        "status": 1,
+        "product": {
+            "product_name": "Yogurt bianco",
+            "brands": "",
+            "categories_tags": [],
+            "pnns_groups_1": "Milk and dairy products",
+            "image_front_small_url": None,
+        },
+    }
+    resp = _mock_response(data)
+    patcher = _patch_client(resp)
+
+    with patcher:
+        result = await fetch_product("1234567890123")
+
+    assert result["pnns_group"] == "milk-and-dairy-products"
+
+
+@pytest.mark.asyncio
+async def test_fetch_product_pnns_free_text_with_comma():
+    """Comma in free text must not leak into the slug: "Fish, meat and eggs" -> "fish-meat-eggs"."""
+    data = {
+        "status": 1,
+        "product": {
+            "product_name": "Pollo intero",
+            "brands": "",
+            "categories_tags": [],
+            "pnns_groups_1": "Fish, meat and eggs",
+            "image_front_small_url": None,
+        },
+    }
+    resp = _mock_response(data)
+    patcher = _patch_client(resp)
+
+    with patcher:
+        result = await fetch_product("1234567890123")
+
+    assert result["pnns_group"] == "fish-meat-eggs"
+
+
+@pytest.mark.asyncio
+async def test_fetch_product_pnns_tag_prefix():
+    """Tag form "en:sugary-snacks" keeps the "en:" prefix stripped."""
+    data = {
+        "status": 1,
+        "product": {
+            "product_name": "Cioccolato",
+            "brands": "",
+            "categories_tags": [],
+            "pnns_groups_1": "en:sugary-snacks",
+            "image_front_small_url": None,
+        },
+    }
+    resp = _mock_response(data)
+    patcher = _patch_client(resp)
+
+    with patcher:
+        result = await fetch_product("1234567890123")
+
+    assert result["pnns_group"] == "sugary-snacks"
 
 
 @pytest.mark.asyncio

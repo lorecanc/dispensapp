@@ -97,6 +97,7 @@ class InventoryItem(Base):
     )
     created_by_token = Column(String(36), nullable=True)
     compartment = Column(String(32), nullable=True)
+    storage_location = Column(String(16), nullable=True)
 
     __table_args__ = (
         Index("ix_inventory_items_pantry_expiration", "pantry_id", "expiration_date"),

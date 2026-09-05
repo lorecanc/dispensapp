@@ -30,6 +30,16 @@ def _strip_not_empty(v: Optional[str], field_name: str = "campo") -> Optional[st
     return stripped
 
 
+def _validate_off_tags(v: Optional[list[str]]) -> Optional[list[str]]:
+    # Lunghezza max lista (50) delegata a Field(max_length=...); qui max 200/tag.
+    if v is None:
+        return v
+    for tag in v:
+        if len(tag) > 200:
+            raise ValueError("tag off_category_tags troppo lungo (max 200 caratteri)")
+    return v
+
+
 class ScanRequest(BaseModel):
     barcode: str = Field(pattern=BARCODE_PATTERN)
 
@@ -39,6 +49,7 @@ class ScanResponse(BaseModel):
     name: Optional[str] = None
     brand: Optional[str] = None
     categories: list[str] = []
+    suggested_category: Optional[str] = None
     image_url: Optional[HttpUrl] = None
     found: bool
     message: Optional[str] = None
@@ -53,6 +64,8 @@ class InventoryCreate(BaseModel):
     image_url: Optional[HttpUrl] = None
     quantity: int = Field(default=1, ge=1, le=999)
     compartment: Optional[str] = Field(default=None, max_length=32)
+    off_category_tags: Optional[list[str]] = Field(default=None, max_length=50)
+    storage_location: Optional[str] = Field(default=None, max_length=16)
 
     @field_validator("name")
     @classmethod
@@ -62,13 +75,18 @@ class InventoryCreate(BaseModel):
             raise ValueError("name non può essere vuoto")
         return stripped
 
-    @field_validator("brand", "category", "compartment")
+    @field_validator("brand", "category", "compartment", "storage_location")
     @classmethod
     def strip_optional(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
             return v
         stripped = v.strip()
         return stripped or None
+
+    @field_validator("off_category_tags")
+    @classmethod
+    def validate_off_tags(cls, v: Optional[list[str]]) -> Optional[list[str]]:
+        return _validate_off_tags(v)
 
     @field_validator("expiration_date")
     @classmethod
@@ -84,6 +102,8 @@ class InventoryCreateManual(BaseModel):
     quantity: int = Field(default=1, ge=1, le=999)
     image_url: Optional[HttpUrl] = None
     compartment: Optional[str] = Field(default=None, max_length=32)
+    off_category_tags: Optional[list[str]] = Field(default=None, max_length=50)
+    storage_location: Optional[str] = Field(default=None, max_length=16)
 
     @field_validator("name")
     @classmethod
@@ -93,13 +113,18 @@ class InventoryCreateManual(BaseModel):
             raise ValueError("name non può essere vuoto")
         return stripped
 
-    @field_validator("brand", "category", "compartment")
+    @field_validator("brand", "category", "compartment", "storage_location")
     @classmethod
     def strip_optional(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
             return v
         stripped = v.strip()
         return stripped or None
+
+    @field_validator("off_category_tags")
+    @classmethod
+    def validate_off_tags(cls, v: Optional[list[str]]) -> Optional[list[str]]:
+        return _validate_off_tags(v)
 
     @field_validator("expiration_date")
     @classmethod
@@ -122,6 +147,8 @@ class InventoryOut(BaseModel):
     quantity: int = 1
     compartment: Optional[str] = None
     pantry_id: Optional[int] = None
+    # Raw dal DB: NULL = non impostato, il client deriva il luogo dalla categoria.
+    storage_location: Optional[str] = None
 
     @computed_field
     @property
@@ -137,8 +164,9 @@ class InventoryUpdate(BaseModel):
     image_url: Optional[HttpUrl] = None
     quantity: Optional[int] = Field(default=None, ge=1, le=999)
     compartment: Optional[str] = Field(default=None, max_length=32)
+    storage_location: Optional[str] = Field(default=None, max_length=16)
 
-    @field_validator("name", "brand", "category", "compartment")
+    @field_validator("name", "brand", "category", "compartment", "storage_location")
     @classmethod
     def strip_optional_fields(cls, v: Optional[str]) -> Optional[str]:
         if v is None:

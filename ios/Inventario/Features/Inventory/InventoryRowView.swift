@@ -20,28 +20,34 @@ struct InventoryRowView: View {
                         .lineLimit(1)
                 }
 
-                if let category = item.category, !category.isEmpty {
-                    // Category chip single source da CategoryRegistry
-                    HStack(spacing: 4) {
-                        Image(systemName: "tag.fill")
-                            .font(.caption2)
-                        Text(CategoryRegistry.displayName(for: category))
-                            .font(.caption2.weight(.medium))
+                HStack(spacing: 4) {
+                    if let category = item.category, !category.isEmpty {
+                        // Category chip single source da CategoryRegistry
+                        HStack(spacing: 4) {
+                            Image(systemName: "tag.fill")
+                                .font(.caption2)
+                            Text(CategoryRegistry.displayName(for: category))
+                                .font(.caption2.weight(.medium))
+                        }
+                        .foregroundStyle(Color.textSecondary)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background {
+                            Capsule()
+                                .fill(.thinMaterial)
+                                .overlay(Capsule().fill(Color.pantryLinen.opacity(0.45)))
+                        }
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(Color.pantryOat, lineWidth: 0.5)
+                        )
+                        .accessibilityLabel(CategoryRegistry.displayName(for: category))
+                        .accessibilityHint("Categoria prodotto")
                     }
-                    .foregroundStyle(Color.textSecondary)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background {
-                        Capsule()
-                            .fill(.thinMaterial)
-                            .overlay(Capsule().fill(Color.pantryLinen.opacity(0.45)))
-                    }
-                    .overlay(
-                        Capsule()
-                            .strokeBorder(Color.pantryOat, lineWidth: 0.5)
-                    )
-                    .accessibilityLabel(CategoryRegistry.displayName(for: category))
-                    .accessibilityHint("Categoria prodotto")
+
+                    // T13: badge conservazione; override utente (item.storageLocation,
+                    // T11) se presente, altrimenti derivazione dal registry (T12).
+                    storageBadge
                 }
             }
 
@@ -82,7 +88,7 @@ struct InventoryRowView: View {
                 )
         }
         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        // Accessibilità: VoiceOver combina nome, categoria, stato, quantità
+        // Accessibilità: VoiceOver combina nome, categoria, conservazione, stato, quantità
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityValue(accessibilityValue)
@@ -95,6 +101,7 @@ struct InventoryRowView: View {
         var parts: [String] = [item.name]
         if let brand = item.brand, !brand.isEmpty { parts.append(brand) }
         if let category = item.category { parts.append(CategoryRegistry.displayName(for: category)) }
+        parts.append("Conservazione: \(storageLabel)")
         let status = ItemStatus.from(statusString: item.status)
         parts.append(status.label)
         parts.append("quantità \(item.quantity)")
@@ -109,7 +116,38 @@ struct InventoryRowView: View {
         return "\(status.label), quantità \(item.quantity)"
     }
 
-    private func categoryDisplayName(_ category: String) -> String {
-        CategoryRegistry.displayName(for: category)
+    // MARK: - T13 badge conservazione
+
+    private var storageLocationCode: String {
+        item.storageLocation ?? CategoryRegistry.storageLocation(for: item.category ?? "")
+    }
+
+    private var storageLabel: String {
+        CategoryRegistry.storageLabel(for: storageLocationCode)
+    }
+
+    private var storageBadge: some View {
+        let label = storageLabel
+        return HStack(spacing: 4) {
+            if let icon = CategoryRegistry.storageIcon(for: storageLocationCode) {
+                Image(systemName: icon)
+                    .font(.caption2)
+            }
+            Text(label)
+                .font(.caption2.weight(.medium))
+        }
+        .foregroundStyle(Color.textSecondary)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background {
+            Capsule()
+                .fill(.thinMaterial)
+                .overlay(Capsule().fill(Color.pantryLinen.opacity(0.45)))
+        }
+        .overlay(
+            Capsule()
+                .strokeBorder(Color.pantryOat, lineWidth: 0.5)
+        )
+        .accessibilityLabel("Conservazione: \(label)")
     }
 }

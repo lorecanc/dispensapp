@@ -170,6 +170,74 @@ final class OutboxStoreTests: XCTestCase {
         XCTAssertEqual(second.tempId, -2)
     }
 
+    // MARK: - Campi additivi Create offTags/storageLocation (retro-compatibilità T11)
+
+    /// Entry creata prima dell'upgrade (JSON su disco senza le chiavi nuove):
+    /// decodifica con i campi nil, nessun crash.
+    func testLegacyCreateJSONDecodesWithNilNewFields() throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        // Forma esatta sintetizzata su disco pre-T11: payload della case sotto la
+        // chiave posizionale "_0", senza le chiavi additive offTags/storageLocation.
+        let legacyJSON = """
+        {"nextTempId":-2,"entries":[{"id":"E621E1F8-C36C-495A-93FC-0C247A3E6E5F","createdAt":1750000000,\
+        "pantryId":7,"mutation":{"create":{"_0":{"barcode":"8001","name":"Prodotto storico","brand":"Marca",\
+        "expirationDate":null,"category":"pasta","imageURL":null,"quantity":3,"tempId":-1}}}}]}
+        """
+        try Data(legacyJSON.utf8).write(to: directory.appending(path: "outbox.json"))
+
+        let entries = OutboxStore(directory: directory).entries
+        XCTAssertEqual(entries.count, 1)
+        guard case .create(let payload) = try XCTUnwrap(entries.first).mutation else {
+            return XCTFail("entry non .create")
+        }
+        XCTAssertEqual(payload.name, "Prodotto storico")
+        XCTAssertEqual(payload.quantity, 3)
+        XCTAssertNil(payload.offTags)
+        XCTAssertNil(payload.storageLocation)
+    }
+
+    /// Round-trip su disco con i campi valorizzati: valori preservati.
+    func testCreateWithStorageFieldsRoundTripsThroughDisk() throws {
+        let mutation: OutboxStore.Mutation = .create(.init(
+            barcode: "8001",
+            name: "Gelato",
+            brand: nil,
+            expirationDate: nil,
+            category: "frozen-foods",
+            imageURL: nil,
+            quantity: 2,
+            tempId: -1,
+            offTags: ["en:vegan", "palm-oil-free"],
+            storageLocation: "freezer"
+        ))
+        var store = OutboxStore(directory: directory)
+        store.enqueue(mutation, pantryId: 3)
+
+        let reloaded = OutboxStore(directory: directory).entries
+        XCTAssertEqual(reloaded.count, 1)
+        XCTAssertEqual(reloaded[0].mutation, mutation)
+    }
+
+    /// Re-encode di una entry senza valori: le chiavi nuove restano assenti
+    /// (encodeIfPresent) e il file continua a decodificare come legacy.
+    func testReencodeLegacyCreateOmitsNewKeys() throws {
+        var store = OutboxStore(directory: directory)
+        store.enqueue(makeCreate(tempId: -1), pantryId: 1)
+
+        let raw = try XCTUnwrap(String(
+            data: Data(contentsOf: directory.appending(path: "outbox.json")),
+            encoding: .utf8
+        ))
+        XCTAssertFalse(raw.contains("offTags"), "chiave offTags non scritta quando nil")
+        XCTAssertFalse(raw.contains("storageLocation"), "chiave storageLocation non scritta quando nil")
+
+        guard case .create(let payload) = OutboxStore(directory: directory).entries[0].mutation else {
+            return XCTFail("entry non .create")
+        }
+        XCTAssertNil(payload.offTags)
+        XCTAssertNil(payload.storageLocation)
+    }
+
     // MARK: - Politica di replay: scarto 404/409, stop sui transienti
 
     func testDecisionDropsConflictsAndClientErrors() {

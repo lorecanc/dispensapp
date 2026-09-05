@@ -12,6 +12,10 @@ struct InventoryItem: Codable, Identifiable, Equatable {
     let createdAt: Date
     let quantity: Int
     let status: String
+    /// Campo additivo (T11): scelta utente esplicita ("frigo"|"freezer"|"dispensa"),
+    /// nil = derivata dalla categoria (backend persiste NULL). Decodifica tollerante
+    /// su payload senza chiave; `var` + default: memberwise init invariato.
+    var storageLocation: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, barcode, name, brand, category, quantity, status
@@ -19,6 +23,7 @@ struct InventoryItem: Codable, Identifiable, Equatable {
         case isEstimated = "is_estimated"
         case imageURL = "image_url"
         case createdAt = "created_at"
+        case storageLocation = "storage_location"
     }
 
     static func == (lhs: InventoryItem, rhs: InventoryItem) -> Bool {

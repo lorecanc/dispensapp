@@ -7,6 +7,10 @@ final class APIClient: Sendable {
 
     private static let maxPhotoBytes = 5 * 1024 * 1024
 
+    // Vincoli backend su off_category_tags (backend/schemas.py): oltre, 422.
+    private static let maxOffTags = 50
+    private static let maxOffTagLength = 200
+
     private let session: URLSession
 
     init(session: URLSession? = nil) {
@@ -472,12 +476,15 @@ final class APIClient: Sendable {
         expirationDate: Date?,
         category: String?,
         imageURL: String?,
-        quantity: Int
+        quantity: Int,
+        offTags: [String]? = nil,
+        storageLocation: String? = nil
     ) async throws -> InventoryItem {
         let body = try Self.inventoryBody(
             barcode: barcode, name: name, brand: brand,
             expirationDate: expirationDate, category: category,
-            imageURL: imageURL, quantity: quantity
+            imageURL: imageURL, quantity: quantity,
+            offTags: offTags, storageLocation: storageLocation
         )
         return try await sendInventory(
             method: "POST", path: "api/pantries/\(pantryId)/inventory", body: body
@@ -490,12 +497,13 @@ final class APIClient: Sendable {
         brand: String?,
         expirationDate: Date?,
         category: String?,
-        quantity: Int
+        quantity: Int,
+        storageLocation: String? = nil
     ) async throws -> InventoryItem {
         let body = try Self.inventoryBody(
             name: name, brand: brand,
             expirationDate: expirationDate, category: category,
-            quantity: quantity
+            quantity: quantity, storageLocation: storageLocation
         )
         return try await sendInventory(
             method: "POST", path: "api/pantries/\(pantryId)/inventory/manual", body: body
@@ -563,14 +571,17 @@ final class APIClient: Sendable {
     }
 
     /// Body JSON per la famiglia create/createManual/update: valori null scartati.
-    private static func inventoryBody(
+    /// Internal (non private) per gli unit test @testable del payload.
+    static func inventoryBody(
         barcode: String? = nil,
         name: String?,
         brand: String?,
         expirationDate: Date?,
         category: String?,
         imageURL: String? = nil,
-        quantity: Int?
+        quantity: Int?,
+        offTags: [String]? = nil,
+        storageLocation: String? = nil
     ) throws -> Data {
         var body: [String: Any?] = [
             "barcode": barcode,
@@ -583,6 +594,18 @@ final class APIClient: Sendable {
         if let expirationDate {
             body["expiration_date"] = dateFormatter.string(from: expirationDate)
         }
+        // Campi additivi (T11): presenti nel body solo se valorizzati.
+        if let offTags {
+            // Il backend dà 422 su liste >50 o tag >200 char; le categorie_tags di
+            // OFF portano l'intera catena antenati e possono superarli. OFF non
+            // garantisce un ordine, quindi si scartano i tag troppo lunghi e si
+            // tiene semplicemente il prefisso dei primi 50.
+            let capped = offTags
+                .filter { $0.count <= Self.maxOffTagLength }
+                .prefix(Self.maxOffTags)
+            if !capped.isEmpty { body["off_category_tags"] = Array(capped) }
+        }
+        if let storageLocation, !storageLocation.isEmpty { body["storage_location"] = storageLocation }
         return try JSONSerialization.data(
             withJSONObject: body.filter { $0.value != nil }.mapValues { $0! }
         )
@@ -726,8 +749,9 @@ struct ConsumptionEvent: Codable, Identifiable, Equatable, Sendable {
 }
 
 /// Risposta di GET /api/categories (backend/routes/categories.py).
-/// Consumati sono solo `categories` (key/label) e `compartmentMap`: gli altri campi
-/// restano opzionali, così l'evoluzione del backend non invalida il decode.
+/// Consumati sono `categories` (key/label/storage_location) e `compartmentMap` /
+/// `storageLocationLabels`: gli altri campi restano opzionali, così l'evoluzione
+/// del backend non invalida il decode.
 struct CategoriesResponse: Codable, Equatable, Sendable {
     struct Category: Codable, Equatable, Sendable {
         let key: String
@@ -735,10 +759,14 @@ struct CategoriesResponse: Codable, Equatable, Sendable {
         let shelfLifeDays: Int?
         /// Nil quando la chiave non ha mappatura nei comparti.
         let compartment: String?
+        /// Campo additivo (T9): "frigo"|"freezer"|"dispensa", nil su backend non
+        /// aggiornati. `var` per non rompere i memberwise-init esistenti (T14).
+        var storageLocation: String?
 
         enum CodingKeys: String, CodingKey {
             case key, label, compartment
             case shelfLifeDays = "shelf_life_days"
+            case storageLocation = "storage_location"
         }
     }
 
@@ -750,10 +778,14 @@ struct CategoriesResponse: Codable, Equatable, Sendable {
     let compartments: [String]?
     /// Chiave categoria -> comparto.
     let compartmentMap: [String: String]
+    /// Campo additivo (T9): codice storage -> etichetta IT. Nil su backend non
+    /// aggiornati. `var` per non rompere i memberwise-init esistenti (T14).
+    var storageLocationLabels: [String: String]?
 
     enum CodingKeys: String, CodingKey {
         case categories, labels, compartments
         case defaultShelfLifeDays = "default_shelf_life_days"
         case compartmentMap = "compartment_map"
+        case storageLocationLabels = "storage_location_labels"
     }
 }

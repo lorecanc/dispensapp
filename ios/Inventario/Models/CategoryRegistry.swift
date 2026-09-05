@@ -27,19 +27,66 @@ enum CategoryRegistry {
         return current.compartmentMap
     }
 
+    /// Canonical category key -> default storage location ("frigo"|"freezer"|"dispensa").
+    static var storageDefaults: [String: String] {
+        lock.lock(); defer { lock.unlock() }
+        return current.storageDefaults
+    }
+
+    /// Storage code -> display label.
+    static var storageLabels: [String: String] {
+        lock.lock(); defer { lock.unlock() }
+        return current.storageLabels
+    }
+
+    /// Default storage location for a category; unknown keys fall back to "dispensa".
+    static func storageLocation(for categoryKey: String) -> String {
+        storageDefaults[categoryKey] ?? "dispensa"
+    }
+
+    /// Known storage codes, in picker display order.
+    static let storageCodes = ["frigo", "freezer", "dispensa"]
+
+    /// Storage code -> display label; unknown codes fall back to the raw code.
+    static func storageLabel(for code: String) -> String {
+        storageLabels[code] ?? code
+    }
+
+    /// Storage code -> SF Symbol name (icone già in uso nell'app: refrigerator.fill,
+    /// snowflake, cabinet.fill). Codici sconosciuti -> nil, cioè solo testo:
+    /// comportamento uniforme tra badge (InventoryRowView) e picker.
+    static func storageIcon(for code: String) -> String? {
+        switch code {
+        case "frigo": return "refrigerator.fill"
+        case "freezer": return "snowflake"
+        case "dispensa": return "cabinet.fill"
+        default: return nil
+        }
+    }
+
     // MARK: - Update from /api/categories
 
     /// Replaces the embedded snapshot with the GET /api/categories response.
     /// An empty categories list is ignored: the current snapshot is kept
-    /// (a degraded server response must never wipe the registry).
+    /// (a degraded server response must never wipe the registry). The same
+    /// anti-wipe guard applies to the additive storage fields: missing or
+    /// empty payload values keep the current maps.
     static func update(with response: CategoriesResponse) {
         guard !response.categories.isEmpty else { return }
-        let next = Snapshot(
-            categories: response.categories.map { (key: $0.key, label: $0.label) },
-            compartmentMap: response.compartmentMap
+        let payloadDefaults = Dictionary(
+            response.categories.compactMap { cat in
+                cat.storageLocation.map { (cat.key, $0) }
+            },
+            uniquingKeysWith: { first, _ in first }
         )
+        let payloadLabels = response.storageLocationLabels ?? [:]
         lock.lock(); defer { lock.unlock() }
-        current = next
+        current = Snapshot(
+            categories: response.categories.map { (key: $0.key, label: $0.label) },
+            compartmentMap: response.compartmentMap,
+            storageDefaults: payloadDefaults.isEmpty ? current.storageDefaults : payloadDefaults,
+            storageLabels: payloadLabels.isEmpty ? current.storageLabels : payloadLabels
+        )
     }
 
     /// Restores the embedded fallback snapshot (test isolation / offline recovery).
@@ -53,6 +100,8 @@ enum CategoryRegistry {
     private struct Snapshot {
         var categories: [(key: String, label: String)]
         var compartmentMap: [String: String]
+        var storageDefaults: [String: String]
+        var storageLabels: [String: String]
     }
 
     /// Offline fallback: static copy of the backend registry
@@ -115,6 +164,42 @@ enum CategoryRegistry {
             "alcoholic-beverages": "Cantina",
             "bread-bakery": "Forno e Panetteria",
             "cleaning-hygiene": "Igiene e Casa",
+        ],
+        storageDefaults: [
+            // frigo
+            "fresh-milk": "frigo",
+            "yogurts": "frigo",
+            "cheeses": "frigo",
+            "cold-cuts": "frigo",
+            "meat": "frigo",
+            "fish": "frigo",
+            "fresh-vegetables": "frigo",
+            // freezer
+            "frozen-foods": "freezer",
+            // dispensa
+            "fresh-fruits": "dispensa",
+            "eggs": "dispensa",
+            "uht-milk": "dispensa",
+            "canned-vegetables": "dispensa",
+            "canned-fish": "dispensa",
+            "pasta": "dispensa",
+            "rice": "dispensa",
+            "legumes": "dispensa",
+            "flours": "dispensa",
+            "sauces-condiments": "dispensa",
+            "oils-vinegars": "dispensa",
+            "sweets-snacks": "dispensa",
+            "bread-bakery": "dispensa",
+            "beverages-water": "dispensa",
+            "beverages-juices": "dispensa",
+            "coffee-tea": "dispensa",
+            "alcoholic-beverages": "dispensa",
+            "cleaning-hygiene": "dispensa",
+        ],
+        storageLabels: [
+            "frigo": "Frigo",
+            "freezer": "Freezer",
+            "dispensa": "Dispensa",
         ]
     )
 

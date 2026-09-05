@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from backend.config import (
     CATEGORY_ALIASES,
+    CATEGORY_STORAGE_DEFAULT,
     COMPARTMENT_MAP,
+    DEFAULT_STORAGE,
     OFF_TO_INTERNAL,
+    PNNS_TO_INTERNAL,
     SUPER_MARKET_COMPARTMENTS,
+    normalize_category,
 )
 
 # Ordine supermercato per ordinamento sezioni markdown
@@ -77,3 +81,49 @@ def infer_compartment(
 
     # 4) default
     return DEFAULT_COMPARTMENT
+
+
+def storage_for_category(category: str | None) -> str:
+    """Luogo di conservazione predefinito per categoria interna (fallback: DEFAULT_STORAGE)."""
+    norm = normalize_category(category)
+    if norm is None:
+        return DEFAULT_STORAGE
+    return CATEGORY_STORAGE_DEFAULT.get(norm, DEFAULT_STORAGE)
+
+
+def suggest_category(
+    off_category_tags: list[str] | None = None,
+    pnns_group: str | None = None,
+) -> str | None:
+    """Proponi categoria interna da tag OFF e gruppo PNNS.
+
+    Cascata:
+    1) override conservazione: frozen-foods vince su canned-vegetables/canned-fish
+    2) primo tag che normalizza a una chiave di COMPARTMENT_MAP
+    3) PNNS_TO_INTERNAL su pnns_group (slug lowercase già normalizzato)
+    4) None se nulla matcha
+    """
+    normalized = [
+        norm
+        for tag in (off_category_tags or [])
+        if isinstance(tag, str) and (norm := _normalize_tag(tag))
+    ]
+
+    # 1) override conservazione (freezer prima dello scatolame)
+    if "frozen-foods" in normalized:
+        return "frozen-foods"
+    for norm in normalized:
+        if norm in ("canned-vegetables", "canned-fish"):
+            return norm
+
+    # 2) primo tag che mappa a una categoria nota
+    for norm in normalized:
+        if norm in COMPARTMENT_MAP:
+            return norm
+
+    # 3) fallback PNNS
+    if isinstance(pnns_group, str) and pnns_group:
+        return PNNS_TO_INTERNAL.get(pnns_group)
+
+    # 4) nessun suggerimento
+    return None

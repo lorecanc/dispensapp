@@ -66,6 +66,49 @@ CATEGORY_LABELS = {
     "cleaning-hygiene": "Igiene e pulizia",
 }
 
+# Luogo di conservazione predefinito per categoria (chiavi = CATEGORY_LABELS)
+CATEGORY_STORAGE_DEFAULT: dict[str, str] = {
+    # frigo
+    "fresh-milk": "frigo",
+    "yogurts": "frigo",
+    "cheeses": "frigo",
+    "cold-cuts": "frigo",
+    "meat": "frigo",
+    "fish": "frigo",
+    "fresh-vegetables": "frigo",
+    # freezer
+    "frozen-foods": "freezer",
+    # dispensa
+    "fresh-fruits": "dispensa",
+    "eggs": "dispensa",
+    "uht-milk": "dispensa",
+    "canned-vegetables": "dispensa",
+    "canned-fish": "dispensa",
+    "pasta": "dispensa",
+    "rice": "dispensa",
+    "legumes": "dispensa",
+    "flours": "dispensa",
+    "sauces-condiments": "dispensa",
+    "oils-vinegars": "dispensa",
+    "sweets-snacks": "dispensa",
+    "bread-bakery": "dispensa",
+    "beverages-water": "dispensa",
+    "beverages-juices": "dispensa",
+    "coffee-tea": "dispensa",
+    "alcoholic-beverages": "dispensa",
+    "cleaning-hygiene": "dispensa",
+}
+
+# Fallback per chiavi categoria sconosciute
+DEFAULT_STORAGE = "dispensa"
+
+# Etichette IT luoghi di conservazione
+STORAGE_LOCATION_LABELS: dict[str, str] = {
+    "frigo": "Frigo",
+    "freezer": "Freezer",
+    "dispensa": "Dispensa",
+}
+
 # Alias legacy -> canonico (normalizzazione categorie)
 # es. OFF o dati legacy possono contenere "yogurt" singolare; canonical è "yogurts"
 CATEGORY_ALIASES: dict[str, str] = {
@@ -174,6 +217,22 @@ OFF_TO_INTERNAL: dict[str, str] = {
     "cleaning": "cleaning-hygiene",
     "hygiene": "cleaning-hygiene",
     "detergents": "cleaning-hygiene",
+}
+
+# pnns_groups_1 OFF -> categoria interna (mappa grossolana; chiavi = slug dei
+# 9 valori possibili di groups_1; "composite-foods" escluso intenzionalmente
+# perché troppo generico)
+PNNS_TO_INTERNAL: dict[str, str] = {
+    # "Fish, meat and eggs" -> mappato su carne (scelta grossolana: il gruppo
+    # mescola proteine animali; il reparto interno più frequente è la carne)
+    "fish-meat-eggs": "meat",
+    "milk-and-dairy-products": "fresh-milk",
+    "sugary-snacks": "sweets-snacks",
+    "salty-snacks": "sweets-snacks",
+    "fruits-and-vegetables": "fresh-vegetables",
+    "cereals-and-potatoes": "pasta",
+    "fat-and-sauces": "oils-vinegars",
+    "beverages": "beverages-juices",
 }
 
 
