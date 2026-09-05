@@ -5,39 +5,7 @@ struct InventoryRowView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            AsyncImage(url: item.imageURL.flatMap { URL(string: $0) }) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 56, height: 56)
-                        // Liquid glass style: cornerRadius maggiore, .continuous
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .strokeBorder(Color.pantryOat.opacity(0.6), lineWidth: 0.5)
-                        )
-                case .failure:
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.pantryOat.opacity(0.35))
-                        .frame(width: 56, height: 56)
-                        .overlay {
-                            Image(systemName: "photo")
-                                .foregroundStyle(Color.textSecondary)
-                        }
-                case .empty:
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.pantryOat.opacity(0.25))
-                        .frame(width: 56, height: 56)
-                        .overlay {
-                            ProgressView()
-                                .tint(Color.pantryMoss)
-                        }
-                @unknown default:
-                    EmptyView()
-                }
-            }
+            CachedThumbnail(url: item.imageURL.flatMap { URL(string: $0) }, side: 56)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.name)

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
+from backend.dependencies.pantry import require_known_token
 from backend.models import ScanHistory
 
 router = APIRouter(prefix="/api", tags=["suggestions"])
@@ -11,6 +12,7 @@ router = APIRouter(prefix="/api", tags=["suggestions"])
 def list_suggestions(
     q: str = Query(default="", description="prefix filter case-insensitive"),
     db: Session = Depends(get_db),
+    current_token: str = Depends(require_known_token),
 ):
     query = db.query(ScanHistory)
     if q and q.strip():

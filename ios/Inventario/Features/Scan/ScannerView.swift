@@ -111,11 +111,11 @@ struct ScannerViewWrapper: View {
                         // Layer 2: banner top auto-dismiss 2s.
                         VStack(spacing: 0) {
                             if let successMessage {
-                                SuccessBanner(message: successMessage) {
+                                BannerView(message: successMessage, style: .success) {
                                     self.successMessage = nil
                                 }
                             } else if let errorMessage {
-                                ErrorBanner(message: errorMessage) {
+                                BannerView(message: errorMessage, style: .error) {
                                     self.errorMessage = nil
                                 }
                             }

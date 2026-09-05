@@ -19,19 +19,23 @@ final class APIClient: Sendable {
         }
     }
 
-    private func makeDecoder() -> JSONDecoder {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .inventoryDate
-        return decoder
-    }
-
-    private static func makeDateFormatter() -> DateFormatter {
+    // DateFormatter/JSONDecoder/JSONEncoder sono usati in lettura dopo la
+    // configurazione: condividerli è sicuro (DateFormatter è thread-safe da iOS 7).
+    private nonisolated(unsafe) static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         f.locale = Locale(identifier: "en_US_POSIX")
         f.timeZone = TimeZone(secondsFromGMT: 0)
         return f
-    }
+    }()
+
+    private nonisolated(unsafe) static let decoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .inventoryDate
+        return decoder
+    }()
+
+    private nonisolated(unsafe) static let encoder = JSONEncoder()
 
     private func resolvedBaseURL() throws -> URL {
         guard let url = APIConfig.baseURL else { throw APIError.invalidURL }
@@ -46,11 +50,11 @@ final class APIClient: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(["barcode": barcode])
+        request.httpBody = try Self.encoder.encode(["barcode": barcode])
         request.timeoutInterval = 10
 
         let data = try await perform(request)
-        return try makeDecoder().decode(ScanResult.self, from: data)
+        return try Self.decoder.decode(ScanResult.self, from: data)
     }
 
     // MARK: - Contribute to Open Food Facts (via backend)
@@ -96,7 +100,7 @@ final class APIClient: Sendable {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let data = try await perform(request)
-        return try makeDecoder().decode(ContributeResult.self, from: data)
+        return try Self.decoder.decode(ContributeResult.self, from: data)
     }
 
     func uploadPhoto(
@@ -136,7 +140,7 @@ final class APIClient: Sendable {
         request.httpBody = body
 
         let data = try await perform(request)
-        return try makeDecoder().decode(ContributeResult.self, from: data)
+        return try Self.decoder.decode(ContributeResult.self, from: data)
     }
 
     // MARK: - Create from scan
@@ -150,27 +154,12 @@ final class APIClient: Sendable {
         imageURL: String?,
         quantity: Int
     ) async throws -> InventoryItem {
-        let url = try resolvedBaseURL().appending(path: "api/inventory")
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        var body: [String: Any?] = [
-            "barcode": barcode,
-            "name": name,
-            "brand": brand,
-            "category": category,
-            "image_url": imageURL,
-            "quantity": quantity,
-        ]
-        if let expirationDate {
-            body["expiration_date"] = Self.makeDateFormatter().string(from: expirationDate)
-        }
-        let filteredBody = body.filter { $0.value != nil }.mapValues { $0! }
-        request.httpBody = try JSONSerialization.data(withJSONObject: filteredBody)
-
-        let data = try await perform(request)
-        return try makeDecoder().decode(InventoryItem.self, from: data)
+        let body = try Self.inventoryBody(
+            barcode: barcode, name: name, brand: brand,
+            expirationDate: expirationDate, category: category,
+            imageURL: imageURL, quantity: quantity
+        )
+        return try await sendInventory(method: "POST", path: "api/inventory", body: body)
     }
 
     // MARK: - Create manual
@@ -182,25 +171,12 @@ final class APIClient: Sendable {
         category: String?,
         quantity: Int
     ) async throws -> InventoryItem {
-        let url = try resolvedBaseURL().appending(path: "api/inventory/manual")
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        var body: [String: Any?] = [
-            "name": name,
-            "brand": brand,
-            "category": category,
-            "quantity": quantity,
-        ]
-        if let expirationDate {
-            body["expiration_date"] = Self.makeDateFormatter().string(from: expirationDate)
-        }
-        let filteredBody = body.filter { $0.value != nil }.mapValues { $0! }
-        request.httpBody = try JSONSerialization.data(withJSONObject: filteredBody)
-
-        let data = try await perform(request)
-        return try makeDecoder().decode(InventoryItem.self, from: data)
+        let body = try Self.inventoryBody(
+            name: name, brand: brand,
+            expirationDate: expirationDate, category: category,
+            quantity: quantity
+        )
+        return try await sendInventory(method: "POST", path: "api/inventory/manual", body: body)
     }
 
     // MARK: - Update
@@ -213,25 +189,12 @@ final class APIClient: Sendable {
         category: String? = nil,
         quantity: Int? = nil
     ) async throws -> InventoryItem {
-        let url = try resolvedBaseURL().appending(path: "api/inventory/\(id)")
-        var request = URLRequest(url: url)
-        request.httpMethod = "PATCH"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        var body: [String: Any?] = [
-            "name": name,
-            "brand": brand,
-            "category": category,
-            "quantity": quantity,
-        ]
-        if let expirationDate {
-            body["expiration_date"] = Self.makeDateFormatter().string(from: expirationDate)
-        }
-        let filteredBody = body.filter { $0.value != nil }.mapValues { $0! }
-        request.httpBody = try JSONSerialization.data(withJSONObject: filteredBody)
-
-        let data = try await perform(request)
-        return try makeDecoder().decode(InventoryItem.self, from: data)
+        let body = try Self.inventoryBody(
+            name: name, brand: brand,
+            expirationDate: expirationDate, category: category,
+            quantity: quantity
+        )
+        return try await sendInventory(method: "PATCH", path: "api/inventory/\(id)", body: body)
     }
 
     // MARK: - List
@@ -242,76 +205,23 @@ final class APIClient: Sendable {
         request.httpMethod = "GET"
 
         let data = try await perform(request)
-        return try makeDecoder().decode([InventoryItem].self, from: data)
+        return try Self.decoder.decode([InventoryItem].self, from: data)
     }
 
     // MARK: - Delete
 
     func delete(id: Int) async throws {
-        let url = try resolvedBaseURL().appending(path: "api/inventory/\(id)")
-        var request = URLRequest(url: url)
-        request.httpMethod = "DELETE"
-        request = decorated(request)
-
-        let (_, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.transport(URLError(.badServerResponse))
-        }
-        guard httpResponse.statusCode == 204 || httpResponse.statusCode == 200 else {
-            throw APIError.http(status: httpResponse.statusCode, message: nil)
-        }
+        try await deleteItem(at: "api/inventory/\(id)")
     }
 
     // MARK: - Export Markdown
 
     func exportScoped(pantryId: Int) async throws -> String {
-        let url = try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/inventory/export")
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("text/markdown", forHTTPHeaderField: "Accept")
-        request = decorated(request)
-
-        let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.transport(URLError(.badServerResponse))
-        }
-        guard (200...299).contains(httpResponse.statusCode) else {
-            if httpResponse.statusCode == 404 {
-                throw APIError.notFound
-            }
-            throw APIError.http(status: httpResponse.statusCode, message: nil)
-        }
-        guard let markdown = String(data: data, encoding: .utf8) else {
-            throw APIError.decoding(DecodingError.dataCorrupted(
-                DecodingError.Context(codingPath: [], debugDescription: "Response is not valid UTF-8 text")
-            ))
-        }
-        return markdown
+        try await fetchMarkdown(from: "api/pantries/\(pantryId)/inventory/export")
     }
 
     func exportMarkdown() async throws -> String {
-        let url = try resolvedBaseURL().appending(path: "api/inventory/export")
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("text/markdown", forHTTPHeaderField: "Accept")
-        request = decorated(request)
-
-        let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.transport(URLError(.badServerResponse))
-        }
-        guard (200...299).contains(httpResponse.statusCode) else {
-            if httpResponse.statusCode == 404 {
-                throw APIError.notFound
-            }
-            throw APIError.http(status: httpResponse.statusCode, message: nil)
-        }
-        guard let markdown = String(data: data, encoding: .utf8) else {
-            throw APIError.decoding(DecodingError.dataCorrupted(
-                DecodingError.Context(codingPath: [], debugDescription: "Response is not valid UTF-8 text")
-            ))
-        }
-        return markdown
+        try await fetchMarkdown(from: "api/inventory/export")
     }
 
     // MARK: - Shopping Lists
@@ -321,7 +231,7 @@ final class APIClient: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         let data = try await perform(request)
-        return try makeDecoder().decode([ShoppingList].self, from: data)
+        return try Self.decoder.decode([ShoppingList].self, from: data)
     }
 
     func createShoppingList(pantryId: Int, name: String) async throws -> ShoppingList {
@@ -331,7 +241,7 @@ final class APIClient: Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["name": name])
         let data = try await perform(request)
-        return try makeDecoder().decode(ShoppingList.self, from: data)
+        return try Self.decoder.decode(ShoppingList.self, from: data)
     }
 
     func getShoppingList(pantryId: Int, listId: Int) async throws -> ShoppingList {
@@ -339,7 +249,7 @@ final class APIClient: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         let data = try await perform(request)
-        return try makeDecoder().decode(ShoppingList.self, from: data)
+        return try Self.decoder.decode(ShoppingList.self, from: data)
     }
 
     func addShoppingItem(pantryId: Int, listId: Int, name: String, quantity: Int, compartment: String?) async throws -> ShoppingListItem {
@@ -351,7 +261,7 @@ final class APIClient: Sendable {
         if let compartment, !compartment.isEmpty { body["compartment"] = compartment }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let data = try await perform(request)
-        return try makeDecoder().decode(ShoppingListItem.self, from: data)
+        return try Self.decoder.decode(ShoppingListItem.self, from: data)
     }
 
     func toggleShoppingItem(pantryId: Int, listId: Int, itemId: Int, checked: Bool) async throws -> ShoppingListItem {
@@ -361,7 +271,7 @@ final class APIClient: Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["checked": checked])
         let data = try await perform(request)
-        return try makeDecoder().decode(ShoppingListItem.self, from: data)
+        return try Self.decoder.decode(ShoppingListItem.self, from: data)
     }
 
     func deleteShoppingItem(pantryId: Int, listId: Int, itemId: Int) async throws {
@@ -375,7 +285,7 @@ final class APIClient: Sendable {
         }
         guard httpResponse.statusCode == 204 || httpResponse.statusCode == 200 else {
             if httpResponse.statusCode == 404 { throw APIError.notFound }
-            let body = (try? JSONDecoder().decode([String: String].self, from: data)).flatMap { $0["detail"] ?? $0["message"] }
+            let body = (try? Self.decoder.decode([String: String].self, from: data)).flatMap { $0["detail"] ?? $0["message"] }
             throw APIError.http(status: httpResponse.statusCode, message: body)
         }
     }
@@ -391,7 +301,7 @@ final class APIClient: Sendable {
         }
         guard httpResponse.statusCode == 204 || httpResponse.statusCode == 200 else {
             if httpResponse.statusCode == 404 { throw APIError.notFound }
-            let body = (try? JSONDecoder().decode([String: String].self, from: data)).flatMap { $0["detail"] ?? $0["message"] }
+            let body = (try? Self.decoder.decode([String: String].self, from: data)).flatMap { $0["detail"] ?? $0["message"] }
             throw APIError.http(status: httpResponse.statusCode, message: body)
         }
     }
@@ -408,7 +318,7 @@ final class APIClient: Sendable {
         }
         guard (200...299).contains(httpResponse.statusCode) else {
             if httpResponse.statusCode == 404 { throw APIError.notFound }
-            let body = (try? JSONDecoder().decode([String: String].self, from: data)).flatMap { $0["detail"] ?? $0["message"] }
+            let body = (try? Self.decoder.decode([String: String].self, from: data)).flatMap { $0["detail"] ?? $0["message"] }
             throw APIError.http(status: httpResponse.statusCode, message: body)
         }
         guard let markdown = String(data: data, encoding: .utf8) else {
@@ -428,7 +338,18 @@ final class APIClient: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         let data = try await perform(request)
-        return try makeDecoder().decode([Suggestion].self, from: data)
+        return try Self.decoder.decode([Suggestion].self, from: data)
+    }
+
+    // MARK: - Categories
+
+    /// Registry backend di categorie, shelf life e comparti (GET /api/categories).
+    func fetchCategories() async throws -> CategoriesResponse {
+        let url = try resolvedBaseURL().appending(path: "api/categories")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        let data = try await perform(request)
+        return try Self.decoder.decode(CategoriesResponse.self, from: data)
     }
 
     // MARK: - Pantry auth
@@ -440,7 +361,7 @@ final class APIClient: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         let data = try await perform(request)
-        return try makeDecoder().decode([Pantry].self, from: data)
+        return try Self.decoder.decode([Pantry].self, from: data)
     }
 
     func createPantry(name: String) async throws -> Pantry {
@@ -450,7 +371,7 @@ final class APIClient: Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["name": name])
         let data = try await perform(request)
-        return try makeDecoder().decode(Pantry.self, from: data)
+        return try Self.decoder.decode(Pantry.self, from: data)
     }
 
     func deletePantry(id: Int) async throws {
@@ -478,7 +399,7 @@ final class APIClient: Sendable {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: ["token": token])
             let data = try await perform(request)
-            return try makeDecoder().decode(Invite.self, from: data)
+            return try Self.decoder.decode(Invite.self, from: data)
         } catch {
             let isNotFound: Bool = {
                 if let api = error as? APIError {
@@ -494,7 +415,7 @@ final class APIClient: Sendable {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: ["token": token])
             let data = try await perform(request)
-            return try makeDecoder().decode(Invite.self, from: data)
+            return try Self.decoder.decode(Invite.self, from: data)
         }
     }
 
@@ -506,7 +427,7 @@ final class APIClient: Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: [:] as [String: String])
         let data = try await perform(request)
-        return try makeDecoder().decode(Invite.self, from: data)
+        return try Self.decoder.decode(Invite.self, from: data)
     }
 
     func listMembers(pantryId: Int) async throws -> [PantryMember] {
@@ -514,7 +435,7 @@ final class APIClient: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         let data = try await perform(request)
-        return try makeDecoder().decode([PantryMember].self, from: data)
+        return try Self.decoder.decode([PantryMember].self, from: data)
     }
 
     // Mai log del token.
@@ -540,7 +461,7 @@ final class APIClient: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         let data = try await perform(request)
-        return try makeDecoder().decode([InventoryItem].self, from: data)
+        return try Self.decoder.decode([InventoryItem].self, from: data)
     }
 
     func createScoped(
@@ -553,24 +474,14 @@ final class APIClient: Sendable {
         imageURL: String?,
         quantity: Int
     ) async throws -> InventoryItem {
-        let url = try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/inventory")
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        var body: [String: Any?] = [
-            "barcode": barcode,
-            "name": name,
-            "brand": brand,
-            "category": category,
-            "image_url": imageURL,
-            "quantity": quantity,
-        ]
-        if let expirationDate {
-            body["expiration_date"] = Self.makeDateFormatter().string(from: expirationDate)
-        }
-        request.httpBody = try JSONSerialization.data(withJSONObject: body.filter { $0.value != nil }.mapValues { $0! })
-        let data = try await perform(request)
-        return try makeDecoder().decode(InventoryItem.self, from: data)
+        let body = try Self.inventoryBody(
+            barcode: barcode, name: name, brand: brand,
+            expirationDate: expirationDate, category: category,
+            imageURL: imageURL, quantity: quantity
+        )
+        return try await sendInventory(
+            method: "POST", path: "api/pantries/\(pantryId)/inventory", body: body
+        )
     }
 
     func createManualScoped(
@@ -581,22 +492,14 @@ final class APIClient: Sendable {
         category: String?,
         quantity: Int
     ) async throws -> InventoryItem {
-        let url = try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/inventory/manual")
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        var body: [String: Any?] = [
-            "name": name,
-            "brand": brand,
-            "category": category,
-            "quantity": quantity,
-        ]
-        if let expirationDate {
-            body["expiration_date"] = Self.makeDateFormatter().string(from: expirationDate)
-        }
-        request.httpBody = try JSONSerialization.data(withJSONObject: body.filter { $0.value != nil }.mapValues { $0! })
-        let data = try await perform(request)
-        return try makeDecoder().decode(InventoryItem.self, from: data)
+        let body = try Self.inventoryBody(
+            name: name, brand: brand,
+            expirationDate: expirationDate, category: category,
+            quantity: quantity
+        )
+        return try await sendInventory(
+            method: "POST", path: "api/pantries/\(pantryId)/inventory/manual", body: body
+        )
     }
 
     func updateScoped(
@@ -608,26 +511,97 @@ final class APIClient: Sendable {
         category: String? = nil,
         quantity: Int? = nil
     ) async throws -> InventoryItem {
-        let url = try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/inventory/\(id)")
-        var request = URLRequest(url: url)
-        request.httpMethod = "PATCH"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        var body: [String: Any?] = [
-            "name": name,
-            "brand": brand,
-            "category": category,
-            "quantity": quantity,
-        ]
-        if let expirationDate {
-            body["expiration_date"] = Self.makeDateFormatter().string(from: expirationDate)
-        }
-        request.httpBody = try JSONSerialization.data(withJSONObject: body.filter { $0.value != nil }.mapValues { $0! })
-        let data = try await perform(request)
-        return try makeDecoder().decode(InventoryItem.self, from: data)
+        let body = try Self.inventoryBody(
+            name: name, brand: brand,
+            expirationDate: expirationDate, category: category,
+            quantity: quantity
+        )
+        return try await sendInventory(
+            method: "PATCH", path: "api/pantries/\(pantryId)/inventory/\(id)", body: body
+        )
     }
 
     func deleteScoped(pantryId: Int, id: Int) async throws {
-        let url = try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/inventory/\(id)")
+        try await deleteItem(at: "api/pantries/\(pantryId)/inventory/\(id)")
+    }
+
+    // Consumo atomico server-side: 409 se quantità insufficiente.
+    func consume(pantryId: Int, itemId: Int, delta: Int = 1, reason: String? = nil) async throws -> InventoryItem {
+        let url = try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/inventory/\(itemId)/consume")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: Any] = ["delta": delta]
+        if let reason, !reason.isEmpty { body["reason"] = reason }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let data = try await perform(request)
+        return try Self.decoder.decode(InventoryItem.self, from: data)
+    }
+
+    func history(pantryId: Int, itemId: Int, limit: Int = 50) async throws -> [ConsumptionEvent] {
+        var comps = URLComponents(
+            url: try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/inventory/\(itemId)/history"),
+            resolvingAgainstBaseURL: false
+        )!
+        comps.queryItems = [URLQueryItem(name: "limit", value: "\(limit)")]
+        guard let url = comps.url else { throw APIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        let data = try await perform(request)
+        return try Self.decoder.decode([ConsumptionEvent].self, from: data)
+    }
+
+    private func decorated(_ request: URLRequest) -> URLRequest {
+        var req = request
+        // Tutte le /api/* richiedono X-Pantry-Token (auth sistemica, non solo /pantries/).
+        if let path = req.url?.path, path.contains("/api/") {
+            if req.value(forHTTPHeaderField: PantryToken.headerName) == nil {
+                req.setValue(PantryToken.value, forHTTPHeaderField: PantryToken.headerName)
+            }
+        }
+        return req
+    }
+
+    /// Body JSON per la famiglia create/createManual/update: valori null scartati.
+    private static func inventoryBody(
+        barcode: String? = nil,
+        name: String?,
+        brand: String?,
+        expirationDate: Date?,
+        category: String?,
+        imageURL: String? = nil,
+        quantity: Int?
+    ) throws -> Data {
+        var body: [String: Any?] = [
+            "barcode": barcode,
+            "name": name,
+            "brand": brand,
+            "category": category,
+            "image_url": imageURL,
+            "quantity": quantity,
+        ]
+        if let expirationDate {
+            body["expiration_date"] = dateFormatter.string(from: expirationDate)
+        }
+        return try JSONSerialization.data(
+            withJSONObject: body.filter { $0.value != nil }.mapValues { $0! }
+        )
+    }
+
+    /// POST/PATCH con body JSON che risponde con un InventoryItem.
+    private func sendInventory(method: String, path: String, body: Data) async throws -> InventoryItem {
+        let url = try resolvedBaseURL().appending(path: path)
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = body
+        let data = try await perform(request)
+        return try Self.decoder.decode(InventoryItem.self, from: data)
+    }
+
+    /// DELETE che si aspetta 200/204.
+    private func deleteItem(at path: String) async throws {
+        let url = try resolvedBaseURL().appending(path: path)
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
         request = decorated(request)
@@ -641,41 +615,27 @@ final class APIClient: Sendable {
         }
     }
 
-    // Consumo atomico server-side: 409 se quantità insufficiente.
-    func consume(pantryId: Int, itemId: Int, delta: Int = 1, reason: String? = nil) async throws -> InventoryItem {
-        let url = try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/inventory/\(itemId)/consume")
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        var body: [String: Any] = ["delta": delta]
-        if let reason, !reason.isEmpty { body["reason"] = reason }
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let data = try await perform(request)
-        return try makeDecoder().decode(InventoryItem.self, from: data)
-    }
-
-    func history(pantryId: Int, itemId: Int, limit: Int = 50) async throws -> [ConsumptionEvent] {
-        var comps = URLComponents(
-            url: try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/inventory/\(itemId)/history"),
-            resolvingAgainstBaseURL: false
-        )!
-        comps.queryItems = [URLQueryItem(name: "limit", value: "\(limit)")]
-        guard let url = comps.url else { throw APIError.invalidURL }
+    /// GET che risponde text/markdown.
+    private func fetchMarkdown(from path: String) async throws -> String {
+        let url = try resolvedBaseURL().appending(path: path)
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        let data = try await perform(request)
-        return try makeDecoder().decode([ConsumptionEvent].self, from: data)
-    }
-
-    private func decorated(_ request: URLRequest) -> URLRequest {
-        var req = request
-        // Tutte le /api/* richiedono X-Pantry-Token (auth sistemica, non solo /pantries/).
-        if let path = req.url?.path, path.contains("/api/") {
-            if req.value(forHTTPHeaderField: PantryToken.headerName) == nil {
-                req.setValue(PantryToken.value, forHTTPHeaderField: PantryToken.headerName)
-            }
+        request.setValue("text/markdown", forHTTPHeaderField: "Accept")
+        request = decorated(request)
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.transport(URLError(.badServerResponse))
         }
-        return req
+        guard (200...299).contains(httpResponse.statusCode) else {
+            if httpResponse.statusCode == 404 { throw APIError.notFound }
+            throw APIError.http(status: httpResponse.statusCode, message: nil)
+        }
+        guard let markdown = String(data: data, encoding: .utf8) else {
+            throw APIError.decoding(DecodingError.dataCorrupted(
+                DecodingError.Context(codingPath: [], debugDescription: "Response is not valid UTF-8 text")
+            ))
+        }
+        return markdown
     }
 
     // MARK: - Private
@@ -697,7 +657,7 @@ final class APIClient: Sendable {
             if httpResponse.statusCode == 404 {
                 throw APIError.notFound
             }
-            let body = (try? JSONDecoder().decode([String: String].self, from: data)).flatMap { $0["detail"] ?? $0["message"] }
+            let body = (try? Self.decoder.decode([String: String].self, from: data)).flatMap { $0["detail"] ?? $0["message"] }
             throw APIError.http(status: httpResponse.statusCode, message: body)
         }
 
@@ -762,5 +722,38 @@ struct ConsumptionEvent: Codable, Identifiable, Equatable, Sendable {
         case itemId = "item_id"
         case nameSnapshot = "name_snapshot"
         case createdAt = "created_at"
+    }
+}
+
+/// Risposta di GET /api/categories (backend/routes/categories.py).
+/// Consumati sono solo `categories` (key/label) e `compartmentMap`: gli altri campi
+/// restano opzionali, così l'evoluzione del backend non invalida il decode.
+struct CategoriesResponse: Codable, Equatable, Sendable {
+    struct Category: Codable, Equatable, Sendable {
+        let key: String
+        let label: String
+        let shelfLifeDays: Int?
+        /// Nil quando la chiave non ha mappatura nei comparti.
+        let compartment: String?
+
+        enum CodingKeys: String, CodingKey {
+            case key, label, compartment
+            case shelfLifeDays = "shelf_life_days"
+        }
+    }
+
+    let categories: [Category]
+    let defaultShelfLifeDays: Int?
+    /// Chiave categoria -> etichetta IT.
+    let labels: [String: String]?
+    /// Comparti supermercato ordinati.
+    let compartments: [String]?
+    /// Chiave categoria -> comparto.
+    let compartmentMap: [String: String]
+
+    enum CodingKeys: String, CodingKey {
+        case categories, labels, compartments
+        case defaultShelfLifeDays = "default_shelf_life_days"
+        case compartmentMap = "compartment_map"
     }
 }

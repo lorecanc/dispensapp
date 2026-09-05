@@ -240,7 +240,7 @@ struct ShoppingListView: View {
         }
         .overlay(alignment: .top) {
             if let error = store.error {
-                ErrorBanner(message: error.localizedDescription) {
+                BannerView(message: error.localizedDescription, style: .error, autoDismiss: true) {
                     store.error = nil
                 }
             }

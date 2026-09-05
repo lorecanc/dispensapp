@@ -1,3 +1,4 @@
+import anyio.to_thread
 import logging
 from datetime import datetime, timezone
 
@@ -32,39 +33,44 @@ async def scan_barcode(body: ScanRequest, db: Session = Depends(get_db)):
         )
 
     # Hook ScanHistory: increment times_scanned or create
-    try:
-        barcode = result.get("barcode") or body.barcode
-        name = result.get("name") or ""
-        categories = result.get("categories") or []
-        category = categories[0] if categories else None
-        existing = db.query(ScanHistory).filter(ScanHistory.barcode == barcode).first()
-        now = datetime.now(timezone.utc)
-        if existing:
-            existing.times_scanned = (existing.times_scanned or 0) + 1
-            # update name/category to latest OFF data if provided
-            if name:
-                existing.name = name
-            if category:
-                existing.category = category
-            existing.last_scanned_at = now
-        else:
-            # ensure name not empty for NOT NULL constraint; fallback to barcode
-            hist = ScanHistory(
-                barcode=barcode,
-                name=name or barcode,
-                category=category,
-                times_scanned=1,
-                last_scanned_at=now,
-            )
-            db.add(hist)
-        db.commit()
-    except Exception:
-        # ScanHistory non deve bloccare la scansione
+    def persist_history() -> None:
         try:
-            db.rollback()
+            barcode = result.get("barcode") or body.barcode
+            name = result.get("name") or ""
+            categories = result.get("categories") or []
+            category = categories[0] if categories else None
+            existing = db.query(ScanHistory).filter(ScanHistory.barcode == barcode).first()
+            now = datetime.now(timezone.utc)
+            if existing:
+                existing.times_scanned = (existing.times_scanned or 0) + 1
+                # update name/category to latest OFF data if provided
+                if name:
+                    existing.name = name
+                if category:
+                    existing.category = category
+                existing.last_scanned_at = now
+            else:
+                # ensure name not empty for NOT NULL constraint; fallback to barcode
+                hist = ScanHistory(
+                    barcode=barcode,
+                    name=name or barcode,
+                    category=category,
+                    times_scanned=1,
+                    last_scanned_at=now,
+                )
+                db.add(hist)
+            db.commit()
         except Exception:
-            pass
-        logger.exception("Errore salvataggio ScanHistory per %s", body.barcode)
+            # ScanHistory non deve bloccare la scansione
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            logger.exception("Errore salvataggio ScanHistory per %s", body.barcode)
+
+    # Session SQLAlchemy sincrona: eseguita in un worker thread per non
+    # bloccare l'event loop; nessun oggetto ORM esce dal thread.
+    await anyio.to_thread.run_sync(persist_history)
 
     return ScanResponse(
         found=True,

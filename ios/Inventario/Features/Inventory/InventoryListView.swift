@@ -18,9 +18,61 @@ struct InventoryListView: View {
 
     // MARK: - Filtering
 
-    private var filteredItems: [InventoryItem] {
-        store.items.filter { item in
-            guard !store.archivedIDs.contains(item.id) else { return false }
+    // T8: cached result, recomputed only when a relevant input changes (see
+    // FilterKey), not on every body evaluation.
+    @State private var cachedSections: [(ItemStatus, [InventoryItem])]?
+
+    private var groupedItems: [(ItemStatus, [InventoryItem])] {
+        cachedSections ?? Self.sections(
+            items: store.items,
+            archivedIDs: store.archivedIDs,
+            searchText: searchText,
+            selectedCategory: selectedCategory
+        )
+    }
+
+    /// Aggregates every input `sections` derives from. `InventoryItem` is
+    /// id-only Equatable, so store content enters as a full-field
+    /// fingerprint: any visible change (consume, update, refresh, reorder)
+    /// flips it.
+    private struct FilterKey: Hashable {
+        let itemsFingerprint: Int
+        let searchText: String
+        let selectedCategory: String?
+        let archivedIDs: Set<Int>
+    }
+
+    private var filterKey: FilterKey {
+        var hasher = Hasher()
+        for item in store.items {
+            hasher.combine(item.id)
+            hasher.combine(item.barcode)
+            hasher.combine(item.name)
+            hasher.combine(item.brand)
+            hasher.combine(item.expirationDate)
+            hasher.combine(item.isEstimated)
+            hasher.combine(item.category)
+            hasher.combine(item.imageURL)
+            hasher.combine(item.createdAt)
+            hasher.combine(item.quantity)
+            hasher.combine(item.status)
+        }
+        return FilterKey(
+            itemsFingerprint: hasher.finalize(),
+            searchText: searchText,
+            selectedCategory: selectedCategory,
+            archivedIDs: store.archivedIDs
+        )
+    }
+
+    private static func sections(
+        items: [InventoryItem],
+        archivedIDs: Set<Int>,
+        searchText: String,
+        selectedCategory: String?
+    ) -> [(ItemStatus, [InventoryItem])] {
+        let filtered = items.filter { item in
+            guard !archivedIDs.contains(item.id) else { return false }
             let matchesSearch: Bool
             if searchText.isEmpty {
                 matchesSearch = true
@@ -37,10 +89,7 @@ struct InventoryListView: View {
             }
             return matchesSearch && matchesCategory
         }
-    }
-
-    private var groupedItems: [(ItemStatus, [InventoryItem])] {
-        let grouped = Dictionary(grouping: filteredItems) {
+        let grouped = Dictionary(grouping: filtered) {
             ItemStatus.from(statusString: $0.status)
         }
         return ItemStatus.allCases.compactMap { status in
@@ -164,10 +213,18 @@ struct InventoryListView: View {
         .refreshable {
             await store.refresh()
         }
+        // O2/T13: offline → pill discreta (mai banner rosso); errori veri → banner
+        // che si auto-chiude. Monitor già avviato da InventoryStore.init.
         .overlay(alignment: .top) {
-            if let error = store.error {
-                ErrorBanner(message: error.localizedDescription) {
-                    storeBindable.error = nil
+            VStack(spacing: 8) {
+                if store.isOffline {
+                    OfflinePill()
+                        .padding(.top, 8)
+                }
+                if let error = store.error {
+                    BannerView(message: error.localizedDescription, style: .error, autoDismiss: true) {
+                        storeBindable.error = nil
+                    }
                 }
             }
         }
@@ -269,6 +326,14 @@ struct InventoryListView: View {
         }
         .task(id: store.selectedPantryId) {
             await store.refresh()
+        }
+        .task(id: filterKey) {
+            cachedSections = Self.sections(
+                items: store.items,
+                archivedIDs: store.archivedIDs,
+                searchText: searchText,
+                selectedCategory: selectedCategory
+            )
         }
     }
 

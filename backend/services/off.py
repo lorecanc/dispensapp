@@ -34,13 +34,23 @@ def _parse_off_status(data: dict) -> int:
         return 0
 
 
+_read_client: Optional[httpx.AsyncClient] = None
+
+
+def _get_client() -> httpx.AsyncClient:
+    """Client httpx condiviso per le letture OFF, creato alla prima richiesta."""
+    global _read_client
+    if _read_client is None:
+        _read_client = httpx.AsyncClient(timeout=10.0)
+    return _read_client
+
+
 async def fetch_product(barcode: str) -> Optional[dict]:
     url = f"{OFF_BASE_URL}/{barcode}.json"
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            data = response.json()
+        response = await _get_client().get(url)
+        response.raise_for_status()
+        data = response.json()
     except (httpx.HTTPError, httpx.TimeoutException, ValueError) as exc:
         logger.warning("OFF fetch failed for %s: %s", barcode, exc)
         return None

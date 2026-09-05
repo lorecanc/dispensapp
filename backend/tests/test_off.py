@@ -3,7 +3,16 @@ from unittest.mock import AsyncMock, Mock, patch
 import httpx
 import pytest
 
+from backend.services import off
 from backend.services.off import fetch_product
+
+
+@pytest.fixture(autouse=True)
+def _reset_shared_client():
+    """Keep tests independent from the module-level cached AsyncClient."""
+    off._read_client = None
+    yield
+    off._read_client = None
 
 
 def _mock_response(data: dict, status_code: int = 200) -> Mock:
@@ -20,15 +29,7 @@ def _patch_client(resp: Mock):
     client_mock = AsyncMock(spec=httpx.AsyncClient)
     client_mock.get.return_value = resp
 
-    async def aenter(*args, **kwargs):
-        return client_mock
-
-    cm = Mock()
-    cm.__aenter__ = aenter
-    cm.__aexit__ = AsyncMock(return_value=False)
-
-    patcher = patch("httpx.AsyncClient", return_value=cm)
-    return patcher
+    return patch("httpx.AsyncClient", return_value=client_mock)
 
 
 @pytest.mark.asyncio
@@ -90,14 +91,7 @@ async def test_fetch_product_network_error():
     client_mock = AsyncMock()
     client_mock.get.side_effect = httpx.HTTPError("connection failed")
 
-    async def aenter(*args, **kwargs):
-        return client_mock
-
-    cm = Mock()
-    cm.__aenter__ = aenter
-    cm.__aexit__ = AsyncMock(return_value=False)
-
-    with patch("httpx.AsyncClient", return_value=cm):
+    with patch("httpx.AsyncClient", return_value=client_mock):
         result = await fetch_product("8076809514381")
 
     assert result is None
@@ -122,3 +116,29 @@ async def test_fetch_product_categories_normalization():
         result = await fetch_product("1234567890123")
 
     assert result["categories"] == ["pasta", "tomato-sauce"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_product_uses_shared_client():
+    """Bug B6: consecutive fetches must reuse one AsyncClient, not rebuild it."""
+    data = {
+        "status": 1,
+        "product": {
+            "product_name": "Penne",
+            "brands": None,
+            "categories_tags": [],
+            "image_front_small_url": None,
+        },
+    }
+    resp = _mock_response(data)
+    client_mock = AsyncMock()
+    client_mock.get.return_value = resp
+    # old code used `async with httpx.AsyncClient() as client` -> keep RED assertive
+    client_mock.__aenter__ = AsyncMock(return_value=client_mock)
+    client_mock.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("httpx.AsyncClient", return_value=client_mock) as ctor:
+        await fetch_product("1234567890123")
+        await fetch_product("1234567890123")
+
+    assert ctor.call_count <= 1

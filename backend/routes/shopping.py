@@ -3,9 +3,9 @@ from fastapi.responses import PlainTextResponse, Response
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
-from backend.dependencies.pantry import get_current_pantry
+from backend.dependencies.pantry import PantryContext, get_current_pantry
 from backend.services.expiration import get_status
-from backend.models import InventoryItem, Pantry, ShoppingList, ShoppingListItem
+from backend.models import InventoryItem, ShoppingList, ShoppingListItem
 from backend.schemas import (
     ShoppingListCreate,
     ShoppingListItemCheckedUpdate,
@@ -19,13 +19,6 @@ from backend.services.shopping_markdown import to_shopping_markdown
 router = APIRouter(prefix="/api/pantries/{pantry_id}/shopping-lists", tags=["shopping"])
 
 
-def _get_pantry_or_404(db: Session, pantry_id: int) -> Pantry:
-    pantry = db.query(Pantry).filter(Pantry.id == pantry_id).first()
-    if not pantry:
-        raise HTTPException(status_code=404, detail="Pantry non trovata")
-    return pantry
-
-
 def _get_list_or_404(db: Session, pantry_id: int, list_id: int) -> ShoppingList:
     lst = (
         db.query(ShoppingList)
@@ -37,6 +30,15 @@ def _get_list_or_404(db: Session, pantry_id: int, list_id: int) -> ShoppingList:
     return lst
 
 
+def _list_with_items(db: Session, lst: ShoppingList) -> list[ShoppingListItem]:
+    return (
+        db.query(ShoppingListItem)
+        .filter(ShoppingListItem.shopping_list_id == lst.id)
+        .order_by(ShoppingListItem.id.asc())
+        .all()
+    )
+
+
 def _inventory_status(item: InventoryItem) -> str:
     return get_status(item.expiration_date)
 
@@ -46,13 +48,12 @@ def create_shopping_list(
     pantry_id: int,
     body: ShoppingListCreate,
     db: Session = Depends(get_db),
-    current_token: str = Depends(get_current_pantry),
+    ctx: PantryContext = Depends(get_current_pantry),
 ):
-    _get_pantry_or_404(db, pantry_id)
     sl = ShoppingList(
         pantry_id=pantry_id,
         name=body.name,
-        created_by_token=current_token,
+        created_by_token=ctx.token,
     )
     db.add(sl)
     db.commit()
@@ -70,18 +71,12 @@ def create_shopping_list(
 def list_shopping_lists(
     pantry_id: int,
     db: Session = Depends(get_db),
-    current_token: str = Depends(get_current_pantry),
+    ctx: PantryContext = Depends(get_current_pantry),
 ):
-    _get_pantry_or_404(db, pantry_id)
     lists = db.query(ShoppingList).filter(ShoppingList.pantry_id == pantry_id).all()
     result = []
     for lst in lists:
-        items = (
-            db.query(ShoppingListItem)
-            .filter(ShoppingListItem.shopping_list_id == lst.id)
-            .order_by(ShoppingListItem.id.asc())
-            .all()
-        )
+        items = _list_with_items(db, lst)
         result.append(
             ShoppingListOut(
                 id=lst.id,
@@ -99,16 +94,10 @@ def get_shopping_list(
     pantry_id: int,
     list_id: int,
     db: Session = Depends(get_db),
-    current_token: str = Depends(get_current_pantry),
+    ctx: PantryContext = Depends(get_current_pantry),
 ):
-    _get_pantry_or_404(db, pantry_id)
     lst = _get_list_or_404(db, pantry_id, list_id)
-    items = (
-        db.query(ShoppingListItem)
-        .filter(ShoppingListItem.shopping_list_id == lst.id)
-        .order_by(ShoppingListItem.id.asc())
-        .all()
-    )
+    items = _list_with_items(db, lst)
     return ShoppingListOut(
         id=lst.id,
         pantry_id=lst.pantry_id,
@@ -123,9 +112,8 @@ def delete_shopping_list(
     pantry_id: int,
     list_id: int,
     db: Session = Depends(get_db),
-    current_token: str = Depends(get_current_pantry),
+    ctx: PantryContext = Depends(get_current_pantry),
 ):
-    _get_pantry_or_404(db, pantry_id)
     lst = _get_list_or_404(db, pantry_id, list_id)
     db.delete(lst)
     db.commit()
@@ -138,9 +126,8 @@ def add_item(
     list_id: int,
     body: ShoppingListItemCreate,
     db: Session = Depends(get_db),
-    current_token: str = Depends(get_current_pantry),
+    ctx: PantryContext = Depends(get_current_pantry),
 ):
-    _get_pantry_or_404(db, pantry_id)
     lst = _get_list_or_404(db, pantry_id, list_id)
     compartment = body.compartment
     if not compartment:
@@ -152,7 +139,7 @@ def add_item(
         quantity=body.quantity,
         compartment=compartment,
         checked=False,
-        added_by_token=current_token,
+        added_by_token=ctx.token,
     )
     db.add(item)
     db.commit()
@@ -167,9 +154,8 @@ def patch_item(
     item_id: int,
     body: ShoppingListItemCheckedUpdate,
     db: Session = Depends(get_db),
-    current_token: str = Depends(get_current_pantry),
+    ctx: PantryContext = Depends(get_current_pantry),
 ):
-    _get_pantry_or_404(db, pantry_id)
     lst = _get_list_or_404(db, pantry_id, list_id)
     item = (
         db.query(ShoppingListItem)
@@ -193,9 +179,8 @@ def delete_item(
     list_id: int,
     item_id: int,
     db: Session = Depends(get_db),
-    current_token: str = Depends(get_current_pantry),
+    ctx: PantryContext = Depends(get_current_pantry),
 ):
-    _get_pantry_or_404(db, pantry_id)
     lst = _get_list_or_404(db, pantry_id, list_id)
     item = (
         db.query(ShoppingListItem)
@@ -217,16 +202,10 @@ def export_shopping_list(
     pantry_id: int,
     list_id: int,
     db: Session = Depends(get_db),
-    current_token: str = Depends(get_current_pantry),
+    ctx: PantryContext = Depends(get_current_pantry),
 ):
-    _get_pantry_or_404(db, pantry_id)
     lst = _get_list_or_404(db, pantry_id, list_id)
-    items = (
-        db.query(ShoppingListItem)
-        .filter(ShoppingListItem.shopping_list_id == lst.id)
-        .order_by(ShoppingListItem.id.asc())
-        .all()
-    )
+    items = _list_with_items(db, lst)
     md = to_shopping_markdown(lst, items)
     return PlainTextResponse(content=md, media_type="text/markdown")
 
@@ -236,16 +215,10 @@ def check_shopping_list(
     pantry_id: int,
     list_id: int,
     db: Session = Depends(get_db),
-    current_token: str = Depends(get_current_pantry),
+    ctx: PantryContext = Depends(get_current_pantry),
 ):
-    _get_pantry_or_404(db, pantry_id)
     lst = _get_list_or_404(db, pantry_id, list_id)
-    items = (
-        db.query(ShoppingListItem)
-        .filter(ShoppingListItem.shopping_list_id == lst.id)
-        .order_by(ShoppingListItem.id.asc())
-        .all()
-    )
+    items = _list_with_items(db, lst)
     pantry_items = (
         db.query(InventoryItem)
         .filter(InventoryItem.pantry_id == pantry_id)

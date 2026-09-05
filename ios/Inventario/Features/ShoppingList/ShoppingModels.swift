@@ -112,7 +112,7 @@ enum Compartment: String, CaseIterable, Hashable {
         guard let raw, !raw.trimmingCharacters(in: .whitespaces).isEmpty else { return .dispensaSecca }
         let trimmed = raw.trimmingCharacters(in: .whitespaces)
         let lower = trimmed.lowercased()
-        // legacy mapping (backend _LEGACY_MAP)
+        // legacy mapping (backend _LEGACY_MAP, non esposta da /api/categories: resta locale)
         if lower == "frigo" { return .latticiniEUova }
         if lower == "cantina" { return .cantina }
         if lower == "dispensa" { return .dispensaSecca }
@@ -135,17 +135,10 @@ enum Compartment: String, CaseIterable, Hashable {
             if knownLower.contains(lower) || ["frigo", "cantina", "dispensa", "altro"].contains(lower) {
                 return normalized(raw)
             }
-            // stored value potrebbe già essere un comparto canonico con casing diverso: gestito sopra.
-            // se è un valore libero ma non vuoto, trattalo comunque come compartment esplicito se match case-insensitive, altrimenti fallback a inferenza nome
-            // per compatibilità, se normalized non è default o raw conteneva già un comparto, usa normalized
-            // altrimenti inferisci da nome (es. vecchi dati con compartment = categoria)
-            // Se raw non è un comparto noto, prova prima a vedere se è una categoria -> infer da categoria
-            let fromCat = inferCompartment(fromCategory: raw)
-            // se raw era una categoria nota che mappa a un comparto diverso da default, usa quello
-            // Altrimenti fallback a nome. Questo copre compatibilità con vecchi compartment = "dispensa" etc.
-            // Check se raw normalizzato come categoria ha mapping: se infer da categoria != dispensaSecca o raw lower è una categoria conosciuta, usa quello.
-            if categoryToCompartment[normalizeCategoryKey(raw) ?? ""] != nil {
-                return fromCat
+            // Compat con vecchi dati dove compartment conteneva la categoria:
+            // se è una categoria nota nel registry, usa il suo comparto.
+            if let norm = normalizeCategoryKey(raw), compartment(forCategoryKey: norm) != nil {
+                return inferCompartment(fromCategory: raw)
             }
             // altrimenti inferisci dal nome
             return inferCompartment(fromName: item.name)
@@ -153,135 +146,29 @@ enum Compartment: String, CaseIterable, Hashable {
         return inferCompartment(fromName: item.name)
     }
 
-    // MARK: - Inferenza (replica backend services/compartment.py)
+    // MARK: - Inferenza
 
-    // Categoria interna -> comparto (backend COMPARTMENT_MAP)
-    private static let categoryToCompartment: [String: Compartment] = [
-        "fresh-fruits": .ortofrutta,
-        "fresh-vegetables": .ortofrutta,
-        "yogurts": .latticiniEUova,
-        "fresh-milk": .latticiniEUova,
-        "uht-milk": .latticiniEUova,
-        "eggs": .latticiniEUova,
-        "cheeses": .salumiEFormaggi,
-        "cold-cuts": .salumiEFormaggi,
-        "meat": .carneEPesce,
-        "fish": .carneEPesce,
-        "canned-fish": .dispensaSecca,
-        "frozen-foods": .surgelati,
-        "pasta": .dispensaSecca,
-        "rice": .dispensaSecca,
-        "legumes": .dispensaSecca,
-        "canned-vegetables": .dispensaSecca,
-        "flours": .dispensaSecca,
-        "sauces-condiments": .dispensaSecca,
-        "oils-vinegars": .dispensaSecca,
-        "sweets-snacks": .dispensaSecca,
-        "beverages-water": .bevande,
-        "beverages-juices": .bevande,
-        "coffee-tea": .bevande,
-        "alcoholic-beverages": .cantina,
-        "bread-bakery": .fornoEPanetteria,
-        "cleaning-hygiene": .igieneECasa,
-    ]
+    /// Categoria -> comparto: mappa del registry (`/api/categories`, fallback
+    /// embedded in CategoryRegistry). Dedup del backend COMPARTMENT_MAP.
+    private static func compartment(forCategoryKey key: String) -> Compartment? {
+        CategoryRegistry.compartmentMap[key].flatMap(Compartment.init(rawValue:))
+    }
 
-    // Alias + OFF mapping -> canonico (backend CATEGORY_ALIASES + OFF_TO_INTERNAL)
-    private static let aliasMap: [String: String] = [
-        // identità canoniche
-        "yogurts": "yogurts",
-        "fresh-milk": "fresh-milk",
-        "pasta": "pasta",
-        "canned-vegetables": "canned-vegetables",
-        "rice": "rice",
-        "cheeses": "cheeses",
-        "eggs": "eggs",
-        "fresh-fruits": "fresh-fruits",
-        "fresh-vegetables": "fresh-vegetables",
-        "frozen-foods": "frozen-foods",
-        "legumes": "legumes",
-        "uht-milk": "uht-milk",
-        "cold-cuts": "cold-cuts",
-        "meat": "meat",
-        "fish": "fish",
-        "canned-fish": "canned-fish",
-        "bread-bakery": "bread-bakery",
-        "flours": "flours",
-        "sauces-condiments": "sauces-condiments",
-        "oils-vinegars": "oils-vinegars",
-        "sweets-snacks": "sweets-snacks",
-        "beverages-water": "beverages-water",
-        "beverages-juices": "beverages-juices",
-        "coffee-tea": "coffee-tea",
-        "alcoholic-beverages": "alcoholic-beverages",
-        "cleaning-hygiene": "cleaning-hygiene",
-        // alias legacy
-        "yogurt": "yogurts",
-        "cheese": "cheeses",
-        "milk": "fresh-milk",
-        "uht-milks": "uht-milk",
-        "legume": "legumes",
-        "cold-cut": "cold-cuts",
-        "canned-fishs": "canned-fish",
-        "bread": "bread-bakery",
-        "flour": "flours",
-        "sauce": "sauces-condiments",
-        "oil": "oils-vinegars",
-        "sweet": "sweets-snacks",
-        "snack": "sweets-snacks",
-        "water": "beverages-water",
-        "juice": "beverages-juices",
-        "coffee": "coffee-tea",
-        "tea": "coffee-tea",
-        "alcohol": "alcoholic-beverages",
-        "cleaning": "cleaning-hygiene",
-        "hygiene": "cleaning-hygiene",
-        // OFF variants
-        "milks": "fresh-milk",
-        "pasteurized-milk": "fresh-milk",
-        "fruits": "fresh-fruits",
-        "vegetables": "fresh-vegetables",
-        "pulses": "legumes",
-        "lentils": "legumes",
-        "pastas": "pasta",
-        "sauces": "sauces-condiments",
-        "condiments": "sauces-condiments",
-        "oils": "oils-vinegars",
-        "vinegars": "oils-vinegars",
-        "sweets": "sweets-snacks",
-        "snacks": "sweets-snacks",
-        "biscuits": "sweets-snacks",
-        "chocolate": "sweets-snacks",
-        "charcuterie": "cold-cuts",
-        "hams": "cold-cuts",
-        "salamis": "cold-cuts",
-        "meats": "meat",
-        "fishes": "fish",
-        "tuna": "canned-fish",
-        "sardines": "canned-fish",
-        "breads": "bread-bakery",
-        "bakery": "bread-bakery",
-        "pastries": "bread-bakery",
-        "frozen-food": "frozen-foods",
-        "waters": "beverages-water",
-        "juices": "beverages-juices",
-        "coffees": "coffee-tea",
-        "teas": "coffee-tea",
-        "wines": "alcoholic-beverages",
-        "beers": "alcoholic-beverages",
-        "spirits": "alcoholic-beverages",
-        "detergents": "cleaning-hygiene",
-    ]
-
+    /// Normalizza una categoria grezza a chiave canonica (trim, lowercase,
+    /// forma "prefix:key"). Gli alias legacy/OFF (backend CATEGORY_ALIASES) non
+    /// sono più replicati qui: il backend normalizza in persistenza, quindi i
+    /// valori salvati/spediti usano già le chiavi canoniche del registry.
     private static func normalizeCategoryKey(_ raw: String?) -> String? {
         guard let raw, !raw.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
         var k = raw.trimmingCharacters(in: .whitespaces).lowercased()
         if k.contains(":") { k = k.split(separator: ":").last.map(String.init) ?? k }
         k = k.trimmingCharacters(in: .whitespaces).lowercased()
-        if let mapped = aliasMap[k] { return mapped }
         return k.isEmpty ? nil : k
     }
 
-    // Keyword fallback (backend _KEYWORD_MAP)
+    // Keyword fallback (backend _KEYWORD_MAP). Resta locale: è una euristica di
+    // display usata anche offline e il backend non la espone via /api/categories
+    // (debito residuo documentato, dedup parziale approvato in D3).
     private static let keywordMap: [([String], Compartment)] = [
         (["mela", "pera", "banana", "frutta", "verdura", "insalata", "pomodoro", "zucchina", "carota", "patata", "cipolla", "agrumi", "kiwi", "uva"], .ortofrutta),
         (["latte", "yogurt", "uovo", "uova", "burro", "panna"], .latticiniEUova),
@@ -295,10 +182,10 @@ enum Compartment: String, CaseIterable, Hashable {
         (["pasta", "spaghetti", "riso", "farina", "olio", "passata", "pelati", "legumi", "ceci", "lenticchie", "fagioli", "biscotti", "cioccolato", "marmellata", "sale", "zucchero", "scatolame", "tonno"], .dispensaSecca),
     ]
 
-    /// Replica backend: inferisce comparto da categoria canonica.
+    /// Inferisce comparto da categoria canonica via registry (ex replica backend COMPARTMENT_MAP).
     static func inferCompartment(fromCategory category: String?) -> Compartment {
         guard let cat = category, !cat.trimmingCharacters(in: .whitespaces).isEmpty else { return .dispensaSecca }
-        if let norm = normalizeCategoryKey(cat), let comp = categoryToCompartment[norm] {
+        if let norm = normalizeCategoryKey(cat), let comp = compartment(forCategoryKey: norm) {
             return comp
         }
         return .dispensaSecca
@@ -316,9 +203,9 @@ enum Compartment: String, CaseIterable, Hashable {
         return .dispensaSecca
     }
 
-    /// Cascata completa: categoria -> nome -> default (come backend infer_compartment senza OFF tags).
+    /// Cascata completa: categoria (registry) -> nome (keyword) -> default.
     static func inferCompartment(name: String?, category: String?) -> Compartment {
-        if let cat = category, let norm = normalizeCategoryKey(cat), let comp = categoryToCompartment[norm] {
+        if let cat = category, let norm = normalizeCategoryKey(cat), let comp = compartment(forCategoryKey: norm) {
             return comp
         }
         if let name { return inferCompartment(fromName: name) }

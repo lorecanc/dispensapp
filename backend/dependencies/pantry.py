@@ -78,6 +78,27 @@ def get_pantry_context(
     return x_pantry_token
 
 
+def require_known_token(
+    x_pantry_token: str | None = Header(default=None, alias="X-Pantry-Token"),
+    db: Session = Depends(get_db),
+) -> str:
+    """get_pantry_context + verifica che il token sia associato ad almeno una pantry.
+
+    - 401 se header mancante o malformato (logica riusata da get_pantry_context)
+    - 401 se il token non è owner_token di alcuna Pantry né member_token di PantryMember
+    Non sostituisce get_pantry_context sulle route pantries/invites, dove un token
+    nuovo deve legittimamente poter creare pantry o accettare inviti.
+    """
+    token = get_pantry_context(x_pantry_token)
+    known = (
+        db.query(Pantry.id).filter(Pantry.owner_token == token).first()
+        or db.query(PantryMember.pantry_id).filter(PantryMember.member_token == token).first()
+    )
+    if not known:
+        raise HTTPException(status_code=401, detail="Token non associato ad alcuna pantry")
+    return token
+
+
 def get_current_pantry(
     pantry_id: int,
     x_pantry_token: str | None = Header(default=None, alias="X-Pantry-Token"),
