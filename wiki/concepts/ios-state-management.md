@@ -1,156 +1,145 @@
 ---
 title: "iOS State Management"
-description: "InventoryStore @Observable pattern, CRUD operations, error propagation, and sorting behavior"
+description: "InventoryStore multi-pantry single-source, optimistic outbox with FIFO replay, snapshot cold-start, and provisioning"
 category: "concepts"
 source_files:
   - "ios/Inventario/State/InventoryStore.swift"
+  - "ios/Inventario/State/OutboxStore.swift"
+  - "ios/Inventario/State/LocalInventoryCache.swift"
   - "ios/Inventario/Networking/APIClient.swift"
   - "ios/Inventario/Models/InventoryItem.swift"
 created: "2026-06-24"
-last_updated: "2026-06-24"
+last_updated: "2026-09-05"
 ---
 
 # iOS State Management
 
 ## Overview
 
-The iOS app uses a single `InventoryStore` class as the central source of truth for inventory state. It is annotated with `@Observable` and `@MainActor` so SwiftUI views automatically re-render when any stored property changes, and all asynchronous work runs on the main actor.
+The iOS app uses a single `InventoryStore` (`@Observable`, `@MainActor`) as the source of truth for multi-pantry inventory state. SwiftUI views re-render when observed properties change; all async work runs on the main actor.
 
-The store never holds cached or derived state — every mutation is the result of a completed network request. The [APIClient](../concepts/ios-networking.md) is the only dependency and is instantiated privately inside the store.
+Supporting types are pure and testable (no network, no `MainActor`):
 
-The store is consumed by the following views:
-- [InventoryListView](../components/ios-inventory-list-view.md) — displays items and triggers CRUD operations.
-- [ItemDetailView](../components/ios-item-detail-view.md) — updates and deletes individual items.
-- [ManualEntryView](../components/ios-manual-entry-view.md) — adds items via `addManual(...)`.
-- [ScanPreviewSheet](../components/ios-scan-preview-sheet.md) — adds scanned items via `add(...)`.
+- `OutboxStore` — persistent FIFO queue (`outbox.json` in Application Support) of offline mutations.
+- `LocalInventoryCache` — per-pantry JSON snapshots (`pantry-<id>.json` in Caches) for instant cold-start.
+
+Consumers: `InventoryListView`, `ItemDetailView`, `ManualEntryView` (`addManual`), `ScanPreviewSheet` (`add`).
 
 ## @Observable Pattern
-
-The `@Observable` macro (iOS 17+) replaces `ObservableObject` / `@Published` for the store. SwiftUI tracks property reads at compile time and only invalidates views that actually read changed properties.
 
 ```swift
 @Observable
 @MainActor
 final class InventoryStore {
     var items: [InventoryItem] = []
+    var pantries: [Pantry] = []
+    var history: [Int: [ConsumptionEvent]] = [:]
+    var archivedIDs: Set<Int> = []
     var isLoading = false
     var error: APIError?
     var exportedMarkdown: String?
+    var selectedPantryId: Int = /* UserDefaults "selectedPantryId", default 1 */
 }
 ```
 
-- **items** ([InventoryItem](../concepts/ios-models.md)): the full inventory list, always sorted by expiration date.
-- **isLoading**: `true` while `refresh()` is in flight.
-- **error**: set on failure and reset to `nil` before every operation.
-- **exportedMarkdown**: populated by `exportMarkdown()` with a markdown string from the server.
+| Property | Mutated by | Notes |
+|---|---|---|
+| `items` | `refresh`, CRUD, `consume`, outbox enqueue, `selectPantry`/`deletePantry` | Always sorted by expiration date; cleared on pantry switch |
+| `pantries` | `fetchPantries`, provisioning, `deletePantry` | Verified list — network calls only target IDs in this list (B2 gate) |
+| `history` | `fetchHistory`, `consume`, delete paths | Per-item consumption events; cleared on pantry switch |
+| `archivedIDs` | `consume` to zero, deletes | Local-only transient: IDs removed from list but visible in history via cache |
+| `isLoading` | `refresh` | `true` during request, reset via `defer` |
+| `error` | Every public method via `setError(from:)` | Reset to `nil` at method start; `.offline` never populates it (pill `isOffline` covers it) |
+| `exportedMarkdown` | `exportMarkdown` | Cleared on pantry switch |
+| `selectedPantryId` | `selectPantry`, `fetchPantries`, `deletePantry` | Persisted to `UserDefaults`; `didSet` clears `items`/`history`/`archivedIDs`/`exportedMarkdown`/`error` on change |
 
-## State Properties
+## Multi-Pantry Selection
 
-| Property | Type | Mutated by | Reset behavior |
-|---|---|---|---|
-| `items` | `[InventoryItem]` | `refresh`, `add`, `addManual`, `update`, `delete`, `decrementQuantity` | Replaced entirely by `refresh`; appended/replaced/removed by CRUD |
-| `isLoading` | `Bool` | `refresh` | Set `true` before the request, `false` after (regardless of success or failure) |
-| `error` | `APIError?` | Every public method | Set to `nil` at the start of every method, set on failure |
-| `exportedMarkdown` | `String?` | `exportMarkdown` | Set to result on success, unchanged on failure |
+`selectedPantryId` defaults to the persisted value (fallback `1`). `selectPantry(_:)` just assigns it — the `didSet` does the state hygiene (clears previous pantry data to avoid leaks), and callers then `refresh()`.
+
+`selectedPantryName` derives from `pantries` (fallback `"Dispensa"`).
+
+## selectPantry / deletePantry
+
+`deletePantry(id:)` is optimistic with full rollback:
+
+1. Snapshot `pantries`, `selectedPantryId`, `items`, `history`, `exportedMarkdown`.
+2. Remove locally; if it was selected, select `pantries.first` (or clear list state if none left).
+3. `DELETE /pantries/{id}`; on success `cache.remove(pantryId:)` so no ghost snapshot survives.
+4. On failure restore all snapshots and `setError(from:)` (no-ops on `Task.isCancelled`).
+
+## Refresh, Snapshot Cold-Start, Category Registry
+
+`refresh()`:
+
+1. `isLoading = true` (deferred reset), `error = nil`.
+2. If `items` is empty, load `cache.load(pantryId:)` synchronously — stale-but-instant cold-start (P4), before and regardless of network.
+3. B2 gate: return early unless `selectedPantryId` is in verified `pantries` (avoids chained 403s on ghost IDs; `fetchPantries()` retries after verification).
+4. `listScoped(pantryId:)` → sort by `expirationDate ?? .distantFuture` → `cache.save(items, pantryId:)` → `refreshCategoryRegistry()`.
+
+`refreshCategoryRegistry()` is best-effort and non-critical: once per session it fetches `fetchCategories()` into `CategoryRegistry`; offline keeps the embedded fallback with no banner and retries next session if it failed.
 
 ## Error Propagation
 
-Every public method follows the same pattern:
+Single setter `setError(from:)`:
 
-1. Reset `error` to `nil`.
-2. Execute the network call in a `do`/`catch` block.
-3. On failure, cast the caught error to `APIError`; if the cast fails, wrap it in `.transport(error)`.
+- `classify(_:)` maps `URLError` codes (not-connected, timeout, cannot-connect/find-host, connection-lost, data-not-allowed) to `APIError.offline`.
+- `.offline` returns early — no banner; the `isOffline` pill (driven by `ConnectivityMonitor`) is the UI signal.
+- All public methods reset `error = nil` first, guard `Task.isCancelled`, and route failures through `setError(from:)` (except `consume` 409 and `fetchHistory`, see below).
 
-```swift
-error = nil
-do {
-    // network call
-} catch {
-    self.error = error as? APIError ?? .transport(error)
-}
-```
+`isAuthFailure(_:)` = HTTP 401/403. `isTransientProvisionError(_:)` = `.transport`/`.offline`, HTTP 429 or 5xx.
 
-`APIError` is an enum with cases `invalidURL`, `transport(Error)`, `decoding(Error)`, `http(status:message:)`, `notFound`, and `offline`. The `.transport` fallback in the store means any unexpected error type is surfaced rather than silently ignored.
+## Scoped CRUD + Consume
 
-Views observe `error` and can present an alert or banner when it becomes non-nil. The store does not auto-clear the error — the view is responsible for resetting it (or the next operation will overwrite it).
+All item calls are pantry-scoped (`createScoped`, `createManualScoped`, `updateScoped`, `deleteScoped`, `consume`, `history`, `exportScoped`). Online path appends/replaces/removes locally and re-sorts by expiration date. `update` re-sorts (unlike the old single-pantry version). `delete` also clears `history[id]` and `archivedIDs`.
 
-## CRUD Operations
+`consume(item:delta:reason:)` uses server-side atomic `POST consume`:
 
-### refresh (Read All)
+- `quantity <= 0` → remove from `items`, insert into `archivedIDs`.
+- Else replace in place and drop cached `history[id]` (reloaded on next open).
+- HTTP 409 → user-facing `"Quantità insufficiente per <name>."`; other failures via `setError(from:)`.
+- `decrementQuantity(for:)` is `consume(delta: 1)`.
 
-Replaces `items` entirely with the server response. Sets `isLoading = true` before the request and `false` after completion, regardless of outcome.
+`fetchHistory(itemId:)` is non-critical: 401/403/404 and `.notFound` only log (`os.Logger`, category `"store"`, no sensitive data / CWE-532: no `print` on network paths) and default missing entries to `[]` — never a banner.
 
-```swift
-func refresh() async {
-    isLoading = true
-    error = nil
-    do {
-        items = try await client.list()
-    } catch {
-        self.error = error as? APIError ?? .transport(error)
-    }
-    isLoading = false
-}
-```
+`exportMarkdown()` fetches `GET` export with `Accept: text/markdown` into `exportedMarkdown` for the share sheet.
 
-### add (Create from Scan)
+## Optimistic Outbox (Offline)
 
-Sends a `POST /api/inventory` with barcode, name, brand, expiration date, category, image URL, and quantity. Appends the returned item and sorts by expiration date.
+When `isOffline` (or a request fails with classified `.offline` mid-flight), every mutation applies locally first, persists the snapshot, enqueues, and returns — no banner (see [iOS Offline Outbox](../concepts/ios-offline-outbox.md)):
 
-### addManual (Create Manual)
+- `enqueueLocalCreate` — allocates a negative temp-id via `outbox.nextTempId()` (`-1, -2, …`, monotonic counter persisted in the same JSON so restarts never reuse IDs), appends a visible `InventoryItem` with that ID, sorts, `cache.save`, enqueues `.create` with `tempId`.
+- `enqueueLocalConsume` — decrements locally (or archives to zero), clears history, enqueues `.consume`.
+- `enqueueLocalUpdate` — PATCH-style merge (`nil` = untouched) via `InventoryItem.merging`, re-sorts, enqueues `.update`.
+- `enqueueLocalDelete` — removes locally + history/archived cleanup, enqueues `.delete`.
 
-Sends a `POST /api/inventory/manual` — same as `add` but without barcode or image URL. After appending, sorts by expiration date.
+Each enqueue calls `triggerReplayIfOnline()` (covers the "classified offline but path still satisfied" case where no connectivity flip will arrive).
 
-### update (Partial Update)
+## replayOutbox: FIFO Last-Write-Wins
 
-Sends a `PATCH /api/inventory/{id}`. All fields are optional — only non-nil values are included in the request body. On success, finds the item by `id` in the local array and replaces it in-place.
+`replayOutbox()` drains [`outbox.entries`](../concepts/ios-offline-outbox.md) in FIFO order on the entry's own `pantryId` (not the current selection — the user may have switched pantries mid-queue):
 
-```swift
-if let index = items.firstIndex(where: { $0.id == id }) {
-    items[index] = updated
-}
-```
+- Success → `remove(id:)`; for `.create`, `remapTempId(tempId → serverId)` rewrites later entries referencing the temp-id (e.g. consume-on-offline-created-item), then continue.
+- `OutboxStore.decision(for:)` → `.drop` (server wins: `.notFound`, any HTTP 4xx, `.decoding`) logs and discards; `.stop` (transient/uncertain: `.transport`, `.offline`, `.invalidURL`, 5xx/429) halts and retries on the next online event. Unknown `catch` also halts.
+- Never sets `store.error` (state is already reflected in the UI; a banner would mislead). After processing anything, reconciles via `refresh()` — or `fetchPantries()` when `pantries` is empty (cold-start offline gate).
+- Single-flight via `isReplayingOutbox` + `replayRequested` coalescing (one extra pass, only if still online).
 
-### delete
+`OutboxStore` I/O is best-effort atomic JSON; missing/corrupt files reset to empty (corrupt removed). It lives in Application Support (never Caches — the queue is the only copy of unsynced mutations). `LocalInventoryCache` lives in Caches (regenerable, system-purgeable).
 
-Sends a `DELETE /api/inventory/{id}`. The server returns 204 or 200. On success, removes the item from the local array.
+Online recovery is driven by `startOnlineWatch()` (`withObservationTracking` on `connectivity.isOnline`, self re-arming, `weak self`): on flip to online, `fetchPantries()` if the list is empty (cold-start offline), then `replayOutbox()` if the queue is non-empty.
 
-```swift
-items.removeAll { $0.id == id }
-```
+## Provisioning (Single-Flight)
 
-## Decrement Logic
+`fetchPantries()` on empty list + `isAuthFailure` (401/403), or on empty list at all, delegates to `ensureProvisionedThenResync()`:
 
-`decrementQuantity(for:)` is a convenience that reduces quantity by one or deletes the item entirely:
-
-```swift
-func decrementQuantity(for item: InventoryItem) async {
-    if item.quantity > 1 {
-        await update(id: item.id, quantity: item.quantity - 1)
-    } else {
-        await delete(id: item.id)
-    }
-}
-```
-
-This method reads `item.quantity` from the passed model — it does not re-fetch from the store. The caller should pass the current `InventoryItem` value. If quantity is 1, the item is deleted server-side; if greater than 1, a PATCH is sent with quantity-1.
+- Guard `isProvisioning` (single-flight: one `POST /pantries` per token) and `provisionAttemptedToken == PantryToken.value` (sticky per-token: no fake pantries, state reflects absence).
+- Creates `"Dispensa"`, re-lists, selects first if needed, then `refresh()`.
+- On failure: transient errors (`isTransientProvisionError`) clear `provisionAttemptedToken` so the next fetch retries; `.offline` stays silent (pill); real errors go to the banner. Never fabricates a pantry (B2).
 
 ## Sorting Behavior
 
-Items are sorted by `expirationDate` in ascending order. Items with a `nil` expiration date sort to the end (treated as `.distantFuture`).
-
-```swift
-items.sort { ($0.expirationDate ?? .distantFuture) < ($1.expirationDate ?? .distantFuture) }
-```
-
-Sorting is applied after `add` and `addManual`. The `refresh` method relies on the server returning items in the correct order (no local re-sort). The `update` method does not re-sort — the replaced item retains its position.
-
-## Markdown Export
-
-`exportMarkdown()` fetches a markdown representation of the inventory from `GET /api/inventory/export` and stores it in `exportedMarkdown`. The request sets `Accept: text/markdown`. The response body is decoded as UTF-8 text; failures (network, non-2xx status, or invalid encoding) set `error`.
-
-The view layer reads `exportedMarkdown` after the async call completes, typically to present a share sheet or preview.
+Ascending `expirationDate`, `nil` last (`.distantFuture`). Applied after `refresh`, `add`/`addManual`, `update`, and all optimistic enqueues. `refresh` replaces the array wholesale.
 
 ## Threading Guarantee
 
-The entire class runs on `@MainActor`. The `APIClient` is also annotated `@MainActor`, so all networking completion callbacks arrive on the main thread. This eliminates the need for `DispatchQueue.main.async` wrappers and lets SwiftUI observation work without explicit `receive(on:)` operators.
+`InventoryStore` and `APIClient` are `@MainActor`; `ConnectivityMonitor.start()` and the online watch run on the main actor. No `DispatchQueue.main.async` wrappers needed. `OutboxStore` / `LocalInventoryCache` are plain value types with injectable `directory` for tests.

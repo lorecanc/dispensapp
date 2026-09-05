@@ -4,25 +4,23 @@ description: "POST /api/scan endpoint that looks up products by barcode via Open
 category: "modules"
 source_files:
   - "backend/routes/scan.py"
-  - "backend/schemas.py"
   - "backend/services/off.py"
 created: "2026-06-24"
-last_updated: "2026-06-24"
+last_updated: "2026-09-05"
 ---
 
 # Barcode Scan Route
 
 ## Purpose
 
-Handles barcode scanning requests from the mobile or web client. Accepts a barcode string, queries the [Open Food Facts API](../concepts/off-integration.md) through the internal [`fetch_product` service](./backend-service-off.md), and returns either the matched product details or a not-found indicator. This is the entry point for the "scan to add" feature in the pantry management flow. See the [Scan API](../api/scan.md) page for endpoint reference.
+Handles barcode scanning requests from the mobile or web client. Accepts a barcode string, queries the [Open Food Facts API](../concepts/off-integration.md) through the internal `fetch_product` service, and returns either the matched product details or a not-found indicator. Missing or incomplete products can be enriched via [Contribute](../api/contribute.md). On a successful lookup it also records the scan in `ScanHistory` without blocking the event loop. See the [Scan API](../api/scan.md) page for endpoint reference.
 
 ## Key Files
 
 | File | Role |
 |------|------|
-| `backend/routes/scan.py` | FastAPI route handler defining the endpoint |
-| `backend/schemas.py` | [Pydantic models](./backend-schemas.md) for request/response serialization |
-| `backend/services/off.py` | Async HTTP client that queries the Open Food Facts API |
+| `backend/routes/scan.py` | FastAPI route handler defining the endpoint plus `ScanHistory` persistence |
+| `backend/services/off.py` | Async OFF client (`fetch_product`) with a shared `httpx.AsyncClient` |
 
 ## Public API
 
@@ -48,7 +46,7 @@ Handles barcode scanning requests from the mobile or web client. Accepts a barco
 
 ### `fetch_product(barcode: str) -> Optional[dict]`
 
-Async function in `backend/services/off.py`. Makes an HTTP GET to `{OFF_BASE_URL}/{barcode}.json` using `httpx`. Returns a dictionary on success or `None` on any network / parse error.
+Async function in `backend/services/off.py`. Makes an HTTP GET to `{OFF_BASE_URL}/{barcode}.json` using the shared client from `_get_client()`. Returns a product dict on success, `{"found": False}` when OFF reports `status != 1` or no `product` object, or `None` on any network / parse error.
 
 ## Dependencies
 
@@ -57,21 +55,38 @@ graph LR
     ScanRoute["POST /api/scan"] --> ScanRequest["ScanRequest (schemas)"]
     ScanRoute --> ScanResponse["ScanResponse (schemas)"]
     ScanRoute --> fetch_product["fetch_product (services/off)"]
-    fetch_product --> OFF["Open Food Facts API (external)"]
+    fetch_product --> SharedClient["_get_client shared httpx.AsyncClient"]
+    SharedClient --> OFF["Open Food Facts API (external)"]
+    ScanRoute --> ScanHistory["ScanHistory via anyio.to_thread"]
 ```
 
-- **Internal**: `backend/schemas.py` (ScanRequest, ScanResponse, MessageResponse), `backend/services/off.py` (fetch_product)
-- **External**: `httpx` (async HTTP client), Open Food Facts public API
+- **Internal**: `backend/schemas.py` (`ScanRequest`, `ScanResponse`), `backend/models.py` (`ScanHistory`), `backend/database.py` (`get_db`)
+- **External**: `httpx` (shared async client, 10s timeout), `anyio.to_thread`, Open Food Facts public API
+
+## ScanHistory Persistence
+
+On a found product the route upserts a `ScanHistory` row inside a `persist_history()` closure run via `await anyio.to_thread.run_sync(persist_history)` (`backend/routes/scan.py:36-73`):
+
+- The sync SQLAlchemy `Session` stays off the event loop; no ORM objects leave the worker thread.
+- Lookup is by `barcode`; an existing row increments `times_scanned` and refreshes `name` / `category` (first category tag) and `last_scanned_at` (UTC now).
+- A missing row is created with `times_scanned=1`, falling back to the barcode when the OFF name is empty (NOT NULL constraint).
+- Failures never block the scan: on exception the transaction is rolled back and logged via `logger.exception`.
+
+Not-found (`found=False`) and OFF-error (`None`) paths return early and write no history.
+
+## Shared OFF Client
+
+`backend/services/off.py:37-45` keeps a module-level `_read_client: Optional[httpx.AsyncClient]` created lazily by `_get_client()` and reused by every `fetch_product` call (`timeout=10.0`). Write paths (`contribute_product`, `upload_product_image`) still use short-lived per-request clients.
 
 ## Error Handling
 
 The endpoint covers three distinct response states:
 
-1. **Network / service error** — `fetch_product` returns `None` (e.g. HTTP error, timeout, or invalid JSON). The route responds with HTTP **502 Bad Gateway** and a JSON body containing `{"message": "Errore durante la comunicazione con Open Food Facts"}`.
+1. **Network / service error** — `fetch_product` returns `None` (e.g. HTTP error, timeout, or invalid JSON). The route responds with HTTP **502 Bad Gateway** and a JSON body containing `{"detail": "Errore durante la comunicazione con Open Food Facts"}`.
 
 2. **Product not found** — Open Food Facts responded successfully but returned `status != 1` or no `product` object. The route responds with HTTP **200 OK** and `ScanResponse` with `found=False` and message `"Prodotto non trovato nel database Open Food Facts"`.
 
-3. **Product found** — Open Food Facts returned valid product data. The route responds with HTTP **200 OK** and `ScanResponse` with `found=True` and all product fields populated.
+3. **Product found** — Open Food Facts returned valid product data. History is persisted in a worker thread, then the route responds with HTTP **200 OK** and `ScanResponse` with `found=True` and all product fields populated.
 
 ## Usage Example
 
@@ -106,7 +121,7 @@ Content-Type: application/json
 
 # Network error (502)
 {
-  "message": "Errore durante la comunicazione con Open Food Facts"
+  "detail": "Errore durante la comunicazione con Open Food Facts"
 }
 ```
 
@@ -118,10 +133,11 @@ sequenceDiagram
     participant ScanRoute
     participant fetch_product
     participant OFF_API
+    participant DBThread
 
     Client->>ScanRoute: POST /api/scan {barcode}
     ScanRoute->>fetch_product: fetch_product(barcode)
-    fetch_product->>OFF_API: GET /api/v0/product/{barcode}.json
+    fetch_product->>OFF_API: GET /api/v0/product/{barcode}.json (shared client)
     alt Network error / timeout / bad JSON
         OFF_API-->>fetch_product: error
         fetch_product-->>ScanRoute: None
@@ -133,6 +149,8 @@ sequenceDiagram
     else Product found
         OFF_API-->>fetch_product: {product: {...}}
         fetch_product-->>ScanRoute: {barcode, name, brand, ...}
+        ScanRoute->>DBThread: anyio.to_thread persist_history()
+        DBThread-->>ScanRoute: committed / logged
         ScanRoute-->>Client: 200 OK {found: True, ...}
     end
 ```

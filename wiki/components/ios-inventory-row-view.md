@@ -1,122 +1,104 @@
 ---
-category: components
-name: ios-inventory-row-view
-title: InventoryRowView
-description: >
-  A SwiftUI row view for displaying an inventory item in a list. It shows the
-  product image, name, brand, category, a status badge, and quantity in a
-  compact HStack layout.
+title: "InventoryRowView"
+description: "Card-style list row for a single inventory item — CachedThumbnail image, name/brand/category chip, status badge (hidden when ok), and quantity capsule"
+category: "components"
 source_files:
-  - ios/Inventario/Features/Inventory/InventoryRowView.swift
-  - ios/Inventario/Features/Inventory/StatusBadge.swift
-  - ios/Inventario/Models/InventoryItem.swift
-  - ios/Inventario/Models/ItemStatus.swift
-last_updated: 2026-06-24
-glossary_terms:
-  - ItemStatus
+  - "ios/Inventario/Features/Inventory/InventoryRowView.swift"
+  - "ios/Inventario/Components/CachedThumbnail.swift"
+created: "2026-06-24"
+last_updated: "2026-09-05"
 ---
 
 # InventoryRowView
 
-`InventoryRowView` is a SwiftUI `View` that renders a single row inside an
-inventory list. It takes an [InventoryItem](../concepts/ios-models.md) and lays it out as a horizontal row
-with the item image, textual info, and status indicator.
+## Purpose
 
-## Row Layout
+`InventoryRowView` renders a single inventory item inside the grouped list in [InventoryListView](./ios-inventory-list-view.md). It takes an `InventoryItem` and lays it out as a liquid-glass card: thumbnail, name/brand/category on the left, status badge plus quantity on the right.
 
-The top-level container is an `HStack(spacing: 12)` with two vertical stacks
-on either side of a `Spacer`:
+## Props / Interface
+
+| Prop | Type | Required | Description |
+|------|------|----------|-------------|
+| `item` | `InventoryItem` | yes | Name, optional brand/category, `imageURL` string, `quantity`, raw `status` string, optional `expirationDate` (used for the VoiceOver label) |
+
+The view takes no bindings or callbacks. Tap handling (detail sheet), swipe actions (consume/delete), and list insets live in the parent `InventoryListView`.
+
+## Layout
+
+The top-level container is an `HStack(spacing: 12)` with `.padding(12)`, rendered as a card rather than a plain row:
 
 ```
 [HStack]
-  [AsyncImage (56×56)]  [VStack (name, brand, category)]  [Spacer]  [VStack (StatusBadge, quantity)]
+  [CachedThumbnail 56×56]  [VStack (name, brand?, category chip?)]  [Spacer]  [VStack (StatusBadge?, ×N)]
 ```
 
-- **Left**: product image (56×56 rounded rect).
-- **Center-left**: name (headline, line-limit 1), optional brand (caption,
-  secondary style), optional category (tag icon + display name, tertiary
-  style).
-- **Center-right**: spacer pushes content to the edges.
-- **Right**: `StatusBadge` above the quantity string (`×N`, caption,
-  secondary style).
+- **Left**: `CachedThumbnail` (56 pt square, corner radius 12).
+- **Center-left**: name (headline, `textPrimary`, line-limit 1), optional brand (subheadline, `textSecondary`, line-limit 1, skipped when empty), optional category chip (skipped when empty).
+- **Center-right**: `Spacer(minLength: 8)`.
+- **Right**: `StatusBadge` (only when status is not `.ok`) above a `×N` quantity capsule (caption semibold, `pantryOat` fill at 35 % with `pantryOat` stroke).
 
-The row applies `.padding(.vertical, 4)` for compact spacing.
+Card background (liquid-glass pantry style): `RoundedRectangle(cornerRadius: 18)` filled with `.regularMaterial` + `pantryCream` at 35 % overlay, `pantryOat` 0.5 pt stroke, and a soft shadow (black 6 %, radius 8, y 4).
 
-## Async Image Handling
+## CachedThumbnail Integration
 
-The image is loaded from `item.imageURL` via SwiftUI's `AsyncImage`. The URL
-is created with a `flatMap { URL(string: $0) }` so a nil or invalid string
-produces a `nil` URL, which immediately yields the `.empty` phase.
+The image is loaded via `CachedThumbnail(url: item.imageURL.flatMap { URL(string: $0) }, side: 56)`, which replaced `AsyncImage`. A nil or invalid URL string produces a nil `URL`.
 
-| Phase | Rendering |
-|---|---|
-| `.success(let image)` | `resizable`, aspect-fill, clipped to `RoundedRectangle(cornerRadius: 8)`, 56×56 |
-| `.failure` | Filled rounded rect (secondary opacity 0.2) with a `photo` SF Symbol overlay |
-| `.empty` | Same filled rounded rect with a `ProgressView` spinner overlay |
-| `@unknown default` | `EmptyView` |
+`CachedThumbnail` (`ios/Inventario/Components/CachedThumbnail.swift`) decodes once and caches in memory:
 
-## Category Display Name Mapping
+- **Cache**: process-wide `NSCache` (`ThumbnailMemoryCache`, ~64 MB pixel budget, auto-purged under memory pressure). The key binds the URL *and* the render resolution (`"<url>#<maxPixelSize>"`), so a 56 pt thumbnail is never reused blurry at a larger size.
+- **Downsampling**: full-size data is fetched with `URLSession.shared` (backed by the shared `URLCache`, disk included), then downsampled during decode with ImageIO (`CGImageSourceCreateThumbnailAtIndex`) on a background thread — the full bitmap never sits in memory.
+- **Cancellation**: `.task(id: url)` cancels the in-flight load when the cell scrolls off-screen or the URL changes, so scrolling never leaves orphan downloads.
+- **States**: loaded image (resizable, `.fill` crop to the 56×56 frame, `pantryOat` 0.5 pt inner border) · failure (`pantryOat` 35 % fill with a `photo` symbol) · loading/nil-URL (`pantryOat` 25 % fill with a `ProgressView` tinted `pantryMoss`). A nil URL resets to the placeholder state without attempting a fetch.
 
-The category identifier from the server (a kebab-case string) is mapped to an
-Italian display name through a hardcoded `switch` in the private
-`categoryDisplayName(_:)` method:
+`contentMode` defaults to `.fill` (square crop for rows/lists); `.fit` (aspect preserved, max height `side`) is available for detail views.
 
-| Server value | Display name |
-|---|---|
-| `yogurt` | Yogurt |
-| `fresh-milk` | Latte fresco |
-| `pasta` | Pasta |
-| `canned-vegetables` | Verdure in scatola |
-| `rice` | Riso |
-| `cheeses` | Formaggi |
-| `eggs` | Uova |
-| `fresh-fruits` | Frutta fresca |
-| `fresh-vegetables` | Verdura fresca |
-| `frozen-foods` | Surgelati |
+## Status Badge: Hidden When Ok
 
-Any unrecognised string falls through to the `default` branch and is returned
-as-is.
+The right-hand column embeds [StatusBadge](./ios-status-badge.md) only when the status is actionable:
 
-The category label is rendered as an `HStack(spacing: 4)` containing a `tag`
-SF Symbol (`Image(systemName: "tag")` at `.caption2` size) followed by the
-display name text (also `.caption2`). The entire group uses
-`.foregroundStyle(.tertiary)`.
+```swift
+if ItemStatus.from(statusString: item.status) != .ok {
+    StatusBadge(status: ItemStatus.from(statusString: item.status))
+}
+```
 
-## Status Badge Integration
+`.ok` rows show no badge — just the quantity capsule. `ItemStatus.from` defaults unrecognised strings to `.ok`, so unknown server values also render badge-free. See [Item Status](../concepts/item-status.md) for the `expiringSoon` / `expired` badge styles.
 
-The right-hand column embeds [StatusBadge](../components/ios-status-badge.md), initialised with
-[ItemStatus.from](../concepts/item-status.md)`(statusString: item.status)`.
+## Category Chip
 
-`ItemStatus` is an enum with three cases:
+The category identifier (kebab-case server key) is resolved through `CategoryRegistry.displayName(for:)` — the single source of truth (see [Category Registry](../concepts/category-registry.md)), backed by `/api/categories` with an embedded fallback — instead of a hardcoded switch. Unknown keys fall through to the raw string.
 
-- **ok** → green capsule, `checkmark.circle.fill` icon, label `"Ok"`.
-- **expiring_soon** → orange capsule, `exclamationmark.circle.fill` icon,
-  label `"In scadenza"`.
-- **expired** → red capsule, `xmark.circle.fill` icon, label `"Scaduto"`.
+The chip is an `HStack(spacing: 4)` with a `tag.fill` symbol and the display name (both `.caption2`, medium name weight), in `textSecondary`, inside a capsule filled with `.thinMaterial` + `pantryCream` 45 % and stroked with `pantryOat` 0.5 pt. It carries its own `accessibilityLabel`/`accessibilityHint`.
 
-The badge is rendered as a `Label` inside a capsule shape with a tinted
-background at 15 % opacity. A `.symbolEffect(.bounce)` animation triggers
-whenever the `status` value changes.
+## Disclosure Indicator
 
-If the raw string from the server does not match any known case,
-`ItemStatus.from` defaults to `.ok`.
+The row renders **no chevron of its own**. Navigation uses tap-to-present (the parent's `onTapGesture` opens the detail sheet), so there is no `NavigationLink` disclosure indicator to duplicate — a previous double-chevron (system disclosure plus custom arrow) was removed. The only chevrons nearby belong to other views: `chevron.down` on the pantry picker menu and a single `chevron.right` on the add-product pill, both in `InventoryListView`.
 
-## Data Model
+## Accessibility
 
-`InventoryItem` is a `Codable`, `Identifiable`, `Equatable` (by `id`) struct
-with the following fields used by this view:
+The row is a single accessible element (`children: .combine`, `.isButton` trait):
 
-| Field | Type | Source key | Role |
-|---|---|---|---|
-| `name` | `String` | `name` | Primary label |
-| `brand` | `String?` | `brand` | Optional secondary label |
-| `category` | `String?` | `category` | Optional category key for display name lookup |
-| `imageURL` | `String?` | `image_url` | Optional URL string for the image |
-| `quantity` | `Int` | `quantity` | Numeric count shown as `×N` |
-| `status` | `String` | `status` | Raw status key fed to `ItemStatus.from` |
+- **Label**: name, brand, category display name, status label, `quantità N`, and formatted expiry date when present.
+- **Value**: `"<status label>, quantità N"`.
+- **Hint**: tap for details, swipe left to delete, swipe right to mark consumed.
+- Dynamic Type range `.xSmall ... .accessibility3`.
 
-## Glossary
+## Usage
 
-- **ItemStatus**: An enum with cases `ok`, `expiring_soon`, and `expired`.
-  Each case defines a `color`, `symbol` (SF Symbol name), and `label` (human-readable
-  Italian string) used by `StatusBadge`.
+```swift
+ForEach(items) { item in
+    InventoryRowView(item: item)
+        .contentShape(Rectangle())
+        .onTapGesture { showDetailItem = item }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) { /* delete */ }
+        .swipeActions(edge: .leading, allowsFullSwipe: false) { /* consume */ }
+}
+```
+
+## Related
+
+- [InventoryListView](./ios-inventory-list-view.md) — hosts the row, owns tap/swipe actions and sections
+- [StatusBadge](./ios-status-badge.md)
+- [ItemDetailView](./ios-item-detail-view.md)
+- [Item Status](../concepts/item-status.md)
+- [iOS Models](../concepts/ios-models.md)

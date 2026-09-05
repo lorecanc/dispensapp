@@ -1,18 +1,19 @@
 ---
 title: "CategoryPicker"
-description: "Picker component for selecting a product category from a predefined set of Italian-labeled options"
+description: "Picker component for selecting a product category from the server-driven CategoryRegistry"
 category: "components"
 source_files:
   - "ios/Inventario/Components/CategoryPicker.swift"
+  - "ios/Inventario/Models/CategoryRegistry.swift"
 created: "2026-06-24"
-last_updated: "2026-06-24"
+last_updated: "2026-09-05"
 ---
 
 # CategoryPicker
 
 ## Purpose
 
-A SwiftUI `Picker` that offers a predefined list of product categories with Italian display labels. Used wherever the user assigns or changes a product's category.
+A SwiftUI `Picker` that offers the product categories with Italian display labels. Used wherever the user assigns or changes a product's category. The list is **server-driven**: options come from [CategoryRegistry](../concepts/category-registry.md) (`GET /api/categories`, with an embedded offline fallback), so the picker never hardcodes categories itself.
 
 ## Interface
 
@@ -20,39 +21,32 @@ A SwiftUI `Picker` that offers a predefined list of product categories with Ital
 |------|------|----------|-------------|
 | `selection` | `Binding<String>` | yes | The selected category key; bound from the parent view |
 
-## Category Mapping
-
-The picker maps internal keys to Italian display labels:
-
-| Key | Label |
-|-----|-------|
-| `""` (empty) | Nessuna |
-| `yogurt` | Yogurt |
-| `fresh-milk` | Latte fresco |
-| `pasta` | Pasta |
-| `canned-vegetables` | Verdure in scatola |
-| `rice` | Riso |
-| `cheeses` | Formaggi |
-| `eggs` | Uova |
-| `fresh-fruits` | Frutta fresca |
-| `fresh-vegetables` | Verdura fresca |
-| `frozen-foods` | Surgelati |
-
-The first option is **Nessuna** (empty string tag), representing no category.
-
-## Static Validation Set
-
-The component exposes a static set of valid keys for use elsewhere in the app:
-
 ```swift
-static let validCategoryKeys: Set<String> = [
-    "yogurt", "fresh-milk", "pasta", "canned-vegetables",
-    "rice", "cheeses", "eggs", "fresh-fruits",
-    "fresh-vegetables", "frozen-foods",
-]
+struct CategoryPicker: View {
+    @Binding var selection: String
+
+    private let categories = CategoryRegistry.categories
+
+    /// Forwarded for backward compatibility — single source is CategoryRegistry.
+    static let validCategoryKeys: Set<String> = CategoryRegistry.validCategoryKeys
+    ...
+}
 ```
 
-Note that the empty-string `""` key (Nessuna) is **not** included in `validCategoryKeys`, so valid category checks only pass when a concrete category is selected.
+## Category Source
+
+`CategoryRegistry.categories` returns `[(key:label:)]` pairs — the live server snapshot after `update(with:)`, or the embedded fallback (mirror of backend `CATEGORY_LABELS`) on first launch/offline. The picker renders a `"Nessuna"` (empty-string) option plus one row per registry entry:
+
+```swift
+Picker("Categoria", selection: $selection) {
+    Text("Nessuna").tag("")
+    ForEach(categories, id: \.key) { cat in
+        Text(cat.label).tag(cat.key)
+    }
+}
+```
+
+The empty-string `""` key (Nessuna) is **not** included in `validCategoryKeys`, so valid category checks only pass when a concrete category is selected. `validCategoryKeys` on the picker is a deprecated forwarder — new code should use `CategoryRegistry.validCategoryKeys` directly.
 
 ## Usage
 
@@ -69,6 +63,6 @@ CategoryPicker(selection: $selectedCategory)
 
 ## Notes
 
-- The categories list is defined as a private constant inside the struct; the mapping cannot be extended at runtime.
+- The categories list is resolved at runtime from `CategoryRegistry`; it updates automatically after the next `fetchCategories` without touching this file.
 - The picker label is hardcoded to `"Categoria"` (Italian).
-- Category selections feed into the [expiration date estimation](../concepts/expiration-estimation.md) system — when no expiration date is provided, the selected category determines the default shelf life via the backend's `DEFAULT_SHELF_LIFE` mapping.
+- Category selections feed into the [expiration date estimation](../concepts/expiration-estimation.md) system — when no expiration date is provided, the selected category determines the default shelf life via the backend's `DEFAULT_SHELF_LIFE` mapping (with `CATEGORY_ALIASES` covering singular/plural variants).

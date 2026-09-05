@@ -1,23 +1,24 @@
 ---
 title: "Open Food Facts Integration"
-description: "Barcode scan integration with the Open Food Facts public API"
+description: "Read and write integration patterns with the Open Food Facts API — scan lookup, metadata contribution, and photo upload"
 category: "concepts"
 source_files:
   - "backend/services/off.py"
   - "backend/routes/scan.py"
+  - "backend/routes/contribute.py"
   - "backend/schemas.py"
   - "backend/config.py"
 created: "2026-06-24"
-last_updated: "2026-06-24"
+last_updated: "2026-09-05"
 ---
 
 # Open Food Facts Integration
 
 ## Purpose
 
-The Open Food Facts (OFF) integration enables the Inventario iOS app to look up product information by scanning a barcode. It acts as a bridge between the mobile client and the public OFF database, normalising the OFF response into the app's own data model.
+The Open Food Facts (OFF) integration connects the Inventario iOS app to the public OFF database in both directions: **read** (barcode scan lookup) and **write** (opt-in contribution of product metadata and photos). The backend owns all OFF wire details; iOS only sends barcodes, form data, and a CC BY-SA consent flag. The client functions live in the [OFF service](../modules/backend-service-off.md).
 
-## Integration Flow
+## Read Pattern (Scan Lookup)
 
 ```mermaid
 sequenceDiagram
@@ -45,141 +46,86 @@ sequenceDiagram
     end
 ```
 
-## API Call Flow
+The scan endpoint builds a `ScanResponse` from `fetch_product`'s return value; category tags (`en:pasta`) are stripped to their last segment (`pasta`) so they match the `DEFAULT_SHELF_LIFE` keys. A missing product is HTTP 200 with `found=false` — the scan succeeded, the database simply has no match. Only transport failures become 502.
 
-### 1. Client request
+## Write Pattern (Contribute Metadata + Photo)
 
-The iOS app sends a POST request with the scanned barcode:
+Opt-in contribution via two endpoints in `backend/routes/contribute.py` (see [Contribute](../api/contribute.md)), both disabled unless `OFF_WRITE_ENABLED` resolves true (flag on **and** `OFF_USER`/`OFF_PASS` present **and** base URL valid). Both share an in-memory per-IP rate limit (10 req/min, 60 s sliding window → 429) and both require explicit `consent_cc_bysa=true` (→ 400 otherwise) because contributions are published under CC BY-SA.
 
-```json
-{
-  "barcode": "8000500310807"
-}
+```mermaid
+sequenceDiagram
+    participant iOS as iOS App
+    participant API as FastAPI /api/scan/contribute*
+    participant OFF_svc as off.contribute/upload
+    participant OFF_API as OFF write CGI (staging default)
+
+    iOS->>+API: POST /api/scan/contribute { code, fields, consent }
+    API->>API: rate-limit, consent, 403-gate, validate
+    API->>+OFF_svc: contribute_product(...) → product_jqm2.pl
+    OFF_svc-->>-API: { status, reason }
+    API-->>-iOS: 200 { ok: true } or 502
+
+    iOS->>+API: POST /api/scan/contribute/photo (multipart)
+    API->>API: rate-limit, consent, 403-gate, guards (413/415/422)
+    API->>+OFF_svc: upload_product_image(...) → product_image_upload.pl
+    OFF_svc-->>-API: { status, reason }
+    API-->>-iOS: 200 { ok: true } or 502
 ```
 
-The endpoint is defined at [routes/scan.py](../modules/backend-routes-scan.md) with a `ScanRequest` body schema (`schemas.py:9`), which simply wraps a `barcode: str` field.
+### Metadata flow
 
-### 2. Fetch from OFF
-
-[fetch_product(barcode)](../modules/backend-service-off.md) in `services/off.py:8` constructs the URL from the configured base:
-
-```
-https://world.openfoodfacts.org/api/v0/product/{barcode}.json
-```
-
-The base URL is defined in `config.py:16` as `OFF_BASE_URL`. An `httpx.AsyncClient` with a 10-second timeout performs the GET request.
-
-### 3. Parse response
-
-The OFF API returns a JSON object with a `status` integer and a `product` object. The function checks:
-
-- `status == 1` and `product` is not `None` → product found
-- Otherwise → `{"found": False}`
-
-When found, the following fields are extracted (`off.py:23-28`):
-
-| Field | OFF source | Notes |
-|-------|------------|-------|
-| `barcode` | function argument | Passed through as-is |
-| `name` | `product["product_name"]` | Defaults to `""` if missing |
-| `brand` | `product["brands"]` | Set to `None` if missing or empty |
-| `categories` | `product["categories_tags"]` | Each tag is normalised (see below) |
-| `image_url` | `product["image_front_small_url"]` | Set to `None` if missing |
-
-### 4. Response to client
-
-The [scan endpoint](../api/scan.md) (`scan.py:29-36`) builds a `ScanResponse` (`schemas.py:13`) from `fetch_product`'s return value.
-
-## Category Normalisation
-
-OFF category tags follow the format `en:pasta`, `en:yogurts`, `fr:fromages`, etc. The integration strips the language prefix, keeping only the portion after the colon:
-
-```python
-[c.split(":")[-1] for c in product.get("categories_tags", [])]
-```
-
-**Examples:**
-
-| OFF tag | Normalised value |
-|---------|-----------------|
-| `en:pasta` | `pasta` |
-| `en:yogurts` | `yogurts` |
-| `en:canned-vegetables` | `canned-vegetables` |
-
-This normalisation is purely syntactic — it removes the language prefix but does not translate or further normalise the category string. Downstream code (such as `config.py`'s `DEFAULT_SHELF_LIFE` map) must match against the normalised values.
-
-## Error States
-
-The integration handles three distinct failure modes:
-
-### OFF unreachable
-
-Any `httpx.HTTPError`, `httpx.TimeoutException`, or non-JSON response (caught by `ValueError` on `response.json()`) causes `fetch_product` to return `None`. The scan endpoint returns a **502 Bad Gateway** with JSON body:
-
-```json
-{
-  "message": "Errore durante la comunicazione con Open Food Facts"
-}
-```
-
-### Product not found
-
-OFF responds successfully but `status != 1` or `product` is missing. `fetch_product` returns `{"found": False}`. The endpoint returns **200 OK** with:
-
-```json
-{
-  "barcode": "8000500310807",
-  "found": false,
-  "message": "Prodotto non trovato nel database Open Food Facts"
-}
-```
-
-Note that the response is HTTP 200, not 404 — the scan itself succeeded, it simply found no matching product.
-
-## Response Paths Summary
-
-| Condition | HTTP Status | `found` | Body includes |
-|-----------|-------------|---------|---------------|
-| Product found | 200 | `true` | `barcode`, `name`, `brand`, `categories`, `image_url` |
-| Product not in OFF | 200 | `false` | `barcode`, `message` (Italian: "Prodotto non trovato...") |
-| OFF unreachable | 502 | — | `message` (Italian: "Errore durante la comunicazione...") |
-
-Messages are in Italian because the app's primary user base is Italian-speaking.
-
-## Configuration
-
-| Setting | Value | Source |
-|---------|-------|--------|
-| `OFF_BASE_URL` | `https://world.openfoodfacts.org/api/v0/product` | [config.py](../config/backend-config.md) |
-| HTTP timeout | 10 seconds | `off.py:11` (hardcoded in `httpx.AsyncClient`) |
-
-The timeout is hardcoded in the service function and is not configurable at runtime. The base URL could be changed via `OFF_BASE_URL` if needed (e.g., to target a different OFF mirror).
-
-## Write Path (Contribute Metadata + Photo)
-
-Opt-in contribution flow via `POST /api/scan/contribute` (JSON metadati) and `POST /api/scan/contribute/photo` (multipart foto), implemented in `backend/routes/contribute.py` → `backend/services/off.py` (`product_jqm2.pl` / `product_image_upload.pl`). Disabled by default (`OFF_WRITE_ENABLED=false`).
+1. iOS posts JSON (`code` matching `^\d{8,14}$`, at least one product field, `lang` like `it`/`it-IT`, consent flag).
+2. The route validates (Pydantic → 422), enforces consent (400) and the write gate (403), then calls `contribute_product`.
+3. The service posts to `product_jqm2.pl` with **only `add_*` fields** for brands/categories/labels (never the bare keys, so OFF data is appended, not overwritten), language-suffixed names (`product_name_{lang}` with the lang normalised to 2 letters), app `User-Agent`, and staging basic auth when targeting `*.openfoodfacts.net`.
+4. OFF `status != 1` → 502 "rifiutato"; transport errors → 502 "comunicazione". Success → `200 {"ok": true, "code", "message"}`.
 
 ### Photo flow
 
-1. iOS `APIClient.uploadPhoto` sends multipart `code` + `imagefield` + `consent_cc_bysa` + `image` to `POST /api/scan/contribute/photo`.
-2. Backend checks rate-limit (10 req/min per IP, in-memory) → `429` when exceeded.
-3. Requires `consent_cc_bysa=true` (CC BY-SA licence) → `400` otherwise; requires `OFF_WRITE_ENABLED` → `403` otherwise.
-4. Validates `code` (`^\d{8,14}$`) → `422`, and `imagefield` allowlist (`front_it`, `ingredients_it`, `nutrition_it`, `packaging_it`) → `422`.
-5. Reads bytes: empty → `415`; over 5MB → `413`; `Content-Type` dichiarato vs magic-byte rilevati (JPEG/PNG/HEIC) mismatch → `415`.
-6. Forwards to OFF staging with `OFF_USER`/`OFF_PASS` and app `User-Agent` (password e bytes mai nei log); OFF `status != 1` → `502`, altrimenti `200 {"ok": true, "code", "message"}`.
+1. iOS (`APIClient.uploadPhoto`) posts multipart `code` + `imagefield` + `consent_cc_bysa` + `image`; on failure the `photoError` state in `ScanPreviewSheet` shows the error and the button flips to "Riprova".
+2. The route applies the guard chain below, then calls `upload_product_image`, which posts multipart to `product_image_upload.pl` with the file part named `imgupload_{imagefield}` and the sanitised filename.
 
-### Env
+### Photo guard chain (fail-closed, in order)
 
-See [.env.example](../../.env.example) and [backend config](../config/backend-config.md): `OFF_WRITE_ENABLED`, `OFF_WRITE_BASE_URL` (default staging `https://world.openfoodfacts.net/cgi`, prod `https://world.openfoodfacts.org/cgi` solo via env), `OFF_USER`/`OFF_PASS` (vuoti di default, obbligatori per abilitare), `OFF_APP_NAME`/`OFF_APP_VERSION`, `OFF_CONTACT_EMAIL`. Invalid/insecure base URL falls back to staging with a warning.
+| # | Guard | Failure |
+|---|-------|---------|
+| 1 | Rate limit 10/min per IP | 429 |
+| 2 | `consent_cc_bysa=true` | 400 |
+| 3 | `OFF_WRITE_ENABLED` | 403 |
+| 4 | `code` matches `^\d{8,14}$`; `imagefield` matches `^(front\|ingredients\|nutrition\|packaging\|other)(_[a-z]{2})?$` | 422 |
+| 5 | Declared `Content-Length` over 5 MB + 1 KB multipart tolerance (pre-check before reading the body) | 413 |
+| 6 | Actual bytes over 5 MB (`MAX_PHOTO_BYTES`) or empty | 413 / 415 |
+| 7 | Declared `Content-Type` vs magic-byte detection must agree on JPEG/PNG/HEIC — HEIC requires a strict `ftyp` brand (`heic`, `heix`, `hevc`, …; generic `mif1`/`msf1` containers rejected) | 415 |
+| 8 | JPEG/PNG minimum dimensions 640×160 (HEIC accepted without dimension check) | 422 |
+| 9 | Filename sanitised (`_safe_filename`: strips newlines/quotes, non-`[A-Za-z0-9._-]` → `_`, max 128 chars) | never fails, falls back to `{code}_{imagefield}` |
 
-### Consent
+## Identity and Credentials
 
-Both endpoints require explicit `consent_cc_bysa=true` because contributions are published under CC BY-SA. iOS gates the send button on the consent toggle.
+Every write request identifies the app the same way: `User-Agent: {OFF_APP_NAME}/{OFF_APP_VERSION}` (plus `(contact)` when `OFF_CONTACT_EMAIL` is set), form credentials `user_id`/`password` from `OFF_USER`/`OFF_PASS`, and — only against the staging host `world.openfoodfacts.net` (default `OFF_WRITE_BASE_URL`) — HTTP basic auth `off:off` (overridable via `OFF_STAGING_BASIC_USER`/`OFF_STAGING_BASIC_PASS`). Production `.org` targets get no basic auth. Passwords and image bytes never appear in logs.
 
-### Rate limit (10/min in-memory)
+## Configuration
 
-`_RATE_LIMIT` dict per IP with a 60s sliding window (`_RATE_LIMIT_MAX=10`) shared by both contribute endpoints; no new dependencies. Cleared/isolated per test via fixture.
+| Setting | Default | Notes |
+|---------|---------|-------|
+| `OFF_BASE_URL` | `https://world.openfoodfacts.org/api/v0/product` | Read path |
+| `OFF_WRITE_BASE_URL` | `https://world.openfoodfacts.net/cgi` (staging) | Prod `.org` only via env; invalid/insecure values fall back to staging with a warning |
+| `OFF_WRITE_ENABLED` | `false` | True only if the flag is on **and** `OFF_USER`/`OFF_PASS` are set **and** the base URL is valid |
+| `OFF_USER` / `OFF_PASS` | empty | Required to enable writes; on staging use a staging-created account |
+| `OFF_APP_NAME` / `OFF_APP_VERSION` / `OFF_CONTACT_EMAIL` | `DispensApp` / `0.1.0` / empty | Feed the `User-Agent` header |
+| HTTP timeouts | 10 s read, 15 s metadata, 30 s photo | Hardcoded in the service |
 
-### Prod option (slowapi/Redis)
+## Response Paths Summary
 
-For production, replace the in-memory limiter with `slowapi` backed by Redis (shared across workers/hosts, persistent) before go-live — see the `TODO(prod)` in `backend/routes/contribute.py`. No extra dependency is added now to keep the current scope minimal.
+| Condition | HTTP Status | Body includes |
+|-----------|-------------|---------------|
+| Scan: product found | 200 | `barcode`, `name`, `brand`, `categories`, `image_url` |
+| Scan: product not in OFF | 200 (`found=false`) | `barcode`, `message` ("Prodotto non trovato...") |
+| Scan: OFF unreachable | 502 | `message` ("Errore durante la comunicazione...") |
+| Contribute/photo: accepted | 200 (`ok=true`) | `code`, `message` |
+| Contribute/photo: OFF rejected or transport error | 502 | `detail` ("rifiutato" / "comunicazione") |
+| Contribute/photo: gated | 429 / 403 / 400 / 422 / 413 / 415 | Guard-chain table above |
+
+Messages are in Italian because the app's primary user base is Italian-speaking.
+
+## Production Note
+
+The in-memory rate limiter is per-process and does not survive restarts or scale across workers. Before go-live, replace it with `slowapi` backed by Redis (see the `TODO(prod)` in `backend/routes/contribute.py`); no extra dependency is added now to keep the current scope minimal.

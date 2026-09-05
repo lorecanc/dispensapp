@@ -5,7 +5,7 @@ category: "components"
 source_files:
   - "ios/Inventario/Components/QuantityStepper.swift"
 created: "2026-06-24"
-last_updated: "2026-06-24"
+last_updated: "2026-09-05"
 ---
 
 # QuantityStepper
@@ -53,3 +53,4 @@ QuantityStepper(quantity: $quantity, range: 0...10)
 
 - No custom styling is applied; the appearance is the platform-default `Stepper` with a text label.
 - Validation is handled by the `Stepper` itself — it clamps values within the provided range and disables decrement/increment at the bounds.
+- Accessibility: labeled `"Quantità"` with the current value exposed and a hint stating the bounds; an `.accessibilityAdjustableAction` lets VoiceOver/switch users swipe up/down to change the value with the same bounds clamping; Dynamic Type range `.xSmall ... .accessibility2`.

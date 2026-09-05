@@ -8,7 +8,7 @@ source_files:
   - "ios/Inventario/Components/CategoryPicker.swift"
   - "ios/Inventario/Components/QuantityStepper.swift"
 created: "2026-06-24"
-last_updated: "2026-06-24"
+last_updated: "2026-09-05"
 ---
 
 # ManualEntryView (iOS)
@@ -25,8 +25,8 @@ The view is a `Form` with three sections:
    - `Nome *` (required) — bound to `name`, trimmed whitespace must be non-empty for the form to be valid.
    - `Marca` (optional) — bound to `brand`, passed as `String?` via the `nilIfEmpty` extension.
 
-2. **Implicit section** — Contains three controls:
-   - [CategoryPicker](../components/ios-category-picker.md) — a `Picker` bound to `selectedCategory`. Lists ten categories (yogurt, fresh-milk, pasta, etc.) plus a "Nessuna" default option (empty string tag).
+ 2. **Implicit section** — Contains three controls:
+    - [CategoryPicker](../components/ios-category-picker.md) — a `Picker` bound to `selectedCategory`, fed by the server-driven [CategoryRegistry](../concepts/category-registry.md) plus a "Nessuna" default option (empty string tag).
    - `DatePicker` — "Data di scadenza" bound to `expirationDate`. Defaults to 30 days from now (`Date().addingTimeInterval(86400 * 30)`).
    - [QuantityStepper](../components/ios-quantity-stepper.md) — bound to `quantity`, a `Stepper` in range `1...99`. Defaults to `1`.
 
@@ -80,12 +80,12 @@ This is used when passing optional fields (`brand`, `category`) to the store, so
 | Component | Role |
 |-----------|------|
 | `InventoryStore` | Observable state container; provides the `addManual()` method and holds `error` after each operation |
-| `CategoryPicker` | Reusable picker for the ten predefined categories |
+| `CategoryPicker` | Server-driven picker (CategoryRegistry) for the category |
 | `QuantityStepper` | Reusable stepper for quantity (1–99) |
 
 ## Store Method: `addManual`
 
-`InventoryStore.addManual(name:brand:expirationDate:category:quantity:)` calls `APIClient.createManual(...)`, appends the returned `InventoryItem` to `items`, and re-sorts the list by expiration date.
+`InventoryStore.addManual(name:brand:expirationDate:category:quantity:)` goes through the offline-first path: when offline it enqueues a local create in the [outbox](../concepts/ios-offline-outbox.md) and returns; online it calls the pantry-scoped `client.createManualScoped(pantryId:selectedPantryId, ...)`, appends the returned `InventoryItem` to `items`, and re-sorts the list by expiration date.
 
 ```swift
 func addManual(
@@ -96,17 +96,24 @@ func addManual(
     quantity: Int
 ) async {
     error = nil
+    if isOffline {
+        enqueueLocalCreate(barcode: nil, name: name, brand: brand, expirationDate: expirationDate, category: category, imageURL: nil, quantity: quantity)
+        return
+    }
     do {
-        let item = try await client.createManual(
+        let item = try await client.createManualScoped(
+            pantryId: selectedPantryId,
             name: name,
             brand: brand,
             expirationDate: expirationDate,
             category: category,
             quantity: quantity
         )
+        guard !Task.isCancelled else { return }
         items.append(item)
         items.sort { ($0.expirationDate ?? .distantFuture) < ($1.expirationDate ?? .distantFuture) }
     } catch {
+        if Task.isCancelled { return }
         self.error = error as? APIError ?? .transport(error)
     }
 }

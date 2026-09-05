@@ -1,195 +1,115 @@
 ---
 title: "Inventory API"
-description: "CRUD endpoints for pantry inventory items — create, read, update, delete, and export"
+description: "Pantry-scoped inventory CRUD, atomic consume, and consumption history"
 category: "api"
 source_files:
   - "backend/routes/inventory.py"
-  - "backend/schemas.py"
 created: "2026-06-24"
-last_updated: "2026-06-24"
+last_updated: "2026-09-05"
 ---
 
 # Inventory API
 
-## Overview
-
-The inventory API manages pantry items in the Inventario app. It provides endpoints for creating items via barcode scan or manual entry, listing, updating, deleting, and exporting inventory data. [Expiration dates](../concepts/expiration-estimation.md) are estimated when not provided using a dedicated service.
-
 ## Endpoints
 
-| Method | Path | Status | Description |
-|--------|------|--------|-------------|
-| POST | `/api/inventory` | 201 | Create an item from a barcode scan |
-| POST | `/api/inventory/manual` | 201 | Create an item manually |
-| PATCH | `/api/inventory/{item_id}` | 200 | Partially update an item |
-| GET | `/api/inventory` | 200 | List all items, ordered by expiration date |
-| GET | `/api/inventory/export` | 200 | Export inventory as markdown |
-| DELETE | `/api/inventory/{item_id}` | 204 | Delete an item |
+Scoped routes require pantry membership via `get_current_pantry` (`X-Pantry-Token` header; see [Pantry Sharing](../concepts/pantry-sharing.md)). Non-member on an existing pantry returns `403`; an item that does not belong to the pantry returns `404`. All scoped routes use strict `pantry_id` matching (`allow_null=False`).
 
-**Router prefix**: `/api` — [`backend/routes/inventory.py`](../modules/backend-routes-inventory.md)
+### GET /api/pantries/{pantry_id}/inventory
 
-### POST /api/inventory
+**Description**: List pantry items with `quantity > 0`, ordered by expiration date ascending (nulls last).
 
-**Description**: Creates a new inventory item from a barcode scan result.
+**Request**: Path `pantry_id: int`. Query `limit: int = 50 (1-100)`, `offset: int = 0`. Header `X-Pantry-Token`.
 
-**Request body** (`InventoryCreate`):
+**Response**: `200` `list[InventoryOut]`.
 
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `barcode` | `str` | yes | — | Scanned barcode |
-| `name` | `str` | yes | — | Product name |
-| `brand` | `Optional[str]` | no | `None` | Brand name |
-| `expiration_date` | `Optional[date]` | no | `None` | If provided, used directly with `is_estimated=false` |
-| `category` | `Optional[str]` | no | `None` | Product category |
-| `image_url` | `Optional[str]` | no | `None` | Product image URL |
-| `quantity` | `int` | no | `1` | Item count |
+**Source**: `backend/routes/inventory.py:269-277`
 
-**Business logic**:
-- If `expiration_date` is provided → stored as-is, `is_estimated=false`.
-- If `expiration_date` is omitted → `estimate_expiration(category_tags=[category])` is called with the category as a tag (or `None` if no category). The result is stored with `is_estimated=true`.
+### POST /api/pantries/{pantry_id}/inventory
 
-**Response** (`201`): `InventoryOut`
+**Description**: Create an item from a barcode scan. Resolves expiration via `resolve_expiration`, infers `compartment` when omitted, normalizes category, stores `pantry_id` and `created_by_token`.
 
-**Source**: `backend/routes/inventory.py:20-43`
+**Request**: Path `pantry_id: int`. Body `InventoryCreate` (`barcode`, `name`, `brand`, `expiration_date`, `category`, `image_url`, `quantity`, `compartment`). Header `X-Pantry-Token`.
 
----
+**Response**: `201` `InventoryOut`. `500` on persistence failure.
 
-### POST /api/inventory/manual
+**Source**: `backend/routes/inventory.py:280-289`
 
-**Description**: Creates a new inventory item via manual entry (no barcode required).
+### POST /api/pantries/{pantry_id}/inventory/manual
 
-**Request body** (`InventoryCreateManual`):
+**Description**: Create an item via manual entry (`barcode=None`). Same expiration/compartment handling as the barcode route, with `allow_none=True` so a missing date and category yields `expiration_date=None`.
 
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `name` | `str` | yes | — | Product name |
-| `brand` | `Optional[str]` | no | `None` | Brand name |
-| `expiration_date` | `Optional[date]` | no | `None` | If provided, used directly with `is_estimated=false` |
-| `category` | `Optional[str]` | no | `None` | Product category |
-| `quantity` | `int` | no | `1` | Item count |
+**Request**: Path `pantry_id: int`. Body `InventoryCreateManual` (same fields minus `barcode`). Header `X-Pantry-Token`.
 
-**Business logic**:
-- If `expiration_date` is provided → stored as-is, `is_estimated=false`.
-- If `expiration_date` is omitted and `category` is provided → `estimate_expiration(category_tags=[category])` is called, `is_estimated=true`.
-- If neither `expiration_date` nor `category` is provided → `expiration_date` is set to `None`, `is_estimated=false`.
+**Response**: `201` `InventoryOut`. `500` on persistence failure.
 
-Unlike the barcode endpoint, manual items always store `barcode=None`. The estimation fallback only works when a category is present.
+**Source**: `backend/routes/inventory.py:292-303`
 
-**Response** (`201`): `InventoryOut`
+### GET /api/pantries/{pantry_id}/inventory/export
 
-**Source**: `backend/routes/inventory.py:46-72`
+**Description**: Export pantry items (`quantity > 0`, same expiration ordering) as a markdown table via the `to_markdown` service.
 
----
+**Request**: Path `pantry_id: int`. Header `X-Pantry-Token`.
 
-### PATCH /api/inventory/{item_id}
+**Response**: `200` `PlainTextResponse` with `media_type="text/markdown"`.
 
-**Description**: Partially updates an existing inventory item. Only the fields included in the body are updated.
+**Source**: `backend/routes/inventory.py:306-322`
 
-**Request body** (`InventoryUpdate`):
+### GET /api/pantries/{pantry_id}/inventory/{item_id}
 
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `name` | `Optional[str]` | no | — | Product name |
-| `brand` | `Optional[str]` | no | — | Brand name |
-| `expiration_date` | `Optional[date]` | no | — | Expiration date |
-| `category` | `Optional[str]` | no | — | Product category |
-| `image_url` | `Optional[str]` | no | — | Product image URL |
-| `quantity` | `Optional[int]` | no | — | Item count |
+**Description**: Return a single item scoped to the pantry.
 
-At least one field must be provided. The schema uses a `model_validator` that raises `ValueError` if no fields are set (`backend/schemas.py:76-80`).
+**Request**: Path `pantry_id: int`, `item_id: int`. Header `X-Pantry-Token`.
 
-**Implementation**: Uses `model_dump(exclude_unset=True)` to apply only the fields the client explicitly sent, enabling true partial updates (`backend/routes/inventory.py:80`).
+**Response**: `200` `InventoryOut`. `404` `{"detail": "Elemento non trovato"}` when the item is missing or belongs to another pantry.
 
-**Error handling**:
-- `404` — item not found: raises `HTTPException(status_code=404, detail="Elemento non trovato")`.
+**Source**: `backend/routes/inventory.py:325-332`
 
-**Response** (`200`): `InventoryOut`
+### PATCH /api/pantries/{pantry_id}/inventory/{item_id}
 
-**Source**: `backend/routes/inventory.py:75-85`
+**Description**: Partially update an item. Applies only explicitly sent fields (`model_dump(exclude_unset=True)`), normalizing `category` and stringifying `image_url`.
 
----
+**Request**: Path `pantry_id: int`, `item_id: int`. Body `InventoryUpdate` (all fields optional, at least one required). Header `X-Pantry-Token`.
 
-### GET /api/inventory
+**Response**: `200` `InventoryOut`. `404` when the item is missing or out of scope. `422` on empty/invalid body. `500` on persistence failure.
 
-**Description**: Returns all inventory items ordered by expiration date ascending, with null dates last.
+**Source**: `backend/routes/inventory.py:335-343`
 
-**Response** (`200`): `list[InventoryOut]`
+### DELETE /api/pantries/{pantry_id}/inventory/{item_id}
 
-Ordering is applied at the database level: `InventoryItem.expiration_date.asc().nulls_last()` (`backend/routes/inventory.py:92`).
+**Description**: Delete an item scoped to the pantry.
 
-**Source**: `backend/routes/inventory.py:88-95`
+**Request**: Path `pantry_id: int`, `item_id: int`. Header `X-Pantry-Token`.
 
----
+**Response**: `204` empty body. `404` when the item is missing or out of scope. `500` on persistence failure.
 
-### GET /api/inventory/export
+**Source**: `backend/routes/inventory.py:346-354`
 
-**Description**: Exports the entire inventory as a markdown table. Uses the [`to_markdown` service](../modules/backend-service-markdown-export.md) to render items.
+### POST /api/pantries/{pantry_id}/inventory/{item_id}/consume
 
-**Response** (`200`): `PlainTextResponse(content=..., media_type="text/markdown")` — a plain text response with content type `text/markdown`.
+**Description**: Atomically decrement `quantity` by `delta` (`UPDATE ... WHERE quantity >= delta`). Writes a `ConsumptionEvent` (`delta=-delta`, name/barcode snapshot, no actor token; see [Inventory Consume & History](../concepts/inventory-consume-history.md)). When the remainder reaches zero the row is deleted and a zero-quantity snapshot is returned (Contract A); history remains queryable.
 
-Items are fetched with the same ordering as the list endpoint (expiration date ASC, nulls last).
+**Request**: Path `pantry_id: int`, `item_id: int`. Body `InventoryConsume` (`delta: int`, `reason: str | None`). Header `X-Pantry-Token`.
 
-**Source**: `backend/routes/inventory.py:98-106`
+**Response**: `200` `InventoryOut` (updated item, or snapshot with `quantity=0` after deletion). `404` when the item is missing or out of scope. `409` `{"detail": "Quantità insufficiente"}` when stock is insufficient. `500` on persistence failure.
 
----
+**Source**: `backend/routes/inventory.py:438-451`
 
-### DELETE /api/inventory/{item_id}
+### GET /api/pantries/{pantry_id}/inventory/{item_id}/history
 
-**Description**: Deletes an inventory item by ID.
+**Description**: List consumption events for a pantry + item pair, newest first (`created_at DESC, id DESC`; see [Inventory Consume & History](../concepts/inventory-consume-history.md)). Does not require the item row to exist, so history survives zero-quantity deletion (Contract A).
 
-**Error handling**:
-- `404` — item not found: returns a `JSONResponse(status_code=404)` with a `MessageResponse` body (`{"message": "Elemento non trovato"}`). Notably, this uses `JSONResponse` directly rather than raising `HTTPException`.
+**Request**: Path `pantry_id: int`, `item_id: int`. Query `limit: int = 50 (1-100)`, `offset: int = 0`. Header `X-Pantry-Token`.
 
-**Response** (`204`): No content. On success, returns an empty `Response(status_code=204)`. The response body is empty.
+**Response**: `200` `list[ConsumptionEventOut]`.
 
-**Source**: `backend/routes/inventory.py:109-119`
+**Source**: `backend/routes/inventory.py:454-466`
 
----
+### Legacy shims (deprecated)
 
-## [Schemas](../modules/backend-schemas.md)
+**Description**: Unscoped `/api/inventory*` routes bound to `DEFAULT_PANTRY_ID = 1` for legacy clients. New clients must use `/api/pantries/{id}/inventory`. Shims validate the token against the default pantry and include pre-T3 rows with `pantry_id NULL` (`allow_null=True`); scoped routes never include NULL rows.
 
-### InventoryOut (response)
+**Request**: `POST /api/inventory`, `POST /api/inventory/manual`, `GET /api/inventory`, `GET /api/inventory/export`, `GET /api/inventory/{item_id}`, `PATCH /api/inventory/{item_id}`, `DELETE /api/inventory/{item_id}`, `POST /api/inventory/{item_id}/consume`, `GET /api/inventory/{item_id}/history`, each with `X-Pantry-Token` and the same bodies/query params as their scoped counterparts.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `int` | Primary key |
-| `barcode` | `Optional[str]` | Scanned barcode, `None` for manual entries |
-| `name` | `str` | Product name |
-| `brand` | `Optional[str]` | Brand name |
-| `expiration_date` | `Optional[date]` | Expiration date, possibly estimated |
-| `is_estimated` | `bool` | Whether the expiration date was estimated |
-| `category` | `Optional[str]` | Product category |
-| `image_url` | `Optional[str]` | Product image URL |
-| `created_at` | `datetime` | Timestamp of creation |
-| `quantity` | `int` | Item count (default 1) |
-| `status` | `str` | **Computed field**: `"expired"` if past due, `"expiring_soon"` if within `EXPIRING_SOON_DAYS`, otherwise `"ok"`. Returns `"ok"` when `expiration_date` is `None`. |
+**Response**: Same shapes and status codes as the scoped counterparts (`201` on create, `200` on read/update/consume/history, `204` on delete, `404`/`409` on consume errors).
 
-`status` is a `@computed_field` on the Pydantic model (`backend/schemas.py:55-65`). It compares `expiration_date` against `date.today()` using the `EXPIRING_SOON_DAYS` threshold from configuration. See [Item Status](../concepts/item-status.md) for the status classification details.
-
-### MessageResponse
-
-Used for error responses on the DELETE endpoint.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `message` | `str` | Human-readable message |
-
-## Error Handling Summary
-
-| Scenario | HTTP Status | Response Type | Details |
-|----------|-------------|---------------|---------|
-| Item not found (PATCH) | 404 | `HTTPException` | JSON `{"detail": "Elemento non trovato"}` |
-| Item not found (DELETE) | 404 | `JSONResponse` | JSON `{"message": "Elemento non trovato"}` |
-| No fields to update | 422 | Pydantic validation error | Validation error from `model_validator` |
-| Validation errors | 422 | Pydantic validation error | Standard FastAPI request validation |
-
-The DELETE endpoint uses `JSONResponse` directly instead of `HTTPException`, which means its error response shape differs from the PATCH endpoint's (`message` vs `detail` key).
-
-## Dependencies
-
-| Dependency | Source | Role |
-|------------|--------|------|
-| `estimate_expiration` | `backend/services/expiration.py` | Estimates expiration date from category tags |
-| `to_markdown` | `backend/services/markdown_export.py` | Renders inventory items as a markdown table |
-| `InventoryItem` | `backend/models.py` | SQLAlchemy ORM model |
-| `get_db` | `backend/database.py` | FastAPI dependency for DB session |
+**Source**: `backend/routes/inventory.py:360-432, 472-493`

@@ -8,7 +8,7 @@ source_files:
   - "ios/Inventario/Networking/APIClient.swift"
   - "ios/Inventario/State/InventoryStore.swift"
 created: "2026-06-24"
-last_updated: "2026-06-24"
+last_updated: "2026-09-05"
 ---
 
 # SettingsView (iOS)
@@ -23,12 +23,11 @@ The view is a SwiftUI `Form` presented inside a `NavigationStack` with a "Fatto"
 
 | Property | Type | Source | Description |
 |----------|------|--------|-------------|
-| `store` | `InventoryStore` | `@Environment` | Shared [observable store](../concepts/ios-state-management.md) that holds inventory items and the exported markdown string |
+| `store` | `InventoryStore` | `@Environment` | Shared [observable store](../concepts/ios-state-management.md) that holds inventory items, the exported markdown string, and the `client` used for the connection test |
 | `dismiss` | `DismissAction` | `@Environment` | SwiftUI dismiss action for closing the sheet |
 | `apiURL` | `String` | `@State` | Local copy of the API base URL, initialised from `APIConfig.baseURLString` |
 | `connectionStatus` | `ConnectionStatus?` | `@State` | Tracks the state of the connection test (`nil` when untested) |
-| `showExportShare` | `Bool` | `@State` | Controls presentation of the share sheet (unused directly — `ShareLink` handles its own presentation) |
-| `client` | `APIClient` | `let` | Instance of the [networking client](../concepts/ios-networking.md) used for the connection test |
+| `showExportShare` | `Bool` | `@State` | Reserved for export-share presentation (currently unused — `ShareLink` handles its own presentation) |
 
 ## Sections
 
@@ -40,11 +39,11 @@ Below the text field is a "Test connessione" button. When tapped, it calls `test
 
 ### Esportazione
 
-Two controls:
+Two controls (ShareLink first, then generate):
 
-1. **"Genera esportazione"** button — calls `store.exportMarkdown()` which fetches markdown from `GET /api/inventory/export`. A green checkmark icon appears next to the label when `store.exportedMarkdown` is non-nil.
+1. **"Condividi dispensa"** `ShareLink` — presents the system share sheet with the exported markdown (`store.exportedMarkdown`, fallback text when nil), subject `"Inventario Dispensa"`, and message `"Ecco l'elenco dei prodotti in dispensa."`. Rendered as `Label("Condividi dispensa", systemImage: "square.and.arrow.up")` and disabled (`.disabled(true)`) when `store.exportedMarkdown` is `nil`, meaning the user must generate the export before sharing.
 
-2. **"Condividi dispensa"** `ShareLink` — presents the system share sheet with the exported markdown as the item to share. The share link is disabled (`.disabled(true)`) when `store.exportedMarkdown` is `nil`, meaning the user must generate the export before sharing.
+2. **"Genera esportazione"** button — calls `store.exportMarkdown()` which fetches markdown from `GET /api/inventory/export`. A checkmark icon in `statusFresh` appears next to the label when `store.exportedMarkdown` is non-nil. Carries accessibility label `"Genera esportazione markdown"` with hint `"Crea il file markdown della dispensa per la condivisione"`.
 
 ### Informazioni
 
@@ -56,9 +55,9 @@ Nested inside `SettingsView`, conforms to `Equatable`:
 
 | Case | Associated Value | Icon | Colour | Label |
 |------|------------------|------|--------|-------|
-| `testing` | — | `hourglass` | `.gray` | "Verifica in corso..." |
-| `success` | — | `checkmark.circle.fill` | `.green` | "Connessione riuscita" |
-| `failure` | `String` | `xmark.circle.fill` | `.red` | The associated error message |
+| `testing` | — | `hourglass` | `pantryStone` (Terra) | "Verifica in corso..." |
+| `success` | — | `checkmark.circle.fill` | `statusFresh` (Terra) | "Connessione riuscita" |
+| `failure` | `String` | `xmark.circle.fill` | `statusExpired` (Terra) | The associated error message |
 
 ## Connection Test Flow
 
@@ -71,7 +70,7 @@ sequenceDiagram
 
     User->>SettingsView: Tap "Test connessione"
     SettingsView->>SettingsView: connectionStatus = .testing
-    SettingsView->>APIClient: client.list()
+    SettingsView->>APIClient: store.client.list()
     APIClient->>Server: GET /api/inventory
     alt Success
         Server-->>APIClient: 200 OK
@@ -111,6 +110,6 @@ This means the URL persists across app launches without any additional setup.
 
 The view is built with [Apple frameworks](../dependencies/apple-dependencies.md) (SwiftUI, Foundation) and relies on three external types:
 
-- **InventoryStore** — an `@Observable` `@MainActor` class providing `exportedMarkdown` and the `exportMarkdown()` method.
-- **APIClient** — a `@MainActor` final class providing `list()` (used for connection testing) and `exportMarkdown()`.
+- **InventoryStore** — an `@Observable` `@MainActor` class providing `exportedMarkdown`, the `exportMarkdown()` method, and the `client` used for the connection test.
+- **APIClient** — a `@MainActor` final class (reached via `store.client`) providing `list()` (used for connection testing) and `exportMarkdown()`.
 - **APIConfig** — a static configuration struct backing the API URL with `UserDefaults`.

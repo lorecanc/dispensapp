@@ -5,14 +5,14 @@ category: "modules"
 source_files:
   - "backend/main.py"
 created: "2026-06-24"
-last_updated: "2026-06-24"
+last_updated: "2026-09-05"
 ---
 
 # Backend API
 
 ## Purpose
 
-The `backend/main.py` module is the entry point of the FastAPI application — see [Architecture](../architecture.md) for the overall system design. It initializes the app, runs [database table creation](./backend-database.md) at startup, configures CORS middleware, mounts the [scan](./backend-routes-scan.md) and [inventory](./backend-routes-inventory.md) routers, and provides a `python -m backend.main` runner for local development.
+The `backend/main.py` module is the entry point of the FastAPI application — see [Architecture](../architecture.md) for the overall system design. It initializes the app, runs [Alembic migrations with a create_all fallback](./backend-database.md) at startup, configures CORS middleware, normalizes HTTP errors, mounts the [scan](./backend-routes-scan.md), [contribute](../api/contribute.md), [inventory](./backend-routes-inventory.md), [pantries](./backend-routes-pantries.md), [categories](../concepts/category-registry.md), [shopping](./backend-routes-shopping.md), and [suggestions](../api/suggestions.md) routers, and provides a `python -m backend.main` runner for local development.
 
 ## Key Files
 
@@ -27,20 +27,31 @@ The `backend/main.py` module is the entry point of the FastAPI application — s
 ```mermaid
 graph LR
     App["FastAPI App<br/>(Inventario Dispensa API)"]
-    LS["Lifespan<br/>(create_all tables)"]
-    CORS["CORSMiddleware<br/>(allow all origins)"]
+    LS["Lifespan<br/>(Alembic upgrade head,<br/>create_all fallback)"]
+    CORS["CORSMiddleware<br/>(localhost allowlist)"]
+    ERR["HTTPException handler<br/>(detail + message alias)"]
     Scan["scan_router<br/>prefix=/api"]
+    Contrib["contribute_router<br/>prefix=/api"]
     Inventory["inventory_router<br/>prefix=/api"]
-    Uvicorn["uvicorn runner<br/>(python -m backend.main)"]
+    Pantries["pantries_router<br/>prefix=/api"]
+    Categ["categories_router<br/>prefix=/api"]
+    Shop["shopping_router<br/>prefix=/api/pantries/{id}/shopping-lists"]
+    Sugg["suggestions_router<br/>prefix=/api"]
 
     LS --> App
     CORS --> App
+    ERR --> App
     App --> Scan
+    App --> Contrib
     App --> Inventory
-    App --> Uvicorn
+    App --> Pantries
+    App --> Categ
+    App --> Shop
+    App --> Sugg
+    App --> Uvicorn["uvicorn runner<br/>(python -m backend.main)"]
 ```
 
-The diagram shows the app initialization flow: the lifespan handler and CORS middleware are attached to the FastAPI app, which then includes two routers and can be started via the uvicorn runner.
+The diagram shows the app initialization flow: the lifespan handler, CORS middleware, and exception handler are attached to the FastAPI app, which then includes seven routers and can be started via the uvicorn runner.
 
 ## App Initialization
 
@@ -59,11 +70,12 @@ The `lifespan` function is an `@asynccontextmanager` that runs on startup:
 ```python
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
+    # Alembic upgrade head; create_all solo come fallback
+    ...
     yield
 ```
 
-On startup it calls `Base.metadata.create_all(bind=engine)`, which creates all database tables defined on the `Base` declarative base (including the *[InventoryItem]* model). The `yield` suspends the context manager for the application's lifetime; after shutdown, cleanup code (currently none) would execute after the `yield`.
+On startup it runs `alembic upgrade head` against `DATABASE_URL` (see [Backend Database](./backend-database.md) for the migration chain). `Base.metadata.create_all(bind=engine)` is only a fallback when `alembic.ini` is missing or the upgrade fails (e.g. lightweight test envs); failures are logged as warnings, never fatal. The `yield` suspends the context manager for the application's lifetime.
 
 ## CORS Middleware
 
@@ -73,7 +85,7 @@ app.add_middleware(
     allow_origins=CORS_ORIGINS,
     allow_credentials=False,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "Accept", "X-Pantry-Token", "Idempotency-Key"],
+    allow_headers=["Content-Type", "Authorization", "Accept", "X-Pantry-Token"],
 )
 ```
 
@@ -81,15 +93,38 @@ CORS is configured via `CORSMiddleware` using the `CORS_ORIGINS` setting from `b
 
 ## Router Registration
 
-Two routers are mounted via `app.include_router`, both at the `"/api"` prefix:
+Seven routers are mounted via `app.include_router`:
 
 - **[scan_router](./backend-routes-scan.md)** — from `backend.routes.scan`, handles barcode scanning against *[OFF]* (Open Food Facts).
-- **[inventory_router](./backend-routes-inventory.md)** — from `backend.routes.inventory`, provides CRUD operations on *[InventoryItem]* records and a Markdown export endpoint.
+- **[contribute_router](../api/contribute.md)** — from `backend.routes.contribute`, proxies OFF metadata/photo contributions.
+- **[inventory_router](./backend-routes-inventory.md)** — from `backend.routes.inventory`, provides pantry-scoped CRUD operations on *[InventoryItem]* records, atomic consume, history, and a Markdown export endpoint.
+- **[pantries_router](./backend-routes-pantries.md)** — from `backend.routes.pantries`, pantry lifecycle, invites, and members.
+- **[categories_router](../concepts/category-registry.md)** — from `backend.routes.categories`, serves the server-driven category/compartment taxonomy.
+- **[shopping_router](./backend-routes-shopping.md)** — from `backend.routes.shopping`, shopping lists scoped as `/api/pantries/{pantry_id}/shopping-lists`.
+- **[suggestions_router](../api/suggestions.md)** — from `backend.routes.suggestions`, scan-history autocomplete.
 
 | Router | Prefix | Key Endpoints |
 |--------|--------|---------------|
 | `scan_router` | `/api` | `POST /scan` |
-| `inventory_router` | `/api` | `POST /inventory`, `POST /inventory/manual`, `PATCH /inventory/{id}`, `GET /inventory`, `GET /inventory/export`, `DELETE /inventory/{id}` |
+| `contribute_router` | `/api` | `POST /scan/contribute`, `POST /scan/contribute/photo` |
+| `inventory_router` | `/api` | `POST /inventory`, `POST /inventory/manual`, `PATCH /inventory/{id}`, `GET /inventory`, `POST /inventory/{id}/consume`, `GET /inventory/{id}/history`, `GET /inventory/export`, `DELETE /inventory/{id}` |
+| `pantries_router` | `/api` | `/pantries`, `/pantries/.../invites`, `/pantries/.../members` (see [Pantries routes](./backend-routes-pantries.md)) |
+| `categories_router` | `/api` | `GET /categories` |
+| `shopping_router` | `/api/pantries/{pantry_id}/shopping-lists` | list/item CRUD, check/uncheck, markdown export |
+| `suggestions_router` | `/api` | `GET /suggestions` |
+
+## Error Handler
+
+An `HTTPException` handler normalizes all errors to `{"detail": ...}` while keeping a `"message"` alias for legacy/test compatibility:
+
+```python
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    content: dict = {"detail": exc.detail}
+    if isinstance(exc.detail, str):
+        content["message"] = exc.detail
+    return JSONResponse(status_code=exc.status_code, content=content)
+```
 
 ## Uvicorn Runner
 

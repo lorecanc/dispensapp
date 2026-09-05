@@ -1,26 +1,26 @@
 ---
 title: "Backend Schemas"
-description: "Pydantic v2 request/response schemas for the pantry management API"
+description: "Pydantic v2 request/response schemas for inventory, pantry, invites, consumption, and shopping lists"
 category: "modules"
 source_files:
   - "backend/schemas.py"
-  - "backend/config.py"
 created: "2026-06-24"
-last_updated: "2026-06-24"
+last_updated: "2026-09-05"
 ---
 
 # Backend Schemas
 
 ## Purpose
 
-Defines all Pydantic v2 models used for request validation, response serialization, and ORM mapping — from [backend ORM models](./backend-models.md) — in the FastAPI application. These schemas govern the shape of data flowing between the API layer, the service layer, and the database.
+Defines all Pydantic v2 models used for request validation, response serialization, and ORM mapping — from [backend ORM models](./backend-models.md) — in the FastAPI application. Covers scan, inventory, consumption events, pantry / invites / members, shopping lists, and shared message wrappers.
 
 ## Key Files
 
 | File | Role |
 |------|------|
-| `backend/schemas.py` | All Pydantic model definitions |
-| `backend/config.py` | `EXPIRING_SOON_DAYS` constant consumed by `InventoryOut.status` |
+| `backend/schemas.py` | All Pydantic model definitions, field validators, and computed `status` |
+
+Shared validation: `BARCODE_PATTERN` (`^\d{8,14}$`, EAN-8/UPC-A/EAN-13/EAN-14), `_validate_expiration` (rejects dates >2 years in the past or >10 years in the future), and strip-to-`None` helpers for optional strings.
 
 ## Schemas
 
@@ -30,7 +30,7 @@ Used in the [scan API](../api/scan.md). Request body for barcode lookup via Open
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `barcode` | `str` | — | The scanned barcode string |
+| `barcode` | `str` | — | Barcode matching `BARCODE_PATTERN` |
 
 ### ScanResponse
 
@@ -42,7 +42,7 @@ Response returned after a barcode lookup.
 | `name` | `Optional[str]` | `None` | Product name from Open Food Facts |
 | `brand` | `Optional[str]` | `None` | Product brand |
 | `categories` | `list[str]` | `[]` | Product category tags |
-| `image_url` | `Optional[str]` | `None` | Product image URL |
+| `image_url` | `Optional[HttpUrl]` | `None` | Product image URL |
 | `found` | `bool` | — | Whether a product was found |
 | `message` | `Optional[str]` | `None` | Additional context (e.g. error message) |
 
@@ -52,29 +52,32 @@ Request body when adding an item from a barcode scan — used in the [inventory 
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `barcode` | `str` | — | Item barcode |
-| `name` | `str` | — | Item display name |
-| `brand` | `Optional[str]` | `None` | Brand name |
-| `expiration_date` | `Optional[date]` | `None` | Expiration date (may be estimated later) |
+| `barcode` | `str` | — | Item barcode, must match `BARCODE_PATTERN` |
+| `name` | `str` | — | Item display name, stripped, non-empty |
+| `brand` | `Optional[str]` | `None` | Brand name, blank stripped to `None` |
+| `expiration_date` | `Optional[date]` | `None` | Expiration date, range-validated |
 | `category` | `Optional[str]` | `None` | Product category |
-| `image_url` | `Optional[str]` | `None` | Product image URL |
-| `quantity` | `int` | `1` | Item count |
+| `image_url` | `Optional[HttpUrl]` | `None` | Product image URL |
+| `quantity` | `int` | `1` | Item count, `ge=1, le=999` |
+| `compartment` | `Optional[str]` | `None` | Storage compartment, `max_length=32` |
 
 ### InventoryCreateManual
 
-Request body when adding an item manually (no barcode scan).
+Request body when adding an item manually (no barcode scan). Same validation as `InventoryCreate` minus `barcode`.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `name` | `str` | — | Item display name |
+| `name` | `str` | — | Item display name, stripped, non-empty |
 | `brand` | `Optional[str]` | `None` | Brand name |
-| `expiration_date` | `Optional[date]` | `None` | Expiration date |
+| `expiration_date` | `Optional[date]` | `None` | Expiration date, range-validated |
 | `category` | `Optional[str]` | `None` | Product category |
-| `quantity` | `int` | `1` | Item count |
+| `quantity` | `int` | `1` | Item count, `ge=1, le=999` |
+| `image_url` | `Optional[HttpUrl]` | `None` | Product image URL |
+| `compartment` | `Optional[str]` | `None` | Storage compartment, `max_length=32` |
 
 ### InventoryOut
 
-Response model for inventory items. Configured with `ConfigDict(from_attributes=True)` to support ORM mapping from SQLAlchemy models.
+Response model for inventory items. Configured with `ConfigDict(from_attributes=True)` for ORM mapping.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -85,38 +88,136 @@ Response model for inventory items. Configured with `ConfigDict(from_attributes=
 | `expiration_date` | `Optional[date]` | `None` | Expiration date |
 | `is_estimated` | `bool` | `False` | Whether the expiration was auto-calculated |
 | `category` | `Optional[str]` | `None` | Product category |
-| `image_url` | `Optional[str]` | `None` | Product image URL |
+| `image_url` | `Optional[HttpUrl]` | `None` | Product image URL |
 | `created_at` | `datetime` | — | Timestamp of when the item was added |
 | `quantity` | `int` | `1` | Item count |
+| `compartment` | `Optional[str]` | `None` | Storage compartment |
+| `pantry_id` | `Optional[int]` | `None` | Owning pantry ID (multi-pantry support) |
 | `status` | `str` | *(computed)* | `"ok"`, `"expiring_soon"`, or `"expired"` — see [item status](../concepts/item-status.md) |
 
 #### Status computation
 
-The `status` field is a `@computed_field` backed by a property. Logic:
-
-1. If `expiration_date` is `None` → `"ok"`
-2. If `expiration_date < today` → `"expired"`
-3. If `expiration_date <= today + 3 days` → `"expiring_soon"`
-4. Otherwise → `"ok"`
-
-The threshold is controlled by the `EXPIRING_SOON_DAYS` constant in `backend/config.py` (default: 3). When no expiration date is provided during item creation, the [expiration estimation](../concepts/expiration-estimation.md) service computes one from the product category.
+The `status` field is a `@computed_field` delegating to `get_status(expiration_date)` from `backend.services.expiration`. When no expiration date is provided, the [expiration estimation](../concepts/expiration-estimation.md) service computes one from the product category.
 
 ### InventoryUpdate
 
-Request body for partial updates to an inventory item. All fields are optional.
+Request body for partial updates to an inventory item. All fields optional.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `name` | `Optional[str]` | `None` | Item display name |
+| `name` | `Optional[str]` | `None` | Item display name, `min_length=1` |
 | `brand` | `Optional[str]` | `None` | Brand name |
-| `expiration_date` | `Optional[date]` | `None` | Expiration date |
+| `expiration_date` | `Optional[date]` | `None` | Expiration date, range-validated |
 | `category` | `Optional[str]` | `None` | Product category |
-| `image_url` | `Optional[str]` | `None` | Product image URL |
-| `quantity` | `Optional[int]` | `None` | Item count |
+| `image_url` | `Optional[HttpUrl]` | `None` | Product image URL |
+| `quantity` | `Optional[int]` | `None` | Item count, `ge=1, le=999` |
+| `compartment` | `Optional[str]` | `None` | Storage compartment, `max_length=32` |
 
 #### Validation
 
-Uses a `@model_validator(mode="after")` named `at_least_one_field` that raises `ValueError` (with message `"Almeno un campo da aggiornare"`) when no fields are provided, preventing empty update requests.
+- `@field_validator("name", "brand", "category", "compartment")` strips whitespace and rejects empty/whitespace-only strings.
+- `@model_validator(mode="after")` named `at_least_one_field` raises `ValueError` (`"Almeno un campo da aggiornare"`) when no fields are set, preventing empty updates.
+
+### InventoryConsume
+
+Request body for consuming/decrementing an item's quantity.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `delta` | `int` | — | Units to consume, `ge=1, le=999` |
+| `reason` | `Optional[str]` | `None` | Free-text reason, `max_length=500`, blank stripped to `None` |
+
+### ConsumptionEventOut
+
+Response model for a consumption audit event. `ConfigDict(from_attributes=True)`.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `id` | `int` | — | Event primary key |
+| `pantry_id` | `int` | — | Owning pantry ID |
+| `item_id` | `Optional[int]` | `None` | Consumed item ID (`None` if item deleted) |
+| `name_snapshot` | `str` | — | Item name at consumption time |
+| `barcode` | `Optional[str]` | `None` | Item barcode snapshot |
+| `delta` | `int` | — | Units consumed |
+| `reason` | `Optional[str]` | `None` | Consumption reason |
+| `created_at` | `datetime` | — | Event timestamp |
+
+### PantryCreate
+
+Request body for creating a pantry (see [Pantries API](../api/pantries.md)).
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | `str` | — | Pantry name, `min_length=1, max_length=100`, stripped, non-empty |
+
+### PantryOut
+
+Response model for a pantry. `ConfigDict(from_attributes=True)`.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `id` | `int` | — | Pantry primary key |
+| `name` | `str` | — | Pantry name |
+| `created_at` | `datetime` | — | Creation timestamp |
+
+### InviteCreate
+
+Dual-purpose body for invites. `token` is ignored on create (server generates it) and used only for accept-by-body `POST /invites/accept {token}`.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `token` | `Optional[str]` | `None` | Invite token, `max_length=64`, blank stripped to `None` |
+
+### InviteOut
+
+Response model for a pantry invite. `ConfigDict(from_attributes=True)`.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `id` | `int` | — | Invite primary key |
+| `pantry_id` | `int` | — | Inviting pantry ID |
+| `token` | `str` | — | Opaque invite token |
+| `status` | `str` | — | Invite status (e.g. pending/accepted/expired) |
+| `expires_at` | `datetime` | — | Expiration timestamp |
+| `created_at` | `datetime` | — | Creation timestamp |
+
+### MemberOut
+
+Response model for a pantry membership. `ConfigDict(from_attributes=True)`.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `pantry_id` | `int` | — | Pantry ID |
+| `role` | `str` | — | Member role |
+| `joined_at` | `datetime` | — | Join timestamp |
+
+### ShoppingListCreate
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | `str` | — | List name, `min_length=1, max_length=100`, stripped |
+
+### ShoppingListItemCreate
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | `str` | — | Item name, `min_length=1, max_length=200`, stripped |
+| `quantity` | `int` | `1` | Item count, `ge=1, le=999` |
+| `compartment` | `Optional[str]` | `None` | Storage compartment, `max_length=32` |
+
+### ShoppingListItemCheckedUpdate
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `checked` | `bool` | — | Checked-off flag |
+
+### ShoppingListItemOut
+
+`ConfigDict(from_attributes=True)`. Fields: `id: int`, `shopping_list_id: int`, `name: str`, `quantity: int`, `checked: bool`, `compartment: Optional[str]`, `created_at: datetime`.
+
+### ShoppingListOut
+
+`ConfigDict(from_attributes=True)`. Fields: `id: int`, `pantry_id: int`, `name: str`, `created_at: datetime`, `items: list[ShoppingListItemOut] = []`.
 
 ### MessageResponse
 
@@ -130,35 +231,35 @@ Simple string message wrapper used for status/error responses.
 
 ```mermaid
 graph LR
-    Schemas["backend/schemas.py"] --> Config["backend/config.py"]
+    Schemas["backend/schemas.py"] --> Expiration["backend/services/expiration.py"]
     Schemas --> Pydantic["pydantic"]
-    Schemas --> datetime["datetime (stdlib)"]
-    Config --> dataclass["dataclass (stdlib)"]
+    Schemas --> Stdlib["datetime (stdlib)"]
 ```
 
-- **Internal**: imports `EXPIRING_SOON_DAYS` from [backend-config](./backend-config.md)
-- **External**: Pydantic v2 (`BaseModel`, `ConfigDict`, `computed_field`, `model_validator`); Python standard library (`datetime`, `date`, `Optional`)
+- **Internal**: `get_status` from expiration service for `InventoryOut.status`
+- **External**: Pydantic v2 (`BaseModel`, `ConfigDict`, `Field`, `HttpUrl`, `computed_field`, `field_validator`, `model_validator`); Python standard library (`date`, `datetime`, `timedelta`, `Optional`)
 
 ## Usage Examples
 
-**Deserializing a scan request:**
+**Consuming stock with a reason:**
+
 ```python
-req = ScanRequest(barcode="8076800195057")
+req = InventoryConsume(delta=2, reason="cena")
 ```
 
-**Building an inventory response with computed status:**
+**Creating a pantry and accepting an invite by body token:**
+
+```python
+pantry = PantryCreate(name="Casa")
+accept = InviteCreate(token="opaque-token-123")
+```
+
+**Building an inventory response with computed status and pantry link:**
+
 ```python
 item = InventoryOut(
-    id=1, name="Latte Fresco", expiration_date=date(2026, 6, 27),
-    created_at=datetime.now(),
+    id=1, name="Latte Fresco", expiration_date=date(2026, 9, 7),
+    created_at=datetime.now(), pantry_id=3,
 )
-assert item.status == "expiring_soon"  # within 3-day threshold
-```
-
-**Validating an update requires at least one field:**
-```python
-try:
-    InventoryUpdate()
-except ValueError as e:
-    print(e)  # "Almeno un campo da aggiornare"
+assert item.status in ("ok", "expiring_soon", "expired")
 ```

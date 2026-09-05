@@ -8,7 +8,7 @@ source_files:
   - "ios/Inventario/Models/ItemStatus.swift"
   - "ios/Inventario/Features/Inventory/StatusBadge.swift"
 created: "2026-06-24"
-last_updated: "2026-06-24"
+last_updated: "2026-09-05"
 ---
 
 # Item Status
@@ -17,29 +17,22 @@ Every item in the inventory carries a computed status that reflects its freshnes
 
 | Status | Condition | Backend value | iOS color | iOS icon | iOS label |
 |--------|-----------|---------------|-----------|----------|-----------|
-| Ok | No expiration date, or date > 3 days away | `"ok"` | `Color.green` | `checkmark.circle.fill` | "Ok" |
-| Expiring Soon | Date <= 3 days away (but not yet past) | `"expiring_soon"` | `Color.orange` | `exclamationmark.circle.fill` | "In scadenza" |
-| Expired | Date is before today | `"expired"` | `Color.red` | `xmark.circle.fill` | "Scaduto" |
+| Ok | No expiration date, or date > 3 days away | `"ok"` | `.statusFresh` (Terra) | `checkmark.circle.fill` | "Ok" |
+| Expiring Soon | Date <= 3 days away (but not yet past) | `"expiring_soon"` | `.statusSoon` (Terra) | `exclamationmark.circle.fill` | "In scadenza" |
+| Expired | Date is before today | `"expired"` | `.statusExpired` (Terra) | `xmark.circle.fill` | "Scaduto" |
 
 ## Backend Computation
 
-The status is a read-only computed field on the [InventoryOut Pydantic schema](../modules/backend-schemas.md):
+The status is a read-only computed field on the [InventoryOut Pydantic schema](../modules/backend-schemas.md), delegating to the shared [`get_status`](../modules/backend-service-expiration.md) helper so schemas and [markdown export](../modules/backend-service-markdown-export.md) can never diverge:
 
 ```python
 @computed_field
 @property
 def status(self) -> str:
-    if self.expiration_date is None:
-        return "ok"
-    today = date.today()
-    if self.expiration_date < today:
-        return "expired"
-    if self.expiration_date <= today + timedelta(days=EXPIRING_SOON_DAYS):
-        return "expiring_soon"
-    return "ok"
+    return get_status(self.expiration_date)
 ```
 
-The logic evaluates three branches in order:
+`get_status` evaluates three branches in order:
 
 1. **No expiration date** — always `"ok"`. Items without a known expiration are assumed safe.
 2. **Past today** — `"expired"`. The date has already passed.
@@ -54,7 +47,7 @@ The threshold is defined in [backend/config.py](../config/backend-config.md):
 EXPIRING_SOON_DAYS = 3
 ```
 
-This value is imported into `schemas.py` and used in the `timedelta` comparison. Changing this value shifts the "expiring soon" window globally.
+This value is imported into `services/expiration.py` and used in the `timedelta` comparison inside `get_status`. Changing this value shifts the "expiring soon" window globally.
 
 ## iOS Enum
 
@@ -70,9 +63,9 @@ enum ItemStatus: String, CaseIterable {
 
 ### Properties
 
-Each case exposes three properties for rendering:
+Each case exposes three properties for rendering (Terra palette: `statusFresh`/`statusSoon`/`statusExpired`, mapped from the `PantryMoss` token family):
 
-- **`color`**: `Color.green` (ok), `Color.orange` (expiringSoon), `Color.red` (expired)
+- **`color`**: `.statusFresh` (ok), `.statusSoon` (expiringSoon), `.statusExpired` (expired)
 - **`symbol`**: A system SF Symbol name for each state — `checkmark.circle.fill`, `exclamationmark.circle.fill`, `xmark.circle.fill`
 - **`label`**: A localized Italian display string — `"Ok"`, `"In scadenza"`, `"Scaduto"`
 
@@ -96,18 +89,26 @@ struct StatusBadge: View {
 
     var body: some View {
         Label(status.label, systemImage: status.symbol)
-            .font(.caption)
+            .font(.caption.weight(.semibold))
             .foregroundStyle(status.color)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(status.color.opacity(0.15))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background {
+                Capsule()
+                    .fill(status.color.opacity(0.14))
+                    .overlay(Capsule().fill(.thinMaterial).opacity(0.35))
+            }
+            .overlay(
+                Capsule()
+                    .strokeBorder(status.color.opacity(0.28), lineWidth: 0.5)
+            )
             .clipShape(Capsule())
             .symbolEffect(.bounce, value: status)
     }
 }
 ```
 
-The badge displays the label text and icon in the status color, on a light tinted background of the same color, clipped to a capsule shape. The SF Symbol uses a `.bounce` effect that animates when the status value changes.
+The badge displays the label text and icon in the status color, on a tinted capsule with a Liquid-Glass `thinMaterial` overlay and a subtle status-colored border. The SF Symbol uses a `.bounce` effect that animates when the status value changes. Full details (accessibility, Dynamic Type) in [iOS Status Badge](../components/ios-status-badge.md).
 
 ## Usage Across Views
 

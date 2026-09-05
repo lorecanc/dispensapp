@@ -8,130 +8,133 @@ source_files:
   - "ios/Inventario/Models/InventoryItem.swift"
   - "ios/Inventario/Features/Inventory/StatusBadge.swift"
 created: "2026-06-24"
-last_updated: "2026-06-24"
+last_updated: "2026-09-05"
 ---
 
 # iOS ItemDetailView
 
 ## Purpose
 
-Presents a full-screen detail sheet for a single [InventoryItem](../concepts/ios-models.md), allowing the user to view product info, adjust quantity, mark as consumed, or delete the item. All mutations propagate to *[InventoryStore](../concepts/ios-state-management.md)* which syncs with the backend API.
+Presents a full-screen detail sheet for a single [InventoryItem](../concepts/ios-models.md). Resolves the item live from *[InventoryStore](../concepts/ios-state-management.md)* by ID on every render, so consume / update / delete mutations reflect immediately. Allows viewing product info, adjusting quantity, marking as consumed, or deleting the item. Shows a `ContentUnavailableView` fallback when the item disappears while open (fully consumed, deleted, pantry switch).
 
 ## Interface
 
-The view receives an `InventoryItem` as its only input. Internal state handles local editing and confirmation dialogs.
+The view takes an `InventoryItem` once at init and keeps only its ID. Everything else is resolved live.
 
 | Property | Type | Source | Description |
 |----------|------|--------|-------------|
-| `item` | `InventoryItem` | Constructor parameter (let) | The item to display and edit |
+| `itemID` | `Int` | `init(item:)` → `item.id` | Stable identity used for store lookup |
+| `liveItem` | `InventoryItem?` | Computed `@MainActor`, `store.items.first { $0.id == itemID }` | Current item; `nil` when no longer in pantry |
 | `store` | `InventoryStore` | `@Environment` | Shared observable state container |
-| `editQuantity` | `Int` | `@State`, initialized from `item.quantity` | Local quantity value bound to the stepper |
+| `editQuantity` | `Int` | `@State`, initialized from `item.quantity` | Local stepper value, two-way synced with `liveItem.quantity` |
 | `showDeleteConfirmation` | `Bool` | `@State`, default `false` | Controls the delete confirmation dialog |
+
+`@Bindable var storeBindable = store` is created at the top of `body` for SwiftUI observation.
 
 ## Layout Structure
 
-The view is wrapped in a `NavigationStack` and presented as a sheet with `.presentationDetents([.medium, .large])`. Content lives inside a `ScrollView` > `VStack(spacing: 20)`:
+Wrapped in a `NavigationStack` presented as a sheet with `.presentationDetents([.medium, .large])`. Body is conditional on `liveItem`:
 
 ```
 NavigationStack
- └── ScrollView
-      └── VStack(spacing: 20)
-           ├── AsyncImage (image area)
-           ├── VStack(spacing: 12) — product info
-           │    ├── name (.title2, .bold)
-           │    ├── brand (.subheadline, .secondary) — conditional
-           │    ├── category ("tag" icon + display name) — conditional
-│    ├── [StatusBadge](../components/ios-status-badge.md)
-│    ├── expiration date or "Nessuna data di scadenza"
-           │    └── estimated date warning — conditional
-           ├── Divider
-           └── VStack(spacing: 16) — actions
-                ├── Stepper (quantità, 1-99, auto-save)
-                ├── "Segna come consumato" button (green, .bordered)
-                └── "Elimina" button (destructive, .bordered)
+ ├── if let item = liveItem
+ │    └── ScrollView
+ │         └── VStack(spacing: 20)
+ │              ├── CachedThumbnail (image area)
+ │              ├── VStack(spacing: 12) — product info
+ │              │    ├── name (.title2, .bold)
+ │              │    ├── brand (.subheadline, .secondary) — conditional
+ │              │    ├── category ("tag" icon + display name) — conditional
+ │              │    ├── [StatusBadge](../components/ios-status-badge.md)
+ │              │    ├── expiration date or "Nessuna data di scadenza"
+ │              │    └── estimated date warning — conditional
+ │              ├── Divider
+ │              └── VStack(spacing: 16) — actions
+ │                   ├── Stepper (quantità, 1-99, two-way sync)
+ │                   ├── "Segna come consumato" button (green, .bordered)
+ │                   └── "Elimina" button (destructive, .bordered)
+ └── else ContentUnavailableView ("Prodotto non più in dispensa")
 ```
+
+Navigation title is "Dettaglio", displayed inline in both branches.
 
 ## Image Handling
 
-The `AsyncImage` component renders from `item.imageURL` (an optional `String` mapped to `URL`). Three states are handled:
-
-- **success**: `resizable`, `aspectRatio(.fit)`, max 250 pt height, clipped with a 12 pt rounded rectangle.
-- **failure**: A 200 pt rounded rectangle with a `photo` system image placeholder.
-- **empty**: A 200 pt rounded rectangle with a `ProgressView` spinner, shown while the image loads.
-
-If `item.imageURL` is `nil`, the entire `AsyncImage` block evaluates its `empty` phase, showing the spinner placeholder.
+Renders via `CachedThumbnail(url:side:contentMode:)` with `side: 250`, `contentMode: .fit`, and horizontal padding — replacing the previous raw `AsyncImage`. URL comes from `item.imageURL.flatMap { URL(string: $0) }`, so a `nil` or malformed string yields a `nil` URL and the thumbnail's placeholder path.
 
 ## Product Info Display
 
 - **Name**: Always shown in `.title2` bold weight.
 - **Brand**: Shown as `.subheadline` secondary text only when `item.brand` is non-nil and non-empty.
-- **Category**: Shown as a tag icon + localized display name via `categoryDisplayName(_:)`, using secondary foreground style. The mapping is identical to the one in `InventoryRowView`:
-
-| API value | Display name |
-|-----------|-------------|
-| `"yogurt"` | Yogurt |
-| `"fresh-milk"` | Latte fresco |
-| `"pasta"` | Pasta |
-| `"canned-vegetables"` | Verdure in scatola |
-| `"rice"` | Riso |
-| `"cheeses"` | Formaggi |
-| `"eggs"` | Uova |
-| `"fresh-fruits"` | Frutta fresca |
-| `"fresh-vegetables"` | Verdura fresca |
-| `"frozen-foods"` | Surgelati |
-| *(any other)* | Falls back to the raw string |
-
-- **[StatusBadge](../components/ios-status-badge.md)**: A capsule-shaped badge using [ItemStatus](../concepts/item-status.md) (ok/expiring_soon/expired) with color-coded icon and label. The badge uses `.symbolEffect(.bounce)` on status change.
+- **Category**: Tag icon + `CategoryRegistry.displayName(for:)` name in secondary style. The local hardcoded API-value table was removed; all naming now comes from the shared `CategoryRegistry` (see [Category Registry](../concepts/category-registry.md)), so adding a category there updates this view automatically.
+- **[StatusBadge](../components/ios-status-badge.md)**: Capsule badge from `ItemStatus.from(statusString: item.status)` (ok/expiring_soon/expired), with top padding.
 
 ## Expiration Info
 
-- If `item.expirationDate` is present: displays "Scadenza:" followed by the date formatted with `.date.long` / `.time.omitted` (e.g., "24 giugno 2026").
-- If `item.isEstimated` is `true`: a warning label "Data stimata" with an orange `exclamationmark.triangle` icon is shown below the date.
-- If no expiration date: displays "Nessuna data di scadenza" in secondary style.
+- If `item.expirationDate` is present: "Scadenza:" plus date formatted `.date.long` / `.time.omitted`.
+- If `item.isEstimated` is `true`: orange "Data stimata" label with `exclamationmark.triangle` icon below the date.
+- If no date: "Nessuna data di scadenza" in secondary style.
 
-## Quantity Stepper with Auto-Save
+## Quantity Stepper with Two-Way Sync
 
-A [QuantityStepper](../components/ios-quantity-stepper.md) bound to `editQuantity` (range 1-99) displays "Quantità: {value}". On each value change, the `.onChange(of: editQuantity)` handler calls:
+A [QuantityStepper](../components/ios-quantity-stepper.md)-style `Stepper("Quantità: \(editQuantity)", value: $editQuantity, in: 1...99)` with two `onChange` handlers:
 
-```swift
-await store.update(id: item.id, quantity: newValue)
-```
+1. `editQuantity` → store: guarded by `guard newValue != item.quantity else { return }`, then `await store.update(id: item.id, quantity: newValue)`. The guard breaks the feedback loop when an external sync (e.g. consume) moves the stepper.
+2. `item.quantity` → `editQuantity`: `editQuantity = newValue`, so consume/history updates arriving via `liveItem` reposition the stepper without user input.
 
-This sends a PATCH request via `InventoryStore.update(...)` and, on success, replaces the item in the local `items` array with the updated server response. The stepper range enforces a minimum of 1 — users cannot zero out quantity via the stepper.
+Range enforces a minimum of 1 — the stepper cannot zero out quantity.
 
 ## Consume Action
 
-The "Segna come consumato" button (green tint, `.bordered` style) calls:
+The "Segna come consumato" button (`fork.knife` label, green tint, `.bordered`) calls:
 
 ```swift
 await store.decrementQuantity(for: item)
 ```
 
-`decrementQuantity` checks the current quantity:
-- If `quantity > 1`: calls `update(id:quantity:)` with `quantity - 1`.
-- If `quantity <= 1`: calls `delete(id:)`, removing the item entirely.
-
-This means consuming the last unit of an item deletes it from inventory.
+`decrementQuantity` decrements when `quantity > 1` and deletes when reaching zero; because the view reads `liveItem`, the stepper and info update live, and consuming the last unit flips the view to the missing-item state. History recording happens in the store layer, not in this view (see [Inventory Consume & History](../concepts/inventory-consume-history.md)).
 
 ## Delete Action
 
-The "Elimina" button (destructive role, `.bordered` style) sets `showDeleteConfirmation = true`, which triggers a `confirmationDialog`:
+The "Elimina" button (`trash` label, destructive role, `.bordered`) sets `showDeleteConfirmation = true`, triggering a `confirmationDialog`:
 
 ```
 Title: "Eliminare {item.name}?"
 Message: "Questa azione non può essere annullata."
-- "Elimina" (destructive) → calls await store.delete(id: item.id)
+- "Elimina" (destructive) → await store.delete(id: item.id)
 - "Annulla" (cancel) → dismisses dialog
 ```
 
-On confirmation, `store.delete(id:)` sends a DELETE to the API and removes the item from the local array.
+After deletion `liveItem` becomes `nil` and the fallback view appears; the sheet itself is dismissed by the user.
+
+## Missing-Item State
+
+When `liveItem` is `nil`:
+
+```swift
+ContentUnavailableView(
+  "Prodotto non più in dispensa",
+  systemImage: "basket",
+  description: Text("Eliminato o consumato del tutto: chiudi per tornare alla lista.")
+)
+```
+
+## Accessibility (VoiceOver Fix)
+
+Every interactive and informative element now carries explicit labels; decorative icons are hidden:
+
+- Brand: `accessibilityLabel("Marca \(brand)")`.
+- Category row: decorative `tag` image `accessibilityHidden`, row label `"Categoria \(name)"` + hint `"Categoria del prodotto"`.
+- Expiration row: `.accessibilityElement(children: .combine)` with label `"Scadenza \(date)"`; estimated warning labelled `"Data stimata"` with hint explaining it is category-estimated, not exact.
+- No-date text labelled `"Nessuna data di scadenza"`.
+- Stepper: label `"Quantità"`, value `"\(editQuantity)"`, hint `"Regola la quantità del prodotto"`, clamped `.dynamicTypeSize(.xSmall ... .accessibility2)`.
+- Consume button: label `"Segna come consumato"` + hint `"Diminuisce la quantità di uno"`.
+- Delete button: label `"Elimina \(item.name)"` + hint `"Elimina definitivamente il prodotto"`.
 
 ## Sheet Presentation
-
-The view is presented as a sheet configured with:
 
 ```swift
 .presentationDetents([.medium, .large])
 ```
 
-This allows the user to drag between a half-height (medium) and full-height (large) detent. The navigation title is "Dettaglio" displayed inline.
+Allows dragging between half-height (medium) and full-height (large) detents.

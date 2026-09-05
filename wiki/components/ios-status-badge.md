@@ -6,14 +6,14 @@ source_files:
   - "ios/Inventario/Features/Inventory/StatusBadge.swift"
   - "ios/Inventario/Models/ItemStatus.swift"
 created: "2026-06-24"
-last_updated: "2026-06-24"
+last_updated: "2026-09-05"
 ---
 
 # iOS Status Badge
 
 ## Purpose
 
-StatusBadge is a reusable SwiftUI view that visually communicates an inventory item's expiration status. It renders a compact capsule-shaped label with an SF Symbol icon and a localized Italian label, color-coded by severity.
+StatusBadge is a reusable SwiftUI view that visually communicates an inventory item's expiration status. It renders a compact capsule-shaped label with an SF Symbol icon and a localized Italian label, color-coded by severity (Terra palette) — icon plus text, never color alone, per HIG.
 
 ## Interface
 
@@ -27,9 +27,9 @@ StatusBadge is a reusable SwiftUI view that visually communicates an inventory i
 
 | Case          | Raw Value       | Color  | Symbol                     | Label          |
 |---------------|-----------------|--------|----------------------------|----------------|
-| `ok`          | `ok`            | green  | `checkmark.circle.fill`    | Ok             |
-| `expiringSoon`| `expiring_soon` | orange | `exclamationmark.circle.fill` | In scadenza |
-| `expired`     | `expired`       | red    | `xmark.circle.fill`        | Scaduto        |
+| `ok`          | `ok`            | `.statusFresh` (Terra) | `checkmark.circle.fill`    | Ok             |
+| `expiringSoon`| `expiring_soon` | `.statusSoon` (Terra) | `exclamationmark.circle.fill` | In scadenza |
+| `expired`     | `expired`       | `.statusExpired` (Terra) | `xmark.circle.fill`        | Scaduto        |
 
 The enum also provides a static factory:
 
@@ -37,14 +37,16 @@ The enum also provides a static factory:
 
 ## Appearance
 
-The badge renders as a horizontal capsule:
+The badge renders as a horizontal capsule built on `Label(status.label, systemImage: status.symbol)`:
 
-- **Font**: `.caption`
+- **Font**: `.caption.weight(.semibold)`
 - **Foreground**: the status color at full opacity
-- **Background**: the status color at 15% opacity
-- **Padding**: 8 points horizontal, 3 points vertical
+- **Background**: the status color at 14% opacity with a `thinMaterial` overlay at 35% (Liquid Glass)
+- **Border**: status color at 28% opacity, 0.5pt (`strokeBorder`)
+- **Padding**: 10 points horizontal, 4 points vertical
 - **Shape**: `Capsule()` clip
 - **Animation**: `.symbolEffect(.bounce, value: status)` — the icon bounces each time the status value changes
+- **Accessibility**: combined label `"Stato <label>"` with value and a state-specific hint (`"Prodotto fresco"` / `"Prodotto in scadenza a breve"` / `"Prodotto scaduto"`); exposed as static text; Dynamic Type range `.xSmall ... .accessibility2`
 
 ## Usage
 
