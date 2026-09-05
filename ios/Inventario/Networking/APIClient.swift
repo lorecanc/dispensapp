@@ -21,7 +21,7 @@ final class APIClient: Sendable {
 
     // DateFormatter/JSONDecoder/JSONEncoder sono usati in lettura dopo la
     // configurazione: condividerli è sicuro (DateFormatter è thread-safe da iOS 7).
-    private nonisolated(unsafe) static let dateFormatter: DateFormatter = {
+    private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         f.locale = Locale(identifier: "en_US_POSIX")
@@ -29,13 +29,13 @@ final class APIClient: Sendable {
         return f
     }()
 
-    private nonisolated(unsafe) static let decoder: JSONDecoder = {
+    private static let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .inventoryDate
         return decoder
     }()
 
-    private nonisolated(unsafe) static let encoder = JSONEncoder()
+    private static let encoder = JSONEncoder()
 
     private func resolvedBaseURL() throws -> URL {
         guard let url = APIConfig.baseURL else { throw APIError.invalidURL }
