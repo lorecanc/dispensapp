@@ -138,7 +138,12 @@ private enum ThumbnailLoader {
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw URLError(.badServerResponse)
         }
-        guard let image = downsample(data: data, maxPixelSize: maxPixelSize) else {
+        // Decodifica CPU-bound fuori dal MainActor, con priorità esplicita:
+        // lavoro breve e scartabile, i guard nel chiamante evitano scritture obsolete.
+        let downsampled = await Task.detached(priority: .userInitiated) {
+            downsample(data: data, maxPixelSize: maxPixelSize)
+        }.value
+        guard let image = downsampled else {
             throw LoadError.decoding
         }
         return image

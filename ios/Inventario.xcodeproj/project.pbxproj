@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		063C0B00968FCFAF03514CCB /* ItemStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5703DF7CCC574D8C0755A4E /* ItemStatus.swift */; };
 		14EADDB3DACA140100659701 /* InventoryItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 436F3D6662527C6232D37E2D /* InventoryItem.swift */; };
+		1DB148DF5A08C52FF6ECEEC6 /* PantryTokenTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6E2C9A730540574997BF2DB /* PantryTokenTests.swift */; };
 		1F8AC85BD0E8502C975742B5 /* ScanPreviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB5807DF3EDA149193CC2A1E /* ScanPreviewSheet.swift */; };
 		28C5C20D7DD7CF6CFDBDEC1A /* ScanEnrichmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E236BDC81BF7DAEE17361398 /* ScanEnrichmentTests.swift */; };
 		2F6CAB1FE9868113E8099930 /* APIError.swift in Sources */ = {isa = PBXBuildFile; fileRef = DED8FEAAC1F3E8B05D1A7302 /* APIError.swift */; };
@@ -17,6 +18,7 @@
 		329686AF2753C8E3B7C3CCD9 /* ManualEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2BA86DCD369420C89F554C1 /* ManualEntryView.swift */; };
 		3997ED955C3985B6629C960F /* InviteMembersSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D0ED61616B3720EB90EB310 /* InviteMembersSheet.swift */; };
 		3C4FB9A0751785C2F16C3429 /* InventoryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 640EB2695C90E2057ECB8B87 /* InventoryListView.swift */; };
+		3D6D14474A9EE38E76B082FD /* JoinPantrySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FFEB0D9B6F668A2DC23B8B8 /* JoinPantrySheet.swift */; };
 		42431B8E4A51ED357523C9F2 /* InventoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA67E03A3B8FFDE2A92AFD3D /* InventoryStore.swift */; };
 		49AD880531854B558019F847 /* EmptyStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75BEEC14B41FB5FDB228D811 /* EmptyStateView.swift */; };
 		4FCCFE05EEA9CA294279F84F /* ItemDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DE95F58595DDAFF67148BE5 /* ItemDetailView.swift */; };
@@ -37,6 +39,7 @@
 		A594A49BC6E6438CFD9EDB25 /* APIConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C5DEB4CFC335C43641E9A02 /* APIConfigTests.swift */; };
 		AAB6290EF9F1C75C8E50161E /* CategoryRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C130CF994695F24991177AD /* CategoryRegistry.swift */; };
 		ABD3E47C8ABC5D773B375AB7 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E196F31E3E6BC1C38E6CE6CB /* SettingsView.swift */; };
+		ACA42871A52D25691B8D5E43 /* CategoryPickerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30D477A9B7C1A70B12B220DF /* CategoryPickerTests.swift */; };
 		B0672BBAD269CFEA1904F9E0 /* ShoppingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC6C5341A9C35D665CE0C709 /* ShoppingModels.swift */; };
 		B66D0495873B27AA7126DF8A /* PantryToken.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0012DC80FC9C820E749CC36D /* PantryToken.swift */; };
 		B9C0B8471138F1A8D55A66AA /* ScanAcquiredOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2C52FEA36BEB0C77127F221 /* ScanAcquiredOverlay.swift */; };
@@ -71,6 +74,8 @@
 		1CE7E1681C049A1C88921972 /* ConnectivityMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectivityMonitor.swift; sourceTree = "<group>"; };
 		1E08D317BB40599FE0866B50 /* ErrorBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorBanner.swift; sourceTree = "<group>"; };
 		29EAF4C8EECA0F5B3F76C4A8 /* InventoryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InventoryStoreTests.swift; sourceTree = "<group>"; };
+		30D477A9B7C1A70B12B220DF /* CategoryPickerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryPickerTests.swift; sourceTree = "<group>"; };
+		3FFEB0D9B6F668A2DC23B8B8 /* JoinPantrySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JoinPantrySheet.swift; sourceTree = "<group>"; };
 		41ABC96640772D70FAE52129 /* Material+Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Material+Glass.swift"; sourceTree = "<group>"; };
 		4345213EB8153D2443492DD7 /* ScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScannerView.swift; sourceTree = "<group>"; };
 		436F3D6662527C6232D37E2D /* InventoryItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InventoryItem.swift; sourceTree = "<group>"; };
@@ -106,6 +111,7 @@
 		E196F31E3E6BC1C38E6CE6CB /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		E236BDC81BF7DAEE17361398 /* ScanEnrichmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanEnrichmentTests.swift; sourceTree = "<group>"; };
 		E2BA86DCD369420C89F554C1 /* ManualEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualEntryView.swift; sourceTree = "<group>"; };
+		E6E2C9A730540574997BF2DB /* PantryTokenTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PantryTokenTests.swift; sourceTree = "<group>"; };
 		F23F7BEF084BCD6EB708FBE9 /* LocalInventoryCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalInventoryCacheTests.swift; sourceTree = "<group>"; };
 		F2C52FEA36BEB0C77127F221 /* ScanAcquiredOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanAcquiredOverlay.swift; sourceTree = "<group>"; };
 		F3414A7B3B2A8CD0426620F8 /* APIConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIConfig.swift; sourceTree = "<group>"; };
@@ -156,10 +162,12 @@
 			isa = PBXGroup;
 			children = (
 				6C5DEB4CFC335C43641E9A02 /* APIConfigTests.swift */,
+				30D477A9B7C1A70B12B220DF /* CategoryPickerTests.swift */,
 				6C69E7E0337B768635D7C61F /* CategoryRegistryTests.swift */,
 				29EAF4C8EECA0F5B3F76C4A8 /* InventoryStoreTests.swift */,
 				F23F7BEF084BCD6EB708FBE9 /* LocalInventoryCacheTests.swift */,
 				DE7A9D06C1AED967D69EF8EB /* OutboxStoreTests.swift */,
+				E6E2C9A730540574997BF2DB /* PantryTokenTests.swift */,
 				4C267921D22A822BDB0B1ADF /* PhotoEnrichmentTests.swift */,
 				E236BDC81BF7DAEE17361398 /* ScanEnrichmentTests.swift */,
 				A2A67946297C6387075DA4A9 /* ShoppingStoreTests.swift */,
@@ -226,6 +234,7 @@
 				98345B3FAD226587DD32DE11 /* InventoryRowView.swift */,
 				7D0ED61616B3720EB90EB310 /* InviteMembersSheet.swift */,
 				6DE95F58595DDAFF67148BE5 /* ItemDetailView.swift */,
+				3FFEB0D9B6F668A2DC23B8B8 /* JoinPantrySheet.swift */,
 				5DD53C315DE36316C64F620F /* StatusBadge.swift */,
 			);
 			path = Inventory;
@@ -372,10 +381,12 @@
 			buildActionMask = 2147483647;
 			files = (
 				A594A49BC6E6438CFD9EDB25 /* APIConfigTests.swift in Sources */,
+				ACA42871A52D25691B8D5E43 /* CategoryPickerTests.swift in Sources */,
 				D63F9DB5300B4C6CA3ACD6A6 /* CategoryRegistryTests.swift in Sources */,
 				E2F07AEF620AD17FEFA9A5F9 /* InventoryStoreTests.swift in Sources */,
 				EF8A798DAA3B6A9B7C359E2A /* LocalInventoryCacheTests.swift in Sources */,
 				E4D84253E85E2668E438708C /* OutboxStoreTests.swift in Sources */,
+				1DB148DF5A08C52FF6ECEEC6 /* PantryTokenTests.swift in Sources */,
 				9912A93FB4D6209BBB06F77D /* PhotoEnrichmentTests.swift in Sources */,
 				28C5C20D7DD7CF6CFDBDEC1A /* ScanEnrichmentTests.swift in Sources */,
 				759BC373BA05CCCB5DC2AEC7 /* ShoppingStoreTests.swift in Sources */,
@@ -405,6 +416,7 @@
 				3997ED955C3985B6629C960F /* InviteMembersSheet.swift in Sources */,
 				4FCCFE05EEA9CA294279F84F /* ItemDetailView.swift in Sources */,
 				063C0B00968FCFAF03514CCB /* ItemStatus.swift in Sources */,
+				3D6D14474A9EE38E76B082FD /* JoinPantrySheet.swift in Sources */,
 				DF60827C511FEFB6F56BC041 /* LocalInventoryCache.swift in Sources */,
 				329686AF2753C8E3B7C3CCD9 /* ManualEntryView.swift in Sources */,
 				C1E43DCA76220664CEFE0E9C /* Material+Glass.swift in Sources */,

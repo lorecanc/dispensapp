@@ -17,26 +17,36 @@ enum PantryToken: Sendable {
     private static let account = "pantryToken"
     private static let defaultsKey = "pantryToken"
 
+    private static let lock = NSLock()
+    // All access goes through `lock` (mutable global, Swift-6-safe pattern).
+    nonisolated(unsafe) private static var cached: String?
+
     static var value: String {
         get {
+            lock.lock(); defer { lock.unlock() }
+            if let cached { return cached }
+            let resolved: String
             if let existing = readKeychain(), !existing.isEmpty {
-                return existing
-            }
-            // Migrazione una tantum da UserDefaults (installazioni pre-Keychain).
-            if let migrated = UserDefaults.standard.string(forKey: defaultsKey),
-               !migrated.isEmpty
+                resolved = existing
+            } else if let migrated = UserDefaults.standard.string(forKey: defaultsKey),
+                      !migrated.isEmpty
             {
+                // Migrazione una tantum da UserDefaults (installazioni pre-Keychain).
                 writeKeychain(migrated)
                 UserDefaults.standard.removeObject(forKey: defaultsKey)
-                return migrated
+                resolved = migrated
+            } else {
+                resolved = UUID().uuidString
+                writeKeychain(resolved)
             }
-            let generated = UUID().uuidString
-            writeKeychain(generated)
-            return generated
+            cached = resolved
+            return resolved
         }
         set {
+            lock.lock(); defer { lock.unlock() }
             writeKeychain(newValue)
             UserDefaults.standard.removeObject(forKey: defaultsKey)
+            cached = newValue
         }
     }
 
@@ -48,6 +58,7 @@ enum PantryToken: Sendable {
 
     /// Reset per test / debug.
     static func reset() {
+        lock.lock(); defer { lock.unlock() }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -55,6 +66,7 @@ enum PantryToken: Sendable {
         ]
         SecItemDelete(query as CFDictionary)
         UserDefaults.standard.removeObject(forKey: defaultsKey)
+        cached = nil
     }
 
     private static func readKeychain() -> String? {
