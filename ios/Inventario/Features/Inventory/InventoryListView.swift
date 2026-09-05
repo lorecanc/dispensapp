@@ -12,12 +12,15 @@ struct InventoryListView: View {
     @State private var showDeletePantryConfirm = false
     @State private var pendingDeletePantry: Pantry?
     @State private var showManageDeleteConfirm = false
-    @State private var expandedHistory: Set<Int> = []
+    @State private var showHistorySheet = false
+    @State private var showAddChoice = false
+    @State private var showManual = false
 
     // MARK: - Filtering
 
     private var filteredItems: [InventoryItem] {
         store.items.filter { item in
+            guard !store.archivedIDs.contains(item.id) else { return false }
             let matchesSearch: Bool
             if searchText.isEmpty {
                 matchesSearch = true
@@ -137,8 +140,6 @@ struct InventoryListView: View {
                                     .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                                     .listRowBackground(Color.clear)
                                     .listRowSeparator(.hidden)
-                                // T9: storico consumi, collassato di default, senza swipe delete.
-                                historyDisclosure(for: item)
                             }
                         } header: {
                             // HIG: icona+label per stato, colori palette
@@ -208,6 +209,14 @@ struct InventoryListView: View {
                     }
 
                     Button {
+                        showHistorySheet = true
+                    } label: {
+                        Label("Storico", systemImage: "clock.arrow.circlepath")
+                    }
+                    .accessibilityLabel("Storico consumati")
+                    .accessibilityHint("Mostra i consumi registrati")
+
+                    Button {
                         Task { await store.exportMarkdown() }
                     } label: {
                         Label("Esporta dispensa", systemImage: "square.and.arrow.up")
@@ -228,11 +237,20 @@ struct InventoryListView: View {
         .sheet(isPresented: $showScanner) {
             ScannerViewWrapper()
         }
+        .sheet(isPresented: $showManual) {
+            NavigationStack {
+                ManualEntryView()
+            }
+        }
         .sheet(isPresented: $showManagePantries) {
             managePantriesSheet
         }
         .sheet(isPresented: $showInviteMembers) {
             InviteMembersSheet()
+        }
+        .sheet(isPresented: $showHistorySheet) {
+            historySheet
+                .presentationDetents([.medium, .large])
         }
         .confirmationDialog(
             "Elimina dispensa?",
@@ -350,7 +368,9 @@ struct InventoryListView: View {
     // MARK: - T9 storico
 
     private var addProductPill: some View {
-        NavigationLink(destination: ManualEntryView()) {
+        Button {
+            showAddChoice = true
+        } label: {
             HStack(spacing: 8) {
                 Label("Aggiungi prodotto", systemImage: "plus.circle.fill")
                     .font(.subheadline.weight(.semibold))
@@ -371,71 +391,98 @@ struct InventoryListView: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Aggiungi prodotto, apri inserimento manuale")
+        .accessibilityLabel("Aggiungi prodotto")
+        .accessibilityHint("Scegli tra scansione codice e inserimento manuale")
+        .confirmationDialog(
+            "Aggiungi prodotto",
+            isPresented: $showAddChoice,
+            titleVisibility: .visible
+        ) {
+            Button {
+                showScanner = true
+            } label: {
+                Label("Scansiona", systemImage: "barcode.viewfinder")
+            }
+            Button {
+                showManual = true
+            } label: {
+                Label("Inserimento manuale", systemImage: "pencil")
+            }
+            Button("Annulla", role: .cancel) {}
+        }
     }
 
-    // T9: DisclosureGroup collassato di default, opacity 0.6, senza swipe delete.
-    private func historyDisclosure(for item: InventoryItem) -> some View {
-        DisclosureGroup(isExpanded: historyBinding(for: item.id)) {
-            if let events = store.history[item.id] {
-                if events.isEmpty {
-                    Text("Nessun consumo registrato.")
-                        .font(.caption)
-                        .foregroundStyle(Color.textSecondary)
+    // MARK: - Storico consumati (sheet da menu ellipsis)
+
+    private var historySheet: some View {
+        NavigationStack {
+            Group {
+                if store.archivedIDs.isEmpty {
+                    ContentUnavailableView(
+                        "Nessuno storico",
+                        systemImage: "clock.arrow.circlepath",
+                        description: Text("I prodotti consumati fino a zero appariranno qui.")
+                    )
                 } else {
-                    ForEach(events) { event in
-                        HStack(spacing: 8) {
-                            Image(systemName: "fork.knife")
-                                .font(.caption2)
-                                .foregroundStyle(Color.pantryMoss)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("\(abs(event.delta)) × \(event.nameSnapshot)")
-                                    .font(.caption.weight(.medium))
-                                    .foregroundStyle(Color.textPrimary)
-                                Text(event.createdAt.formatted(date: .abbreviated, time: .shortened))
-                                    .font(.caption2)
-                                    .foregroundStyle(Color.textSecondary)
+                    List {
+                        ForEach(store.archivedIDs.sorted(), id: \.self) { id in
+                            Section(header: Text(sectionTitle(for: id))) {
+                                if let events = store.history[id] {
+                                    if events.isEmpty {
+                                        Text("Nessun consumo registrato.")
+                                            .font(.caption)
+                                            .foregroundStyle(Color.textSecondary)
+                                    } else {
+                                        ForEach(events) { event in
+                                            HStack(spacing: 8) {
+                                                Image(systemName: "fork.knife")
+                                                    .font(.caption2)
+                                                    .foregroundStyle(Color.pantryMoss)
+                                                VStack(alignment: .leading, spacing: 2) {
+                                                    Text("\(abs(event.delta)) × \(event.nameSnapshot)")
+                                                        .font(.caption.weight(.medium))
+                                                        .foregroundStyle(Color.textPrimary)
+                                                    Text(event.createdAt.formatted(date: .abbreviated, time: .shortened))
+                                                        .font(.caption2)
+                                                        .foregroundStyle(Color.textSecondary)
+                                                }
+                                                Spacer()
+                                            }
+                                            .padding(.vertical, 2)
+                                        }
+                                    }
+                                } else {
+                                    HStack(spacing: 6) {
+                                        ProgressView()
+                                            .controlSize(.mini)
+                                        Text("Caricamento storico…")
+                                            .font(.caption)
+                                            .foregroundStyle(Color.textSecondary)
+                                    }
+                                    .task {
+                                        await store.fetchHistory(itemId: id)
+                                    }
+                                }
                             }
-                            Spacer()
                         }
-                        .padding(.vertical, 2)
                     }
                 }
-            } else {
-                HStack(spacing: 6) {
-                    ProgressView()
-                        .controlSize(.mini)
-                    Text("Caricamento storico…")
-                        .font(.caption)
-                        .foregroundStyle(Color.textSecondary)
+            }
+            .navigationTitle("Storico")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Chiudi") {
+                        showHistorySheet = false
+                    }
                 }
             }
-        } label: {
-            Label("Storico consumati", systemImage: "clock.arrow.circlepath")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(Color.textSecondary)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         }
-        .tint(Color.pantryMoss)
-        .opacity(0.6)
-        .accessibilityLabel("Storico consumati")
-        .accessibilityHint("Mostra i consumi registrati per \(item.name)")
-        .listRowInsets(EdgeInsets(top: 2, leading: 32, bottom: 6, trailing: 16))
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
     }
 
-    private func historyBinding(for id: Int) -> Binding<Bool> {
-        Binding(
-            get: { expandedHistory.contains(id) },
-            set: { expanded in
-                if expanded {
-                    expandedHistory.insert(id)
-                    Task { await store.fetchHistory(itemId: id) }
-                } else {
-                    expandedHistory.remove(id)
-                }
-            }
-        )
+    private func sectionTitle(for id: Int) -> String {
+        store.history[id]?.first?.nameSnapshot ?? "Prodotto #\(id)"
     }
 
     // MARK: - Category filter chips

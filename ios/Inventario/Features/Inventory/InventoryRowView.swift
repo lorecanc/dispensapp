@@ -80,7 +80,9 @@ struct InventoryRowView: View {
             Spacer(minLength: 8)
 
             VStack(alignment: .trailing, spacing: 6) {
-                StatusBadge(status: ItemStatus.from(statusString: item.status))
+                if ItemStatus.from(statusString: item.status) != .ok {
+                    StatusBadge(status: ItemStatus.from(statusString: item.status))
+                }
 
                 Text("×\(item.quantity)")
                     .font(.caption.weight(.semibold))

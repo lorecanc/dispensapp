@@ -6,6 +6,8 @@ final class InventoryStore {
     var items: [InventoryItem] = []
     var pantries: [Pantry] = []
     var history: [Int: [ConsumptionEvent]] = [:]
+    // Transitorio locale: ID consumati a zero (remove dalla lista, visibili in Storico via cache).
+    var archivedIDs: Set<Int> = []
     var isLoading = false
     var error: APIError?
     var exportedMarkdown: String?
@@ -21,6 +23,7 @@ final class InventoryStore {
                 // Evita leak dati pantry precedente allo switch.
                 items = []
                 history = [:]
+                archivedIDs = []
                 exportedMarkdown = nil
                 error = nil
             }
@@ -57,6 +60,7 @@ final class InventoryStore {
             } else {
                 items = []
                 history = [:]
+                archivedIDs = []
                 exportedMarkdown = nil
             }
         }
@@ -252,6 +256,7 @@ final class InventoryStore {
             guard !Task.isCancelled else { return }
             items.removeAll { $0.id == id }
             history.removeValue(forKey: id)
+            archivedIDs.remove(id)
         } catch {
             if Task.isCancelled { return }
             self.error = error as? APIError ?? .transport(error)
@@ -268,12 +273,12 @@ final class InventoryStore {
             guard !Task.isCancelled else { return }
             if updated.quantity <= 0 {
                 items.removeAll { $0.id == item.id }
-                history.removeValue(forKey: item.id)
+                archivedIDs.insert(item.id)
             } else if let index = items.firstIndex(where: { $0.id == item.id }) {
                 items[index] = updated
+                // Lo storico_cached va ricaricato alla prossima apertura.
+                history.removeValue(forKey: item.id)
             }
-            // Lo storico_cached va ricaricato alla prossima espansione.
-            history.removeValue(forKey: item.id)
         } catch {
             if Task.isCancelled { return }
             if case .http(let status, _) = (error as? APIError), status == 409 {
