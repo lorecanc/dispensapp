@@ -196,3 +196,69 @@ async def test_contribute_product_never_logs_password(monkeypatch, caplog):
                 await contribute_product(code="8076809514381", product_name="X")
 
     assert fake_pw not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("product_type", "host"),
+    [
+        ("beauty", "world.openbeautyfacts.org"),
+        ("petfood", "world.openpetfoodfacts.org"),
+        ("product", "world.openproductsfacts.org"),
+    ],
+)
+def test_resolve_write_url_per_host_twins(product_type, host):
+    """Write per-host: gemello OFF con base prod esplicita."""
+    from backend.services.off import resolve_write_url
+
+    assert (
+        resolve_write_url(product_type, "https://world.openfoodfacts.org/cgi")
+        == f"https://{host}/cgi"
+    )
+
+
+@pytest.mark.asyncio
+async def test_contribute_product_sends_product_type_in_form(monkeypatch):
+    """Il form di scrittura include product_type (twin host via resolver)."""
+    import backend.services.off as off_module
+
+    monkeypatch.setattr(off_module, "OFF_USER", "testuser")
+    monkeypatch.setattr(off_module, "OFF_PASS", "s3cret-test-pw")
+    monkeypatch.setattr(
+        off_module, "OFF_WRITE_BASE_URL", "https://world.openfoodfacts.net/cgi"
+    )
+
+    capture = {}
+    patcher = _patch_post_client(capture, {"status": 1}, capture)
+    with patcher:
+        await contribute_product(
+            code="3560070791460",
+            product_name="Cream",
+            product_type="beauty",
+        )
+
+    assert capture["data"]["product_type"] == "beauty"
+
+
+def test_resolve_write_url_staging_food_fallback():
+    """Staging .net: qualsiasi product_type non-food torna al food staging."""
+    from backend.services.off import resolve_write_url
+
+    staging = "https://world.openfoodfacts.net/cgi"
+    assert resolve_write_url("beauty", staging) == staging
+    assert resolve_write_url("petfood", staging) == staging
+    assert resolve_write_url("product", staging) == staging
+
+
+def test_contribute_route_forwards_product_type(monkeypatch):
+    """POST /api/scan/contribute inoltra product_type al service."""
+    _enable_write(monkeypatch, True)
+    body = dict(VALID_BODY, product_type="beauty")
+    with patch(
+        "backend.routes.contribute.contribute_product",
+        new=AsyncMock(return_value={"status": 1, "reason": None}),
+    ) as mock_contrib:
+        resp = client.post("/api/scan/contribute", json=body)
+    assert resp.status_code == 200
+    assert mock_contrib.await_args is not None
+    _, kwargs = mock_contrib.await_args
+    assert kwargs.get("product_type") == "beauty"

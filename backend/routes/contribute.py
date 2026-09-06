@@ -18,6 +18,24 @@ router = APIRouter(prefix="/api", tags=["contribute"])
 
 LANG_PATTERN = r"^[a-z]{2}(-[A-Z]{2})?$"
 
+# Tipi scrittura OFF ammessi (T5): default food per retrocompatibilità.
+_WRITE_PRODUCT_TYPES = frozenset({"food", "beauty", "petfood", "product"})
+
+
+def _normalize_product_type(v: object) -> str:
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return "food"
+    if not isinstance(v, str):
+        # Tolleranza direct-call: senza product_type resta il sentinel Form(default="food").
+        default = getattr(v, "default", None)
+        if isinstance(default, str):
+            return _normalize_product_type(default)
+        raise ValueError("product_type non valido")
+    pt = v.strip().lower()
+    if pt not in _WRITE_PRODUCT_TYPES:
+        raise ValueError("product_type non valido")
+    return pt
+
 # Mitigazione abuse leggera senza nuove dipendenze (H1): rate limit
 # in-memory per IP su POST /api/scan/contribute. Soglia: 10 req/min.
 # TODO(prod): sostituire con slowapi/auth persistente (Redis) prima del go-live.
@@ -48,6 +66,12 @@ class ContributeRequest(BaseModel):
     app_uuid: Optional[str] = Field(default=None, max_length=64)
     consent_cc_bysa: bool
     lang: str = Field(default="it", max_length=8, pattern=LANG_PATTERN)
+    product_type: str = Field(default="food", max_length=16)
+
+    @field_validator("product_type", mode="before")
+    @classmethod
+    def normalize_product_type(cls, v: object) -> object:
+        return _normalize_product_type(v)
 
     @field_validator("lang", mode="before")
     @classmethod
@@ -100,12 +124,12 @@ async def contribute_scan(body: ContributeRequest, request: Request):
     if not body.consent_cc_bysa:
         raise HTTPException(
             status_code=400,
-            detail="Consenso CC BY-SA obbligatorio per contribuire a Open Food Facts",
+            detail="Consenso CC BY-SA obbligatorio per contribuire a Open Facts",
         )
     if not config.OFF_WRITE_ENABLED:
         raise HTTPException(
             status_code=403,
-            detail="Contribuzione a Open Food Facts disabilitata sul server",
+            detail="Contribuzione a Open Facts disabilitata sul server",
         )
     try:
         result = await contribute_product(
@@ -119,21 +143,22 @@ async def contribute_scan(body: ContributeRequest, request: Request):
             lang=body.lang,
             comment=body.comment,
             app_uuid=body.app_uuid,
+            product_type=body.product_type,
         )
     except (httpx.HTTPError, ValueError):
         logger.warning("Contribuzione OFF fallita per %s: errore trasporto", body.code)
         raise HTTPException(
             status_code=502,
-            detail="Errore durante la comunicazione con Open Food Facts",
+            detail="Errore durante la comunicazione con Open Facts",
         )
     if not isinstance(result, dict) or result.get("status") != 1:
         reason = result.get("reason") if isinstance(result, dict) else None
         logger.info("OFF ha rifiutato contributo per %s: %s", body.code, reason)
         raise HTTPException(
             status_code=502,
-            detail="Open Food Facts ha rifiutato il contributo",
+            detail="Open Facts ha rifiutato il contributo",
         )
-    return ContributeResponse(ok=True, code=body.code, message="Contributo inviato a Open Food Facts")
+    return ContributeResponse(ok=True, code=body.code, message="Contributo inviato a Open Facts")
 
 
 # Viste OFF ammesse con suffisso lingua opzionale (_lc, 2 lettere minuscole)
@@ -236,28 +261,34 @@ async def contribute_scan_photo(
     imagefield: str = Form(...),
     consent_cc_bysa: bool = Form(...),
     image: UploadFile = File(...),
+    product_type: str = Form(default="food"),
 ):
     ip = request.client.host if request.client else "unknown"
     _check_rate_limit(ip)
+    # Pre-check fail-fast sul Content-Length dichiarato (include overhead
+    # multipart: +1KB di tolleranza) prima di leggere il body in memoria.
+    # Prioritario su validazione product_type: 413 senza leggere il body.
+    declared_length = request.headers.get("content-length", "")
+    if declared_length.isdigit() and int(declared_length) > MAX_PHOTO_BYTES + 1024:
+        raise HTTPException(status_code=413, detail="Immagine troppo grande (max 5MB)")
+    try:
+        pt = _normalize_product_type(product_type)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="product_type non valido")
     if not consent_cc_bysa:
         raise HTTPException(
             status_code=400,
-            detail="Consenso CC BY-SA obbligatorio per contribuire a Open Food Facts",
+            detail="Consenso CC BY-SA obbligatorio per contribuire a Open Facts",
         )
     if not config.OFF_WRITE_ENABLED:
         raise HTTPException(
             status_code=403,
-            detail="Contribuzione a Open Food Facts disabilitata sul server",
+            detail="Contribuzione a Open Facts disabilitata sul server",
         )
     if not re.match(BARCODE_PATTERN, code or ""):
         raise HTTPException(status_code=422, detail="code non valido")
     if not _is_valid_imagefield(imagefield):
         raise HTTPException(status_code=422, detail="imagefield non valido")
-    # Pre-check fail-fast sul Content-Length dichiarato (include overhead
-    # multipart: +1KB di tolleranza) prima di leggere il body in memoria.
-    declared_length = request.headers.get("content-length", "")
-    if declared_length.isdigit() and int(declared_length) > MAX_PHOTO_BYTES + 1024:
-        raise HTTPException(status_code=413, detail="Immagine troppo grande (max 5MB)")
     content = await image.read()
     if len(content) > MAX_PHOTO_BYTES:
         raise HTTPException(status_code=413, detail="Immagine troppo grande (max 5MB)")
@@ -288,18 +319,19 @@ async def contribute_scan_photo(
             filename=_safe_filename(image.filename, f"{code}_{imagefield}"),
             mime=mime,
             imagefield=imagefield,
+            product_type=pt,
         )
     except (httpx.HTTPError, ValueError):
         logger.warning("Contribuzione foto OFF fallita per %s: errore trasporto", code)
         raise HTTPException(
             status_code=502,
-            detail="Errore durante la comunicazione con Open Food Facts",
+            detail="Errore durante la comunicazione con Open Facts",
         )
     if not isinstance(result, dict) or result.get("status") != 1:
         reason = result.get("reason") if isinstance(result, dict) else None
         logger.info("OFF ha rifiutato foto per %s: %s", code, reason)
         raise HTTPException(
             status_code=502,
-            detail="Open Food Facts ha rifiutato il contributo",
+            detail="Open Facts ha rifiutato il contributo",
         )
-    return ContributeResponse(ok=True, code=code, message="Foto inviata a Open Food Facts")
+    return ContributeResponse(ok=True, code=code, message="Foto inviata a Open Facts")

@@ -48,6 +48,9 @@ struct InventoryRowView: View {
                     // T13: badge conservazione; override utente (item.storageLocation,
                     // T11) se presente, altrimenti derivazione dal registry (T12).
                     storageBadge
+
+                    // T8c: badge tipo prodotto, solo con sorgente nota.
+                    sourceBadge
                 }
             }
 
@@ -101,6 +104,7 @@ struct InventoryRowView: View {
         var parts: [String] = [item.name]
         if let brand = item.brand, !brand.isEmpty { parts.append(brand) }
         if let category = item.category { parts.append(CategoryRegistry.displayName(for: category)) }
+        if let source = productSource { parts.append("Tipo: \(source.displayName)") }
         parts.append("Conservazione: \(storageLabel)")
         let status = ItemStatus.from(statusString: item.status)
         parts.append(status.label)
@@ -149,5 +153,32 @@ struct InventoryRowView: View {
                 .strokeBorder(Color.pantryOat, lineWidth: 0.5)
         )
         .accessibilityLabel("Conservazione: \(label)")
+    }
+
+    // MARK: - T8c badge tipo prodotto (capsula non tappabile, mai colori stato)
+
+    private var productSource: ProductSource? {
+        (item.source ?? item.productType).flatMap(ProductSource.init)
+    }
+
+    @ViewBuilder
+    private var sourceBadge: some View {
+        if let source = productSource {
+            Text(source.displayName)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(Color.textSecondary)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background {
+                    Capsule()
+                        .fill(.thinMaterial)
+                        .overlay(Capsule().fill(Color.pantryLinen.opacity(0.45)))
+                }
+                .overlay(
+                    Capsule()
+                        .strokeBorder(Color.pantryOat, lineWidth: 0.5)
+                )
+                .accessibilityLabel("Tipo: \(source.displayName)")
+        }
     }
 }

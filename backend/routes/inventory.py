@@ -61,6 +61,8 @@ def _create_scoped_item(
     body: InventoryCreate | InventoryCreateManual,
     *,
     manual: bool,
+    source: str | None = None,
+    product_type: str | None = None,
 ) -> InventoryItem:
     # Categoria interna: esplicita normalizzata; se assente, auto-assegnazione
     # ON dai tag OFF (nessun tag utile -> None, comportamento preesistente).
@@ -92,6 +94,9 @@ def _create_scoped_item(
         compartment=compartment,
         # storage_location: NULL = derivato dal client via categoria (by design).
         storage_location=body.storage_location,
+        # T8b: param esplicito vince, fallback al body; NULL = non impostato.
+        source=source if source is not None else getattr(body, "source", None),
+        product_type=product_type if product_type is not None else getattr(body, "product_type", None),
         pantry_id=pantry_id,
         created_by_token=token,
     )

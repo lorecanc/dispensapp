@@ -177,7 +177,7 @@ def test_scan_propagates_source_product_type():
     assert body["found"] is True
     assert body["source"] == "beauty"
     assert body["product_type"] == "beauty"
-    mock_fetch.assert_called_once_with("3560070791460", product_type="all")
+    mock_fetch.assert_called_once_with("3560070791460")
 
 
 def test_scan_non_food_without_pnns():

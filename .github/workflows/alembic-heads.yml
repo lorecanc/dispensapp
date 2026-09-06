@@ -1,0 +1,19 @@
+name: alembic-heads
+
+on: [push, pull_request]
+
+jobs:
+  single-head:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install alembic sqlalchemy
+      - name: Check single alembic head
+        working-directory: backend
+        run: |
+          heads=$(python -m alembic heads | wc -l)
+          echo "Alembic heads: $heads"
+          [ "$heads" -eq 1 ] || (echo "Multiple alembic heads ($heads), merge required" && exit 1)

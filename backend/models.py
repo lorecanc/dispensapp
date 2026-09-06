@@ -98,6 +98,9 @@ class InventoryItem(Base):
     created_by_token = Column(String(36), nullable=True)
     compartment = Column(String(32), nullable=True)
     storage_location = Column(String(16), nullable=True)
+    # T8b: provenienza OFF per badge/filtri iOS (NULLABLE, nessun backfill)
+    source = Column(String, nullable=True)
+    product_type = Column(String, nullable=True)
 
     __table_args__ = (
         Index("ix_inventory_items_pantry_expiration", "pantry_id", "expiration_date"),

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from typing import Optional
 
 import httpx
@@ -14,6 +15,7 @@ from backend.config import (
     OFF_V3_BASE_URL,
     OFF_V3_HOSTS,
     OFF_WRITE_BASE_URL,
+    is_off_staging_base_url,
     off_basic_auth,
     off_user_agent,
 )
@@ -44,7 +46,7 @@ def _get_client() -> httpx.AsyncClient:
     """Client httpx condiviso per le letture OFF, creato alla prima richiesta."""
     global _read_client
     if _read_client is None:
-        _read_client = httpx.AsyncClient(timeout=10.0)
+        _read_client = httpx.AsyncClient(timeout=10.0, headers={"User-Agent": off_user_agent()})
     return _read_client
 
 
@@ -77,8 +79,6 @@ def _resolve_product_source(data: dict, requested: str) -> str:
             return "product"
         if "food" in cand:
             return "food"
-        if cand in ("beauty", "petfood", "product", "food"):
-            return cand
     if requested in ("food", "beauty", "petfood", "product"):
         return requested
     return "product"
@@ -136,11 +136,15 @@ async def _fetch_single_v3(url: str, params: dict, barcode: str) -> Optional[dic
 
     requested = str(params.get("product_type", "all")).strip().lower() or "all"
     resolved = _resolve_product_source(data, requested)
+    logger.info("OFF fetch %s requested=%s resolved=%s", barcode, requested, resolved)
+    tags = product.get("categories_tags") or []
+    if not isinstance(tags, list):
+        tags = []
     return {
         "barcode": barcode,
         "name": product.get("product_name", ""),
         "brand": product.get("brands") or None,
-        "categories": [c.split(":")[-1] for c in product.get("categories_tags", [])],
+        "categories": [c.split(":")[-1] for c in tags if isinstance(c, str)],
         "pnns_group": pnns_group,
         "image_url": product.get("image_front_small_url") or None,
         "source": resolved,
@@ -157,6 +161,9 @@ async def fetch_product(
     esplicito != all e solo su fallimento trasporto/5xx del primo GET,
     mai su 404 o found=False e mai con fan-out parallelo.
     """
+    if not re.fullmatch(r"^\d{8,14}$", barcode or ""):
+        logger.warning("OFF fetch skipped for invalid barcode %s", barcode)
+        return None
     requested = (product_type or OFF_PRODUCT_TYPE_DEFAULT).strip().lower() or "all"
     params = {"product_type": requested}
     result = await _fetch_single_v3(f"{OFF_V3_BASE_URL}/{barcode}", params, barcode)
@@ -167,6 +174,25 @@ async def fetch_product(
         fallback_url = f"https://{host}/api/v3/product/{barcode}"
         return await _fetch_single_v3(fallback_url, params, barcode)
     return None
+
+
+def resolve_write_url(product_type: Optional[str], base: str = OFF_WRITE_BASE_URL) -> str:
+    pt = (product_type or "food").strip().lower() or "food"
+    if is_off_staging_base_url(base):
+        if pt in ("beauty", "petfood", "product"):
+            # TODO(staging-twins): gemelli .net non verificati, per ora tutto a food staging.
+            logger.warning(
+                "OFF staging non-food POST a food staging con product_type=%s (gemelli .net non verificati)",
+                pt,
+            )
+        return "https://world.openfoodfacts.net/cgi"
+    host = {
+        "food": "world.openfoodfacts.org",
+        "beauty": "world.openbeautyfacts.org",
+        "petfood": "world.openpetfoodfacts.org",
+        "product": "world.openproductsfacts.org",
+    }.get(pt, "world.openfoodfacts.org")
+    return f"https://{host}/cgi"
 
 
 async def contribute_product(
@@ -180,6 +206,7 @@ async def contribute_product(
     lang: str = "it",
     comment: Optional[str] = None,
     app_uuid: Optional[str] = None,
+    product_type: str = "food",
 ) -> dict:
     """Invia metadati a OFF (staging di default) via product_jqm2.pl.
 
@@ -187,7 +214,9 @@ async def contribute_product(
     Non logga mai la password. Ritorna {"status": int, "reason": str | None}.
     Solleva httpx.HTTPError su errori di trasporto (il chiamante mappa a 502).
     """
-    url = f"{OFF_WRITE_BASE_URL}/product_jqm2.pl"
+    base_url = resolve_write_url(product_type)
+    pt = (product_type or "food").strip().lower() or "food"
+    url = f"{base_url}/product_jqm2.pl"
     lang = _normalize_lang(lang)
     form: dict[str, str] = {
         "code": code,
@@ -198,6 +227,7 @@ async def contribute_product(
         "comment": comment or f"Contributo via {OFF_APP_NAME} {OFF_APP_VERSION}",
         "app_name": OFF_APP_NAME,
         "app_version": OFF_APP_VERSION,
+        "product_type": pt,
     }
     if app_uuid:
         form["app_uuid"] = app_uuid
@@ -214,7 +244,7 @@ async def contribute_product(
     if quantity:
         form["quantity"] = quantity
     user_agent = off_user_agent()
-    basic_auth = off_basic_auth(OFF_WRITE_BASE_URL)
+    basic_auth = off_basic_auth(base_url)
     post_kwargs: dict = {"headers": {"User-Agent": user_agent}}
     if basic_auth is not None:
         post_kwargs["auth"] = basic_auth
@@ -241,6 +271,7 @@ async def upload_product_image(
     filename: str,
     mime: str,
     imagefield: str,
+    product_type: str = "food",
 ) -> dict:
     """Invia una foto a OFF (staging di default) via product_image_upload.pl.
 
@@ -248,7 +279,8 @@ async def upload_product_image(
     la password né i bytes dell'immagine. Ritorna {"status": int, "reason": str | None}.
     Solleva httpx.HTTPError su errori di trasporto (il chiamante mappa a 502).
     """
-    url = f"{OFF_WRITE_BASE_URL}/product_image_upload.pl"
+    base_url = resolve_write_url(product_type)
+    url = f"{base_url}/product_image_upload.pl"
     form: dict[str, str] = {
         "code": code,
         "imagefield": imagefield,
@@ -257,7 +289,7 @@ async def upload_product_image(
     }
     user_agent = off_user_agent()
     files = {f"imgupload_{imagefield}": (filename or "upload", image_bytes, mime)}
-    basic_auth = off_basic_auth(OFF_WRITE_BASE_URL)
+    basic_auth = off_basic_auth(base_url)
     post_kwargs = {"data": form, "files": files, "headers": {"User-Agent": user_agent}}
     if basic_auth is not None:
         post_kwargs["auth"] = basic_auth

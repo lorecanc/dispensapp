@@ -25,6 +25,9 @@ struct OutboxStore {
             /// il replay le invia identiche ai valori pre-upgrade.
             var offTags: [String]? = nil
             var storageLocation: String? = nil
+            /// Campi additivi (T8c): come sopra, entry vecchie senza chiavi → nil.
+            var source: String? = nil
+            var productType: String? = nil
         }
         struct Consume: Codable, Equatable {
             var itemId: Int
@@ -81,7 +84,11 @@ struct OutboxStore {
         case .notFound:
             return .drop
         case .http(let status, _):
-            // Qualsiasi 4xx = la richiesta non passerà mai: drop (404/409 = conflitti,
+            // 401/403 (auth), 408/429 (transienti): stop, la entry resta in coda.
+            if status == 401 || status == 403 || status == 408 || status == 429 {
+                return .stop
+            }
+            // Qualsiasi altro 4xx = la richiesta non passerà mai: drop (404/409 = conflitti,
             // altri 4xx = scarto documentato: l'azione era già riflessa nella UI).
             return (400...499).contains(status) ? .drop : .stop
         case .decoding:

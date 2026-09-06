@@ -163,6 +163,16 @@ struct ScanPreviewSheet: View {
                 }
                 .accessibilityElement(children: .combine)
 
+                if let source = result.sourceEnum {
+                    HStack {
+                        Text("Sorgente")
+                        Spacer()
+                        sourceBadge(source)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Sorgente: \(source.displayName)")
+                }
+
                 TextField("Nome *", text: $name)
                     .autocorrectionDisabled()
                     .accessibilityLabel("Nome prodotto")
@@ -197,6 +207,27 @@ struct ScanPreviewSheet: View {
                 contributeSection(barcode: barcode)
             }
         }
+    }
+
+    /// Badge sorgente non tappabile, stesso stile dei chip categoria
+    /// (Capsule + thinMaterial + pantryLinen/pantryOat). Il label per
+    /// VoiceOver sta sulla riga chiamante ("Sorgente: ...").
+    private func sourceBadge(_ source: ProductSource) -> some View {
+        Text(source.displayName)
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(Color.textSecondary)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background {
+                Capsule()
+                    .fill(.thinMaterial)
+                    .overlay(Capsule().fill(Color.pantryLinen.opacity(0.45)))
+            }
+            .overlay(
+                Capsule()
+                    .strokeBorder(Color.pantryOat, lineWidth: 0.5)
+            )
+            .accessibilityHidden(true)
     }
 
     @ViewBuilder
@@ -499,7 +530,9 @@ struct ScanPreviewSheet: View {
             imageURL: scanResult?.imageURL,
             quantity: quantity,
             offTags: scanResult?.categories,
-            storageLocation: storageTouched ? selectedStorage : nil
+            storageLocation: storageTouched ? selectedStorage : nil,
+            source: scanResult?.source,
+            productType: scanResult?.productType
         )
         isSaving = false
         if let error = store.error {

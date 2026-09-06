@@ -356,3 +356,82 @@ async def test_upload_product_image_never_logs_password(monkeypatch, caplog):
                 )
 
     assert fake_pw not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_upload_product_image_same_host_no_product_type(monkeypatch):
+    """image_upload riusa lo stesso host di scrittura, senza product_type nel form."""
+    import backend.services.off as off_module
+
+    monkeypatch.setattr(off_module, "OFF_USER", "testuser")
+    monkeypatch.setattr(off_module, "OFF_PASS", "s3cret-test-pw")
+    monkeypatch.setattr(
+        off_module, "OFF_WRITE_BASE_URL", "https://world.openfoodfacts.net/cgi"
+    )
+
+    resp = Mock(spec=httpx.Response)
+    resp.raise_for_status.return_value = None
+    resp.json.return_value = {"status": 1}
+    capture = {}
+    client_mock = AsyncMock(spec=httpx.AsyncClient)
+
+    async def _post(url, data=None, files=None, headers=None, **kwargs):
+        capture.update(url=url, data=data, files=files, headers=headers)
+        return resp
+
+    client_mock.post.side_effect = _post
+
+    async def aenter(*args, **kwargs):
+        return client_mock
+
+    cm = Mock()
+    cm.__aenter__ = aenter
+    cm.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("backend.services.off.httpx.AsyncClient", return_value=cm):
+        await upload_product_image(
+            code=CODE,
+            image_bytes=JPEG_BYTES,
+            filename="front.jpg",
+            mime="image/jpeg",
+            imagefield="front_it",
+            product_type="beauty",
+        )
+
+    assert capture["url"] == (
+        off_module.resolve_write_url("beauty") + "/product_image_upload.pl"
+    )
+    assert "product_type" not in capture["data"]
+
+
+def test_upload_resolve_write_url_twins_share_contribute_host():
+    """Stesso resolver di contribute: gemelli beauty/petfood/product."""
+    from backend.services.off import resolve_write_url
+
+    prod = "https://world.openfoodfacts.org/cgi"
+    assert resolve_write_url("beauty", prod) == "https://world.openbeautyfacts.org/cgi"
+    assert resolve_write_url("petfood", prod) == "https://world.openpetfoodfacts.org/cgi"
+    assert resolve_write_url("product", prod) == "https://world.openproductsfacts.org/cgi"
+
+
+def test_photo_route_forwards_product_type(monkeypatch):
+    """POST photo inoltra product_type al service di upload."""
+    _enable_write(monkeypatch, True)
+    with patch(
+        "backend.routes.contribute.upload_product_image",
+        new=AsyncMock(return_value={"status": 1, "reason": None}),
+    ) as mock_upload:
+        resp = client.post(
+            "/api/scan/contribute/photo",
+            data={
+                "code": CODE,
+                "imagefield": "front_it",
+                "consent_cc_bysa": "true",
+                "product_type": "beauty",
+            },
+            files={"image": ("front.jpg", JPEG_BYTES, "image/jpeg")},
+        )
+    assert resp.status_code == 200
+    assert mock_upload.await_args is not None
+    _, kwargs = mock_upload.await_args
+    assert kwargs.get("product_type") == "beauty"

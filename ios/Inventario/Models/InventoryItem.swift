@@ -16,14 +16,19 @@ struct InventoryItem: Codable, Identifiable, Equatable {
     /// nil = derivata dalla categoria (backend persiste NULL). Decodifica tollerante
     /// su payload senza chiave; `var` + default: memberwise init invariato.
     var storageLocation: String? = nil
+    /// Campi additivi (T8c): sorgente/tipo prodotto ("food"|"beauty"|"petfood"|"product"),
+    /// nil = non impostato. Decodifica tollerante come sopra.
+    var source: String? = nil
+    var productType: String? = nil
 
     enum CodingKeys: String, CodingKey {
-        case id, barcode, name, brand, category, quantity, status
+        case id, barcode, name, brand, category, quantity, status, source
         case expirationDate = "expiration_date"
         case isEstimated = "is_estimated"
         case imageURL = "image_url"
         case createdAt = "created_at"
         case storageLocation = "storage_location"
+        case productType = "product_type"
     }
 
     static func == (lhs: InventoryItem, rhs: InventoryItem) -> Bool {

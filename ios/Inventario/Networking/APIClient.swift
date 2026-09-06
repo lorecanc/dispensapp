@@ -25,11 +25,14 @@ final class APIClient: Sendable {
 
     // DateFormatter/JSONDecoder/JSONEncoder sono usati in lettura dopo la
     // configurazione: condividerli è sicuro (DateFormatter è thread-safe da iOS 7).
+    // Outbound yyyy-MM-dd: il Date viene da un DatePicker (mezzanotte locale).
+    // Va reso nel fuso del dispositivo: in GMT gli utenti a est di UTC
+    // spedirebbero il giorno-1. Solo outbound; l'inbound resta GMT.
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         f.locale = Locale(identifier: "en_US_POSIX")
-        f.timeZone = TimeZone(secondsFromGMT: 0)
+        f.timeZone = .autoupdatingCurrent
         return f
     }()
 
@@ -461,11 +464,28 @@ final class APIClient: Sendable {
     // MARK: - Inventory pantry-scoped
 
     func listScoped(pantryId: Int) async throws -> [InventoryItem] {
-        let url = try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/inventory")
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        let data = try await perform(request)
-        return try Self.decoder.decode([InventoryItem].self, from: data)
+        let limit = 50
+        var offset = 0
+        var all: [InventoryItem] = []
+        while true {
+            var comps = URLComponents(
+                url: try resolvedBaseURL().appending(path: "api/pantries/\(pantryId)/inventory"),
+                resolvingAgainstBaseURL: false
+            )!
+            comps.queryItems = [
+                URLQueryItem(name: "limit", value: "\(limit)"),
+                URLQueryItem(name: "offset", value: "\(offset)")
+            ]
+            guard let url = comps.url else { throw APIError.invalidURL }
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            let data = try await perform(request)
+            let page = try Self.decoder.decode([InventoryItem].self, from: data)
+            all.append(contentsOf: page)
+            if page.count < limit { break }
+            offset += limit
+        }
+        return all
     }
 
     func createScoped(
@@ -478,13 +498,16 @@ final class APIClient: Sendable {
         imageURL: String?,
         quantity: Int,
         offTags: [String]? = nil,
-        storageLocation: String? = nil
+        storageLocation: String? = nil,
+        source: String? = nil,
+        productType: String? = nil
     ) async throws -> InventoryItem {
         let body = try Self.inventoryBody(
             barcode: barcode, name: name, brand: brand,
             expirationDate: expirationDate, category: category,
             imageURL: imageURL, quantity: quantity,
-            offTags: offTags, storageLocation: storageLocation
+            offTags: offTags, storageLocation: storageLocation,
+            source: source, productType: productType
         )
         return try await sendInventory(
             method: "POST", path: "api/pantries/\(pantryId)/inventory", body: body
@@ -581,7 +604,9 @@ final class APIClient: Sendable {
         imageURL: String? = nil,
         quantity: Int?,
         offTags: [String]? = nil,
-        storageLocation: String? = nil
+        storageLocation: String? = nil,
+        source: String? = nil,
+        productType: String? = nil
     ) throws -> Data {
         var body: [String: Any?] = [
             "barcode": barcode,
@@ -606,6 +631,9 @@ final class APIClient: Sendable {
             if !capped.isEmpty { body["off_category_tags"] = Array(capped) }
         }
         if let storageLocation, !storageLocation.isEmpty { body["storage_location"] = storageLocation }
+        // Campi additivi (T8c): presenti nel body solo se valorizzati.
+        if let source, !source.isEmpty { body["source"] = source }
+        if let productType, !productType.isEmpty { body["product_type"] = productType }
         return try JSONSerialization.data(
             withJSONObject: body.filter { $0.value != nil }.mapValues { $0! }
         )

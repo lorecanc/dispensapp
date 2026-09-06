@@ -79,6 +79,8 @@ class InventoryCreate(BaseModel):
     compartment: Optional[str] = Field(default=None, max_length=32)
     off_category_tags: Optional[list[str]] = Field(default=None, max_length=50)
     storage_location: Optional[str] = Field(default=None, max_length=16)
+    source: Optional[str] = None
+    product_type: Optional[str] = None
 
     @field_validator("name")
     @classmethod
@@ -88,7 +90,7 @@ class InventoryCreate(BaseModel):
             raise ValueError("name non può essere vuoto")
         return stripped
 
-    @field_validator("brand", "category", "compartment", "storage_location")
+    @field_validator("brand", "category", "compartment", "storage_location", "source", "product_type")
     @classmethod
     def strip_optional(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
@@ -117,6 +119,8 @@ class InventoryCreateManual(BaseModel):
     compartment: Optional[str] = Field(default=None, max_length=32)
     off_category_tags: Optional[list[str]] = Field(default=None, max_length=50)
     storage_location: Optional[str] = Field(default=None, max_length=16)
+    source: Optional[str] = None
+    product_type: Optional[str] = None
 
     @field_validator("name")
     @classmethod
@@ -126,7 +130,7 @@ class InventoryCreateManual(BaseModel):
             raise ValueError("name non può essere vuoto")
         return stripped
 
-    @field_validator("brand", "category", "compartment", "storage_location")
+    @field_validator("brand", "category", "compartment", "storage_location", "source", "product_type")
     @classmethod
     def strip_optional(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
@@ -162,6 +166,8 @@ class InventoryOut(BaseModel):
     pantry_id: Optional[int] = None
     # Raw dal DB: NULL = non impostato, il client deriva il luogo dalla categoria.
     storage_location: Optional[str] = None
+    source: Optional[str] = None
+    product_type: Optional[str] = None
 
     @computed_field
     @property

@@ -1,3 +1,6 @@
+import importlib
+import logging
+import os
 from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
@@ -333,3 +336,128 @@ async def test_fetch_product_no_retry_on_found_false():
 
     assert result == {"found": False}
     assert client_mock.get.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_product_url_v3_without_v0():
+    """URL v3 universale senza alcun segmento v0."""
+    data = {"status": 1, "product": {"product_name": "X"}}
+    resp = _mock_response(data)
+    client_mock = AsyncMock(spec=httpx.AsyncClient)
+    client_mock.get.return_value = resp
+
+    with patch("httpx.AsyncClient", return_value=client_mock):
+        await fetch_product(OPF_BARCODE)
+
+    args, _ = client_mock.get.call_args
+    url = args[0]
+    assert "/api/v3/product/" in url
+    assert "v0" not in url
+
+
+@pytest.mark.asyncio
+async def test_fetch_product_read_user_agent_present():
+    """Il client di lettura invia User-Agent con nome/versione app."""
+    data = {"status": 1, "product": {"product_name": "X"}}
+    resp = _mock_response(data)
+    client_mock = AsyncMock(spec=httpx.AsyncClient)
+    client_mock.get.return_value = resp
+
+    with patch("httpx.AsyncClient", return_value=client_mock) as ctor:
+        await fetch_product(OPF_BARCODE)
+
+    _, kwargs = ctor.call_args
+    ua = (kwargs.get("headers") or {}).get("User-Agent", "")
+    assert off.OFF_APP_NAME in ua
+    assert off.OFF_APP_VERSION in ua
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad", ["123", "1234567", "ABC12345", "", "12-34-56"])
+async def test_fetch_product_invalid_barcode_no_network(bad):
+    """Barcode corto/non-digit: None senza alcuna chiamata di rete."""
+    with patch("httpx.AsyncClient") as ctor:
+        result = await fetch_product(bad)
+
+    assert result is None
+    ctor.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_fetch_product_categories_tags_none():
+    """categories_tags None -> categories []."""
+    data = {
+        "status": 1,
+        "product": {"product_name": "X", "categories_tags": None},
+    }
+    with _patch_client(_mock_response(data)):
+        result = await fetch_product(OPF_BARCODE)
+
+    assert result["categories"] == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_product_categories_tags_string():
+    """categories_tags stringa (non lista) -> categories [], mai crash."""
+    data = {
+        "status": 1,
+        "product": {"product_name": "X", "categories_tags": "en:pasta"},
+    }
+    with _patch_client(_mock_response(data)):
+        result = await fetch_product(OPF_BARCODE)
+
+    assert result["categories"] == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_product_categories_tags_mixed():
+    """categories_tags mista: solo stringhe, prefisso lingua rimosso."""
+    data = {
+        "status": 1,
+        "product": {
+            "product_name": "X",
+            "categories_tags": ["en:pasta", 42, None, "fr:riz"],
+        },
+    }
+    with _patch_client(_mock_response(data)):
+        result = await fetch_product(OPF_BARCODE)
+
+    assert result["categories"] == ["pasta", "riz"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_product_logs_requested_vs_resolved(caplog):
+    """Il log distingue product_type richiesto da quello risolto."""
+    data = {
+        "status": 1,
+        "product_type": "beauty",
+        "product": {"product_name": "Cream"},
+    }
+    with _patch_client(_mock_response(data)):
+        with caplog.at_level(logging.INFO, logger="backend.services.off"):
+            await fetch_product(OBF_BARCODE)
+
+    assert "requested=" in caplog.text
+    assert "resolved=" in caplog.text
+    assert "resolved=beauty" in caplog.text
+
+
+def test_off_v3_base_url_allowlist_reject():
+    """OFF_V3_BASE_URL non allowlist (o http) -> fallback al default."""
+    import backend.config as cfg
+
+    default = "https://world.openfoodfacts.org/api/v3/product"
+    old = os.environ.get("OFF_V3_BASE_URL")
+    try:
+        os.environ["OFF_V3_BASE_URL"] = "https://evil.example.com/api/v3/product"
+        importlib.reload(cfg)
+        assert cfg.OFF_V3_BASE_URL == default
+        os.environ["OFF_V3_BASE_URL"] = "http://world.openfoodfacts.org/api/v3/product"
+        importlib.reload(cfg)
+        assert cfg.OFF_V3_BASE_URL == default
+    finally:
+        if old is None:
+            os.environ.pop("OFF_V3_BASE_URL", None)
+        else:
+            os.environ["OFF_V3_BASE_URL"] = old
+        importlib.reload(cfg)

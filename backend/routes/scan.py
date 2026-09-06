@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api", tags=["scan"])
 
 @router.post("/scan", response_model=ScanResponse)
 async def scan_barcode(body: ScanRequest, db: Session = Depends(get_db)):
-    result = await fetch_product(body.barcode, product_type="all")
+    result = await fetch_product(body.barcode)
 
     if result is None:
         raise HTTPException(

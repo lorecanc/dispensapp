@@ -1,5 +1,21 @@
 import Foundation
 
+enum ProductSource: String, Codable, Sendable, Hashable, CaseIterable {
+    case food
+    case beauty
+    case petfood
+    case product
+
+    var displayName: String {
+        switch self {
+        case .food: return "Alimentare"
+        case .beauty: return "Cosmetici"
+        case .petfood: return "Pet food"
+        case .product: return "Non alimentare"
+        }
+    }
+}
+
 struct ScanResult: Codable, Sendable {
     let barcode: String
     let name: String?
@@ -17,6 +33,10 @@ struct ScanResult: Codable, Sendable {
     /// invariato per i call site esistenti.
     var source: String? = nil
     var productType: String? = nil
+
+    /// Vista tipizzata e tollerante di `source`: valori sconosciuti -> nil,
+    /// mai fatalError/force-unwrap, mai fallimento di Decodable.
+    var sourceEnum: ProductSource? { source.flatMap(ProductSource.init) }
 
     enum CodingKeys: String, CodingKey {
         case barcode, name, brand, categories, found, message, source

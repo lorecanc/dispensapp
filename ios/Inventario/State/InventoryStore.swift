@@ -293,11 +293,13 @@ final class InventoryStore {
         imageURL: String?,
         quantity: Int,
         offTags: [String]? = nil,
-        storageLocation: String? = nil
+        storageLocation: String? = nil,
+        source: String? = nil,
+        productType: String? = nil
     ) async {
         error = nil
         if isOffline {
-            enqueueLocalCreate(barcode: barcode, name: name, brand: brand, expirationDate: expirationDate, category: category, imageURL: imageURL, quantity: quantity, offTags: offTags, storageLocation: storageLocation)
+            enqueueLocalCreate(barcode: barcode, name: name, brand: brand, expirationDate: expirationDate, category: category, imageURL: imageURL, quantity: quantity, offTags: offTags, storageLocation: storageLocation, source: source, productType: productType)
             return
         }
         do {
@@ -311,7 +313,9 @@ final class InventoryStore {
                 imageURL: imageURL,
                 quantity: quantity,
                 offTags: offTags,
-                storageLocation: storageLocation
+                storageLocation: storageLocation,
+                source: source,
+                productType: productType
             )
             guard !Task.isCancelled else { return }
             items.append(item)
@@ -320,7 +324,7 @@ final class InventoryStore {
             if Task.isCancelled { return }
             // Rete caduta a metà tentativo: ottimistico + outbox, niente banner.
             if case .offline = classify(error) {
-                enqueueLocalCreate(barcode: barcode, name: name, brand: brand, expirationDate: expirationDate, category: category, imageURL: imageURL, quantity: quantity, offTags: offTags, storageLocation: storageLocation)
+                enqueueLocalCreate(barcode: barcode, name: name, brand: brand, expirationDate: expirationDate, category: category, imageURL: imageURL, quantity: quantity, offTags: offTags, storageLocation: storageLocation, source: source, productType: productType)
                 return
             }
             setError(from: error)
@@ -475,7 +479,9 @@ final class InventoryStore {
         imageURL: String?,
         quantity: Int,
         offTags: [String]? = nil,
-        storageLocation: String? = nil
+        storageLocation: String? = nil,
+        source: String? = nil,
+        productType: String? = nil
     ) {
         let tempId = outbox.nextTempId()
         let item = InventoryItem(
@@ -490,7 +496,9 @@ final class InventoryStore {
             createdAt: Date(),
             quantity: quantity,
             status: "ok",
-            storageLocation: storageLocation
+            storageLocation: storageLocation,
+            source: source,
+            productType: productType
         )
         items.append(item)
         items.sort { ($0.expirationDate ?? .distantFuture) < ($1.expirationDate ?? .distantFuture) }
@@ -500,7 +508,8 @@ final class InventoryStore {
                 barcode: barcode, name: name, brand: brand,
                 expirationDate: expirationDate, category: category,
                 imageURL: imageURL, quantity: quantity, tempId: tempId,
-                offTags: offTags, storageLocation: storageLocation
+                offTags: offTags, storageLocation: storageLocation,
+                source: source, productType: productType
             )),
             pantryId: selectedPantryId
         )
@@ -658,7 +667,8 @@ final class InventoryStore {
                     pantryId: entry.pantryId, barcode: barcode, name: p.name,
                     brand: p.brand, expirationDate: p.expirationDate,
                     category: p.category, imageURL: p.imageURL, quantity: p.quantity,
-                    offTags: p.offTags, storageLocation: p.storageLocation
+                    offTags: p.offTags, storageLocation: p.storageLocation,
+                    source: p.source, productType: p.productType
                 )
             } else {
                 item = try await client.createManualScoped(
@@ -797,7 +807,8 @@ private extension InventoryItem {
             expirationDate: expirationDate, isEstimated: isEstimated,
             category: category, imageURL: imageURL, createdAt: createdAt,
             quantity: quantity, status: status,
-            storageLocation: storageLocation
+            storageLocation: storageLocation,
+            source: source, productType: productType
         )
     }
 
@@ -816,7 +827,8 @@ private extension InventoryItem {
             imageURL: imageURL, createdAt: createdAt,
             quantity: quantity ?? self.quantity,
             status: status,
-            storageLocation: storageLocation
+            storageLocation: storageLocation,
+            source: source, productType: productType
         )
     }
 }

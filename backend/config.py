@@ -217,6 +217,10 @@ OFF_TO_INTERNAL: dict[str, str] = {
     "cleaning": "cleaning-hygiene",
     "hygiene": "cleaning-hygiene",
     "detergents": "cleaning-hygiene",
+    "cosmetics": "cleaning-hygiene",
+    "shampoos": "cleaning-hygiene",
+    "soaps": "cleaning-hygiene",
+    "toothpastes": "cleaning-hygiene",
 }
 
 # pnns_groups_1 OFF -> categoria interna (mappa grossolana; chiavi = slug dei
@@ -298,13 +302,27 @@ COMPARTMENT_MAP: dict[str, str] = {
 # rispetto al file (non CWD) per evitare file sparsi in directory diverse.
 _DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "inventory.db"
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{_DEFAULT_DB_PATH}")
-OFF_BASE_URL = "https://world.openfoodfacts.org/api/v0/product"
 # API v3 universale (copre food + progetti gemelli via product_type).
-OFF_V3_BASE_URL = os.getenv(
-    "OFF_V3_BASE_URL", "https://world.openfoodfacts.org/api/v3/product"
-)
+_OFF_V3_DEFAULT = "https://world.openfoodfacts.org/api/v3/product"
+_OFF_V3_ALLOWED_HOSTS = {
+    "world.openfoodfacts.org",
+    "world.openbeautyfacts.org",
+    "world.openpetfoodfacts.org",
+    "world.openproductsfacts.org",
+}
+_raw_off_v3_base_url = os.getenv("OFF_V3_BASE_URL", _OFF_V3_DEFAULT).rstrip("/")
+_parsed_v3 = urlparse(_raw_off_v3_base_url)
+_v3_host = (_parsed_v3.hostname or "").lower()
+_v3_valid = _parsed_v3.scheme == "https" and _v3_host in _OFF_V3_ALLOWED_HOSTS
+if not _v3_valid:
+    logger.warning(
+        "OFF_V3_BASE_URL non valido o insicuro (%s): fallback a default",
+        _raw_off_v3_base_url,
+    )
+OFF_V3_BASE_URL = _raw_off_v3_base_url if _v3_valid else _OFF_V3_DEFAULT
 OFF_PRODUCT_TYPE_DEFAULT = os.getenv("OFF_PRODUCT_TYPE_DEFAULT", "all")
-# Whitelist host solo diagnostica (nessun enforcement qui).
+# Fallback host per product_type esplicito (produzione + diagnostica):
+# usato da services/off.py al fallimento del primo GET v3.
 OFF_V3_HOSTS: dict[str, str] = {
     "food": "world.openfoodfacts.org",
     "beauty": "world.openbeautyfacts.org",
@@ -321,6 +339,10 @@ _host_ok = (
     _host in ("openfoodfacts.org", "openfoodfacts.net")
     or _host.endswith(".openfoodfacts.org")
     or _host.endswith(".openfoodfacts.net")
+    or _host in ("openbeautyfacts.org", "openpetfoodfacts.org", "openproductsfacts.org")
+    or _host.endswith(".openbeautyfacts.org")
+    or _host.endswith(".openpetfoodfacts.org")
+    or _host.endswith(".openproductsfacts.org")
 )
 _scheme_ok = _parsed.scheme == "https" or (
     _parsed.scheme == "http" and _host in ("localhost", "127.0.0.1")

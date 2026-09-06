@@ -61,6 +61,28 @@ struct ItemDetailView: View {
                             StatusBadge(status: ItemStatus.from(statusString: item.status))
                                 .padding(.top, 4)
 
+                            // T8c: badge tipo prodotto (capsula non tappabile, mai colori stato).
+                            if let raw = item.source ?? item.productType,
+                                let source = ProductSource(rawValue: raw)
+                            {
+                                Text(source.displayName)
+                                    .font(.caption.weight(.medium))
+                                    .foregroundStyle(Color.textSecondary)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background {
+                                        Capsule()
+                                            .fill(.thinMaterial)
+                                            .overlay(Capsule().fill(Color.pantryLinen.opacity(0.45)))
+                                    }
+                                    .overlay(
+                                        Capsule()
+                                            .strokeBorder(Color.pantryOat, lineWidth: 0.5)
+                                    )
+                                    .accessibilityLabel("Tipo: \(source.displayName)")
+                                    .accessibilityHint("Tipo di prodotto")
+                            }
+
                             if let expirationDate = item.expirationDate {
                                 HStack {
                                     Text("Scadenza:")

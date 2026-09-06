@@ -55,7 +55,8 @@ All constants in [`config.py`](./config.py). `DATABASE_URL` is env-configurable.
 |-----|---------|-------------|
 | `DATABASE_URL` | `sqlite:///<project_root>/inventory.db` (absolute, from `DATABASE_URL` env) | SQLAlchemy URL. Override with `DATABASE_URL` env var, e.g. `sqlite:////tmp/test.db` or `postgresql://user:pass@host/db`. Default is resolved as absolute path relative to `config.py` (not CWD) |
 | `DEFAULT_SHELF_LIFE` | (per category map) | Shelf life in days by product category |
-| `OFF_BASE_URL` | `https://world.openfoodfacts.org/api/v0/product` | Open Food Facts API endpoint (sola lettura) |
+| `OFF_V3_BASE_URL` | `https://world.openfoodfacts.org/api/v3/product` (`OFF_V3_BASE_URL` env) | Open Food Facts API v3 universale (sola lettura). Solo `https` con host in `world.openfoodfacts.org` / `world.openbeautyfacts.org` / `world.openpetfoodfacts.org` / `world.openproductsfacts.org`, altrimenti fallback al default con warning |
+| `OFF_PRODUCT_TYPE_DEFAULT` | `all` (`OFF_PRODUCT_TYPE_DEFAULT` env) | `product_type` di default per la lettura v3 (`all` interroga tutti i progetti; fallback per-host `OFF_V3_HOSTS` solo con tipo esplicito) |
 | `OFF_WRITE_ENABLED` | `false` (`OFF_WRITE_ENABLED` env) | Abilita `POST /api/scan/contribute` e `/photo`. Resta `false` senza `OFF_USER`/`OFF_PASS` |
 | `OFF_WRITE_BASE_URL` | `https://world.openfoodfacts.net/cgi` (`OFF_WRITE_BASE_URL` env) | Staging OFF per scrittura; prod `https://world.openfoodfacts.org/cgi` solo via env |
 | `OFF_USER` / `OFF_PASS` | `""` (env, mai loggata) | Credenziali account OFF personale per la scrittura. Su staging usare un account creato sullo staging, non quello di produzione |
