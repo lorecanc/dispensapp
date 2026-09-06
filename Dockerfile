@@ -18,6 +18,6 @@ EXPOSE 7860
 EXPOSE 8000
 
 # Lifespan in backend/main.py esegue già `alembic upgrade head` all'avvio
-# con fallback su Base.metadata.create_all. PORT è iniettata da HF Spaces / Koyeb.
-# HF Spaces espone 7860 (PORT=7860), Koyeb 8000 — il default 7860 copre HF, locale usa PORT env.
+# con fallback su Base.metadata.create_all. PORT è iniettata da HF Spaces.
+# HF Spaces espone 7860 (PORT=7860) — il default 7860 copre HF, locale usa PORT env.
 CMD ["sh", "-c", "python -m uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-7860}"]

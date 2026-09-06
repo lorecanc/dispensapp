@@ -1,10 +1,10 @@
 # Deploy su Hugging Face Spaces (Docker)
 
-Backend FastAPI (`backend/main.py`) collegato a Neon Postgres esistente (`DATABASE_URL` già fornito). Space Docker espone `7860` (HF default); locale/Koyeb usa `8000` via `PORT` env.
+Backend FastAPI (`backend/main.py`) collegato a Neon Postgres esistente (`DATABASE_URL` già fornito). Space Docker espone `7860` (HF default); locale usa `8000` via `PORT` env.
 
 ## File preparati
 
-- `Dockerfile` (root): `FROM python:3.11-slim`, `EXPOSE 7860` + `EXPOSE 8000`, `CMD ["sh","-c","python -m uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-7860}"]` — HF inietta `PORT=7860`, Koyeb/locale usano `PORT` o fallback `7860` (locale puoi lanciare con `PORT=8000`).
+- `Dockerfile` (root): `FROM python:3.11-slim`, `EXPOSE 7860` + `EXPOSE 8000`, `CMD ["sh","-c","python -m uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-7860}"]` — HF inietta `PORT=7860`, locale usa `PORT` o fallback `7860` (puoi lanciare con `PORT=8000`).
 - `README.md`: frontmatter HF in cima (`sdk: docker`, `app_port: 7860`) preservando contenuto esistente. Backup in `README.md.bak`.
 - `.dockerignore` già esclude `.venv`, `__pycache__`, `*.db`, `ios/`, `wiki/`.
 
@@ -43,7 +43,7 @@ In Space → **Settings** → **Variables and secrets**:
 | Secret | `CORS_ORIGINS` | `https://<username>-inventario.hf.space,http://localhost:3000` | Lista comma-separated. In `backend/config.py` si somma ai default localhost. Aggiungi dominio frontend se separato. |
 | Variable | `PORT` | (non impostare) | HF imposta automaticamente `PORT=7860`. Il Dockerfile usa `${PORT:-7860}`. |
 
-> **Non committare** `DATABASE_URL` in `koyeb.yaml` o nel repo — usa solo Secrets dello Space.
+> **Non committare** `DATABASE_URL` nel repo — usa solo Secrets dello Space.
 
 ## Health check
 
@@ -76,7 +76,7 @@ docker build -t inventario-api:test .
 docker run --rm -p 7860:7860 -e DATABASE_URL=sqlite:////tmp/test.db -e PORT=7860 inventario-api:test
 # in altro terminale:
 curl http://localhost:7860/docs
-# test su 8000 (compatibilità Koyeb/locale):
+# test su 8000 (locale):
 docker run --rm -p 8000:8000 -e DATABASE_URL=sqlite:////tmp/test.db -e PORT=8000 inventario-api:test
 curl http://localhost:8000/docs
 ```
@@ -84,5 +84,5 @@ curl http://localhost:8000/docs
 ## Note
 
 - Alembic: `lifespan` in `backend/main.py` cerca `backend/alembic.ini` e fa `command.upgrade(cfg, "head")` con `sqlalchemy.url` da `DATABASE_URL` env. Nessuna modifica backend oltre Dockerfile.
-- HF Spaces Docker espone solo `7860` pubblicamente — `EXPOSE 8000` è mantenuto per compatibilità Koyeb/locale senza effetti su HF.
+- HF Spaces Docker espone solo `7860` pubblicamente — `EXPOSE 8000` è mantenuto per compatibilità locale senza effetti su HF.
 - Se il build HF fallisce su `psycopg2-binary`, verifica che `requirements.txt` + `pip install alembic psycopg2-binary` siano nel Dockerfile (già presenti).

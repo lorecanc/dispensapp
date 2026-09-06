@@ -17,7 +17,7 @@ __pycache__
 .mypy_cache
 .ruff_cache
 
-# DB locale (Koyeb usa DATABASE_URL esterno)
+# DB locale (in prod si usa DATABASE_URL esterno)
 *.db
 *.sqlite
 *.sqlite3
