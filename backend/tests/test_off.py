@@ -495,3 +495,88 @@ def test_off_v3_base_url_allowlist_reject():
         else:
             os.environ["OFF_V3_BASE_URL"] = old
         importlib.reload(cfg)
+
+
+# --- TDD Red: fan-out gemelli OFF su found:False (pre-fix: 1 solo GET food) ---
+
+BEAUTY_BARCODE = "8001280013973"  # Felce Azzurra (live: food 302 -> beauty)
+
+
+def _beauty_success_envelope() -> dict:
+    """Verbatim v3 success envelope per prodotto beauty."""
+    return {
+        "status": "success",
+        "result": {"id": "product_found", "lc": "it", "cc": "it"},
+        "product_type": "beauty",
+        "product": {
+            "code": BEAUTY_BARCODE,
+            "product_name": "Felce Azzurra",
+            "brands": "Felce Azzurra",
+            "categories_tags": [],
+            "image_front_small_url": None,
+        },
+    }
+
+
+def _v3_failure_envelope() -> dict:
+    """Verbatim v3 failure envelope (food miss)."""
+    return {
+        "status": "failure",
+        "result": {"id": "product_not_found", "lc": "en", "cc": "en"},
+    }
+
+
+@pytest.mark.asyncio
+async def test_failure_envelope_is_terminal_no_fanout():
+    """Failure envelope means genuinely not found: no fan-out, single GET.
+
+    Decided architecture: the universal endpoint resolves sub-DBs
+    server-side via 302 redirect, so a v3 failure envelope is terminal.
+    """
+    client_mock = AsyncMock(spec=httpx.AsyncClient)
+    client_mock.get.return_value = _mock_response(_v3_failure_envelope())
+
+    with patch("httpx.AsyncClient", return_value=client_mock):
+        result = await fetch_product(BEAUTY_BARCODE)
+
+    assert result == {"found": False}
+    assert client_mock.get.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_fanout_all_miss_returns_not_found():
+    """Tutti gli host miss -> {"found": False} (comportamento invariato)."""
+    client_mock = AsyncMock(spec=httpx.AsyncClient)
+    client_mock.get.return_value = _mock_response(_v3_failure_envelope())
+
+    with patch("httpx.AsyncClient", return_value=client_mock):
+        result = await fetch_product(BEAUTY_BARCODE)
+
+    assert result == {"found": False}
+
+
+@pytest.mark.asyncio
+async def test_food_302_to_beauty_is_followed():
+    """Food 302 con Location al gemello beauty -> segue redirect, ritorna prodotto.
+
+    Pre-fix: 302 unfollowed -> response.json() fallisce -> None (502-path).
+    """
+    beauty_url = f"https://world.openbeautyfacts.org/api/v3/product/{BEAUTY_BARCODE}"
+    redirect = _mock_response({}, status_code=302)
+    redirect.headers = {"Location": beauty_url}
+    redirect.json.side_effect = ValueError("No JSON on redirect")
+    beauty_hit = _mock_response(_beauty_success_envelope())
+
+    async def _route(url, params=None, **kwargs):
+        if "openbeautyfacts" in url:
+            return beauty_hit
+        return redirect
+
+    client_mock = AsyncMock(spec=httpx.AsyncClient)
+    client_mock.get.side_effect = _route
+
+    with patch("httpx.AsyncClient", return_value=client_mock):
+        result = await fetch_product(BEAUTY_BARCODE)
+
+    assert result is not None
+    assert result.get("name") == "Felce Azzurra"

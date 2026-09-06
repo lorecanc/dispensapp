@@ -2,6 +2,7 @@ import asyncio
 import logging
 import re
 from typing import Optional
+from urllib.parse import urlparse
 
 import httpx
 
@@ -104,6 +105,24 @@ async def _fetch_single_v3(url: str, params: dict, barcode: str) -> Optional[dic
                 continue
             logger.warning("OFF fetch failed for %s: %s", barcode, exc)
             return None
+        # Universal endpoint resolves sub-DBs server-side via 302 + Location
+        # (live 2026-09-06: .../8001280013973?product_type=all -> 302 to
+        # world.openbeautyfacts.org with the same query, which returns 200;
+        # unknown barcodes get 404 directly, no redirect and no 500 quirk).
+        # httpx doesn't follow redirects by default, so follow once manually,
+        # only to allowlisted OFF hosts; Location already carries the query.
+        if response.status_code in (301, 302, 303, 307, 308):
+            location = response.headers.get("Location")
+            redirect_host = (urlparse(location or "").hostname or "").lower()
+            if location and redirect_host in set(OFF_V3_HOSTS.values()):
+                try:
+                    response = await _get_client().get(location)
+                except httpx.HTTPError as exc:
+                    if attempt == 0:
+                        await asyncio.sleep(0.3)
+                        continue
+                    logger.warning("OFF fetch failed for %s: %s", barcode, exc)
+                    return None
         if response.status_code >= 500:
             if attempt == 0:
                 await asyncio.sleep(0.3)
