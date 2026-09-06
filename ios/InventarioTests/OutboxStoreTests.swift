@@ -255,4 +255,38 @@ final class OutboxStoreTests: XCTestCase {
         XCTAssertEqual(OutboxStore.decision(for: .http(status: 503, message: nil)), .stop)
         XCTAssertEqual(OutboxStore.decision(for: .invalidURL), .stop)
     }
+
+    // MARK: - C2-1: 429/401/403 non devono fare drop (Red pre-fix)
+
+    /// 429 (rate-limit, transiente) e 401/403 (auth, rieseguibili dopo
+    /// re-login/refresh token) non devono scartare la entry: il drop
+    /// perderebbe la mutazione offline in silenzio. 400/404/409/422 restano .drop.
+    func testDecisionDoesNotDropRateLimitAndAuthErrors() {
+        XCTAssertEqual(
+            OutboxStore.decision(for: .http(status: 429, message: nil)), .stop,
+            "429 rate-limit è transiente: stop, non drop (la entry andrebbe persa)"
+        )
+        XCTAssertEqual(
+            OutboxStore.decision(for: .http(status: 401, message: nil)), .stop,
+            "401 auth: stop, non drop (rieseguibile dopo re-login)"
+        )
+        XCTAssertEqual(
+            OutboxStore.decision(for: .http(status: 403, message: nil)), .stop,
+            "403 auth: stop, non drop (rieseguibile dopo refresh permessi)"
+        )
+        XCTAssertNotEqual(
+            OutboxStore.decision(for: .http(status: 429, message: nil)), .drop
+        )
+        XCTAssertNotEqual(
+            OutboxStore.decision(for: .http(status: 401, message: nil)), .drop
+        )
+        XCTAssertNotEqual(
+            OutboxStore.decision(for: .http(status: 403, message: nil)), .drop
+        )
+        // Controllo: i 4xx permanenti restano .drop.
+        XCTAssertEqual(OutboxStore.decision(for: .http(status: 400, message: nil)), .drop)
+        XCTAssertEqual(OutboxStore.decision(for: .http(status: 404, message: nil)), .drop)
+        XCTAssertEqual(OutboxStore.decision(for: .http(status: 409, message: nil)), .drop)
+        XCTAssertEqual(OutboxStore.decision(for: .http(status: 422, message: "x")), .drop)
+    }
 }

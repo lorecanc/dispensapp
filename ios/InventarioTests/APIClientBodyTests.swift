@@ -40,4 +40,35 @@ final class APIClientBodyTests: XCTestCase {
         )
         XCTAssertNil(try offTags(in: body))
     }
+
+    // C1-1 Red: DatePicker produce local-midnight (ManualEntryView, ScanPreviewSheet);
+    // l'outbound formatter (APIClient.dateFormatter, GMT) la rende come giorno-1
+    // per utenti a est di UTC. Il giorno spedito deve eguagliare il giorno scelto.
+    func testInventoryBodyPreservesPickedCalendarDayEastOfUTC() throws {
+        let rome = try XCTUnwrap(TimeZone(identifier: "Europe/Rome"))
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = rome
+        var comps = DateComponents()
+        comps.year = 2026
+        comps.month = 9
+        comps.day = 6
+        comps.hour = 0
+        comps.minute = 0
+        comps.second = 0
+        let pickedMidnight = try XCTUnwrap(calendar.date(from: comps))
+        // Sanity: il Date costruito è davvero la mezzanotte locale del giorno scelto.
+        let roundTrip = calendar.dateComponents([.year, .month, .day], from: pickedMidnight)
+        XCTAssertEqual(roundTrip.year, 2026)
+        XCTAssertEqual(roundTrip.month, 9)
+        XCTAssertEqual(roundTrip.day, 6)
+
+        let body = try APIClient.inventoryBody(
+            name: "Prodotto", brand: nil, expirationDate: pickedMidnight,
+            category: nil, quantity: 1
+        )
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let sent = try XCTUnwrap(json["expiration_date"] as? String)
+        XCTAssertEqual(sent, "2026-09-06",
+                       "local-midnight Europe/Rome del 2026-09-06 deve restare 2026-09-06 (GMT la rende 2026-09-05)")
+    }
 }
