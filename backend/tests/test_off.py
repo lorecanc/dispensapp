@@ -442,6 +442,40 @@ async def test_fetch_product_logs_requested_vs_resolved(caplog):
     assert "resolved=beauty" in caplog.text
 
 
+@pytest.mark.asyncio
+async def test_fetch_product_v3_success_envelope_found():
+    """V3 live envelope: status success + result product_found -> found."""
+    data = {
+        "status": "success",
+        "result": {"id": "product_found", "lc": "en", "cc": "en"},
+        "product": {
+            "code": "8002330000615",
+            "product_name": "Zucchero",
+            "brands": "Esselunga",
+            "categories_tags": ["en:sugars"],
+            "image_front_small_url": None,
+        },
+    }
+    with _patch_client(_mock_response(data)):
+        result = await fetch_product("8002330000615")
+
+    assert result.get("found", True) is not False
+    assert result["name"] == "Zucchero"
+
+
+@pytest.mark.asyncio
+async def test_fetch_product_v3_failure_envelope_not_found():
+    """V3 live envelope: status failure + result product_not_found -> found False."""
+    data = {
+        "status": "failure",
+        "result": {"id": "product_not_found", "lc": "en", "cc": "en"},
+    }
+    with _patch_client(_mock_response(data)):
+        result = await fetch_product("0000000000000")
+
+    assert result == {"found": False}
+
+
 def test_off_v3_base_url_allowlist_reject():
     """OFF_V3_BASE_URL non allowlist (o http) -> fallback al default."""
     import backend.config as cfg

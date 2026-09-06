@@ -2,7 +2,7 @@ import Foundation
 
 struct APIConfig {
     static var baseURLString: String {
-        get { UserDefaults.standard.string(forKey: "apiBaseURL") ?? "http://127.0.0.1:8000" }
+        get { UserDefaults.standard.string(forKey: "apiBaseURL") ?? "https://dispensapp.onrender.com" }
         set { UserDefaults.standard.set(newValue, forKey: "apiBaseURL") }
     }
 

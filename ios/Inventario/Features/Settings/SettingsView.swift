@@ -114,7 +114,7 @@ struct SettingsView: View {
     private func testConnection() async {
         connectionStatus = .testing
         do {
-            _ = try await store.client.list()
+            _ = try await store.client.listPantries()
             connectionStatus = .success
         } catch {
             connectionStatus = .failure(error.localizedDescription)

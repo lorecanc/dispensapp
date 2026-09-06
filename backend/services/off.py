@@ -31,8 +31,16 @@ def _normalize_lang(lang: str) -> str:
 def _parse_off_status(data: dict) -> int:
     status = data.get("status", 0)
     if isinstance(status, str):
-        if status.strip().lower() in ("ok", "status ok"):
+        norm = status.strip().lower()
+        if norm in ("ok", "status ok", "success"):
             return 1
+        if norm == "failure":
+            return 0
+        result = data.get("result")
+        if isinstance(result, dict):
+            rid = result.get("id")
+            if isinstance(rid, str) and rid.strip().lower() == "product_found":
+                return 1
     try:
         return int(status)
     except (TypeError, ValueError):
