@@ -50,6 +50,14 @@ extension JSONDecoder.DateDecodingStrategy {
         return formatter
     }()
 
+    private static let isoNoTzNoFractionFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter
+    }()
+
     private static let isoNoTzFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSS"
@@ -76,6 +84,12 @@ extension JSONDecoder.DateDecodingStrategy {
             }
 
             if let date = iso8601InternetDateTime.date(from: dateString) {
+                return date
+            }
+
+            // Handle naive timestamps without fractional seconds (e.g. "2026-09-06T10:02:00");
+            // the GMT-configured formatter interprets them as UTC.
+            if let date = isoNoTzNoFractionFormatter.date(from: dateString) {
                 return date
             }
 

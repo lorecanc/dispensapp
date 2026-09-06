@@ -27,6 +27,7 @@
 		6643C5DA88559459A753D5A7 /* ScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4345213EB8153D2443492DD7 /* ScannerView.swift */; };
 		6682E32D0F79B8A4FE79F223 /* ScanSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF17D9007A3075DAC637B490 /* ScanSessionStore.swift */; };
 		7011BADC230E3F21672CF6AC /* StatusBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DD53C315DE36316C64F620F /* StatusBadge.swift */; };
+		729210509B35F01D6D646730 /* InventoryDateDecodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B8678ABCD8350396646ED50 /* InventoryDateDecodingTests.swift */; };
 		759BC373BA05CCCB5DC2AEC7 /* ShoppingStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2A67946297C6387075DA4A9 /* ShoppingStoreTests.swift */; };
 		7E19E637D1B597CD4667426A /* CategoryPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1717353C3F24D20397BFE6F2 /* CategoryPicker.swift */; };
 		7F967490566FE41A9787E37C /* CachedThumbnail.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4714D18FD9E35E1FB8BD868 /* CachedThumbnail.swift */; };
@@ -97,8 +98,9 @@
 		86BEC1D1B14FEE10746C1062 /* QuantityStepper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuantityStepper.swift; sourceTree = "<group>"; };
 		98345B3FAD226587DD32DE11 /* InventoryRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InventoryRowView.swift; sourceTree = "<group>"; };
 		9B3A028580E9249C886A31C7 /* ShoppingListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingListView.swift; sourceTree = "<group>"; };
+		9B8678ABCD8350396646ED50 /* InventoryDateDecodingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InventoryDateDecodingTests.swift; sourceTree = "<group>"; };
 		A2A67946297C6387075DA4A9 /* ShoppingStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingStoreTests.swift; sourceTree = "<group>"; };
-		B21A7F38A2048D8F9A85274D /* Inventario.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Inventario.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B21A7F38A2048D8F9A85274D /* Inventario.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Inventario.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B2892CE8877922A53135A4FA /* Color+Palette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Palette.swift"; sourceTree = "<group>"; };
 		B38DA13A4C7AFAFF7934DD77 /* LocalInventoryCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalInventoryCache.swift; sourceTree = "<group>"; };
 		B5703DF7CCC574D8C0755A4E /* ItemStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemStatus.swift; sourceTree = "<group>"; };
@@ -167,6 +169,7 @@
 				6C5DEB4CFC335C43641E9A02 /* APIConfigTests.swift */,
 				30D477A9B7C1A70B12B220DF /* CategoryPickerTests.swift */,
 				6C69E7E0337B768635D7C61F /* CategoryRegistryTests.swift */,
+				9B8678ABCD8350396646ED50 /* InventoryDateDecodingTests.swift */,
 				29EAF4C8EECA0F5B3F76C4A8 /* InventoryStoreTests.swift */,
 				F23F7BEF084BCD6EB708FBE9 /* LocalInventoryCacheTests.swift */,
 				DE7A9D06C1AED967D69EF8EB /* OutboxStoreTests.swift */,
@@ -342,6 +345,9 @@
 					3142937B33CA6B1BE16F49D8 = {
 						DevelopmentTeam = "";
 					};
+					820968B2756D9567E305822B = {
+						DevelopmentTeam = 4YK6GDPC39;
+					};
 				};
 			};
 			buildConfigurationList = 344BD706DDCF177F155FDDB0 /* Build configuration list for PBXProject "Inventario" */;
@@ -384,6 +390,7 @@
 				A594A49BC6E6438CFD9EDB25 /* APIConfigTests.swift in Sources */,
 				ACA42871A52D25691B8D5E43 /* CategoryPickerTests.swift in Sources */,
 				D63F9DB5300B4C6CA3ACD6A6 /* CategoryRegistryTests.swift in Sources */,
+				729210509B35F01D6D646730 /* InventoryDateDecodingTests.swift in Sources */,
 				E2F07AEF620AD17FEFA9A5F9 /* InventoryStoreTests.swift in Sources */,
 				EF8A798DAA3B6A9B7C359E2A /* LocalInventoryCacheTests.swift in Sources */,
 				E4D84253E85E2668E438708C /* OutboxStoreTests.swift in Sources */,

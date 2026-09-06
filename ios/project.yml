@@ -22,6 +22,7 @@ targets:
     # keys not representable here: orientations, CFBundleURLTypes). Do NOT add
     # an `info:` block: XcodeGen would regenerate and clobber that file.
     settings:
+      DEVELOPMENT_TEAM: "4YK6GDPC39"
       PRODUCT_BUNDLE_IDENTIFIER: com.inventario.app
       INFOPLIST_FILE: Inventario/Info.plist
       SWIFT_VERSION: "5"
