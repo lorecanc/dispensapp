@@ -6,6 +6,10 @@ import pytest
 from backend.services import off
 from backend.services.off import fetch_product
 
+# Fixture documentate: gemelli OFF (usate solo come barcode, nessun live call).
+OPF_BARCODE = "3760044183738"  # product (Open Products Facts)
+OBF_BARCODE = "3560070791460"  # beauty (Open Beauty Facts)
+
 
 @pytest.fixture(autouse=True)
 def _reset_shared_client():
@@ -57,7 +61,25 @@ async def test_fetch_product_valid():
         "categories": ["pasta", "italian-cuisine"],
         "pnns_group": None,
         "image_url": "https://example.com/pic.jpg",
+        "source": "product",
+        "product_type": "product",
     }
+
+
+@pytest.mark.asyncio
+async def test_fetch_product_v3_url_and_product_type_all():
+    """GET v3 universale: URL /api/v3/product/<barcode> con ?product_type=all."""
+    data = {"status": 1, "product": {"product_name": "X"}}
+    resp = _mock_response(data)
+    client_mock = AsyncMock(spec=httpx.AsyncClient)
+    client_mock.get.return_value = resp
+
+    with patch("httpx.AsyncClient", return_value=client_mock):
+        await fetch_product(OPF_BARCODE)
+
+    args, kwargs = client_mock.get.call_args
+    assert f"/api/v3/product/{OPF_BARCODE}" in args[0]
+    assert kwargs["params"] == {"product_type": "all"}
 
 
 @pytest.mark.asyncio
@@ -209,3 +231,105 @@ async def test_fetch_product_uses_shared_client():
         await fetch_product("1234567890123")
 
     assert ctor.call_count <= 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_product_opf_source_product():
+    """Fixture OPF: product_type product propagato come source/product_type."""
+    data = {
+        "status": 1,
+        "product_type": "product",
+        "product": {"product_name": "Cable", "brands": "", "categories_tags": []},
+    }
+    with _patch_client(_mock_response(data)):
+        result = await fetch_product(OPF_BARCODE)
+
+    assert result["source"] == "product"
+    assert result["product_type"] == "product"
+
+
+@pytest.mark.asyncio
+async def test_fetch_product_obf_source_beauty():
+    """Fixture OBF: product_type beauty propagato come source/product_type."""
+    data = {
+        "status": 1,
+        "product_type": "beauty",
+        "product": {"product_name": "Cream", "brands": "", "categories_tags": []},
+    }
+    with _patch_client(_mock_response(data)):
+        result = await fetch_product(OBF_BARCODE)
+
+    assert result["source"] == "beauty"
+    assert result["product_type"] == "beauty"
+
+
+@pytest.mark.asyncio
+async def test_fetch_product_non_food_no_pnns():
+    """Non-food (beauty) senza pnns_groups_1: pnns_group None."""
+    data = {
+        "status": 1,
+        "product_type": "beauty",
+        "product": {"product_name": "Cream", "brands": "", "categories_tags": []},
+    }
+    with _patch_client(_mock_response(data)):
+        result = await fetch_product(OBF_BARCODE)
+
+    assert result["pnns_group"] is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_product_retry_once_on_500_then_none():
+    """500 persistente: esattamente 1 retry (2 GET) poi None."""
+    client_mock = AsyncMock(spec=httpx.AsyncClient)
+    client_mock.get.side_effect = [_mock_response({}, 500), _mock_response({}, 500)]
+
+    with (
+        patch("httpx.AsyncClient", return_value=client_mock),
+        patch("backend.services.off.asyncio.sleep", new=AsyncMock()),
+    ):
+        result = await fetch_product(OPF_BARCODE)
+
+    assert result is None
+    assert client_mock.get.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_fetch_product_retry_once_on_timeout_then_none():
+    """Timeout persistente: esattamente 1 retry (2 GET) poi None."""
+    client_mock = AsyncMock(spec=httpx.AsyncClient)
+    client_mock.get.side_effect = httpx.TimeoutException("timeout")
+
+    with (
+        patch("httpx.AsyncClient", return_value=client_mock),
+        patch("backend.services.off.asyncio.sleep", new=AsyncMock()),
+    ):
+        result = await fetch_product(OPF_BARCODE)
+
+    assert result is None
+    assert client_mock.get.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_fetch_product_no_retry_on_404():
+    """404: nessun retry (1 solo GET), ritorna found False."""
+    client_mock = AsyncMock(spec=httpx.AsyncClient)
+    client_mock.get.return_value = _mock_response({}, 404)
+
+    with patch("httpx.AsyncClient", return_value=client_mock):
+        result = await fetch_product(OPF_BARCODE)
+
+    assert result == {"found": False}
+    assert client_mock.get.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_product_no_retry_on_found_false():
+    """status 0: nessun retry (1 solo GET), ritorna found False."""
+    client_mock = AsyncMock(spec=httpx.AsyncClient)
+    client_mock.get.return_value = _mock_response({"status": 0, "product": None})
+
+    with patch("httpx.AsyncClient", return_value=client_mock):
+        result = await fetch_product(OPF_BARCODE)
+
+    assert result == {"found": False}
+    assert client_mock.get.call_count == 1

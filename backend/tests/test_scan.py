@@ -67,6 +67,7 @@ def test_scan_not_found():
     body = resp.json()
     assert body["found"] is False
     assert "non trovato" in body.get("message", "").lower()
+    assert "database" in body.get("message", "").lower()
 
 
 def test_scan_network_error():
@@ -78,6 +79,7 @@ def test_scan_network_error():
     assert resp.status_code == 502
     body = resp.json()
     assert "comunicazione" in body.get("message", "").lower()
+    assert "database" in body.get("message", "").lower()
 
 
 def test_scan_category_normalization():
@@ -152,3 +154,51 @@ def test_scan_not_found_suggested_category_null():
     assert body["found"] is False
     assert "suggested_category" in body
     assert body["suggested_category"] is None
+
+
+def test_scan_propagates_source_product_type():
+    """source/product_type da fetch_product propagati in ScanResponse."""
+    payload = {
+        "barcode": "3560070791460",
+        "name": "Cream",
+        "brand": None,
+        "categories": ["makeup"],
+        "image_url": None,
+        "source": "beauty",
+        "product_type": "beauty",
+    }
+
+    with patch("backend.routes.scan.fetch_product") as mock_fetch:
+        mock_fetch.return_value = payload
+        resp = _call_scan(barcode="3560070791460")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["found"] is True
+    assert body["source"] == "beauty"
+    assert body["product_type"] == "beauty"
+    mock_fetch.assert_called_once_with("3560070791460", product_type="all")
+
+
+def test_scan_non_food_without_pnns():
+    """Non-food (beauty) senza pnns → found true, source beauty, nessun crash."""
+    payload = {
+        "barcode": "3560070791460",
+        "name": "Cream",
+        "brand": None,
+        "categories": ["makeup"],
+        "pnns_group": None,
+        "image_url": None,
+        "source": "beauty",
+        "product_type": "beauty",
+    }
+
+    with patch("backend.routes.scan.fetch_product") as mock_fetch:
+        mock_fetch.return_value = payload
+        resp = _call_scan(barcode="3560070791460")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["found"] is True
+    assert body["source"] == "beauty"
+    assert body["product_type"] == "beauty"

@@ -12,11 +12,17 @@ struct ScanResult: Codable, Sendable {
     /// Nil con backend non aggiornati. `var` + default: memberwise init
     /// invariato per i call site esistenti (mock di test inclusi).
     var suggestedCategory: String? = nil
+    /// Campi additivi (gemelli OFF): sorgente/tipo prodotto dal backend v3.
+    /// Nil con backend non aggiornati. `var` + default: memberwise init
+    /// invariato per i call site esistenti.
+    var source: String? = nil
+    var productType: String? = nil
 
     enum CodingKeys: String, CodingKey {
-        case barcode, name, brand, categories, found, message
+        case barcode, name, brand, categories, found, message, source
         case imageURL = "image_url"
         case suggestedCategory = "suggested_category"
+        case productType = "product_type"
     }
 
     /// True quando il prodotto manca o ha dati incompleti e vale la pena arricchirlo.

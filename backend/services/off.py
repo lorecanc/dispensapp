@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Optional
 
@@ -6,10 +7,12 @@ import httpx
 from backend.config import (
     OFF_APP_NAME,
     OFF_APP_VERSION,
-    OFF_BASE_URL,
     OFF_CONTACT_EMAIL,
     OFF_PASS,
+    OFF_PRODUCT_TYPE_DEFAULT,
     OFF_USER,
+    OFF_V3_BASE_URL,
+    OFF_V3_HOSTS,
     OFF_WRITE_BASE_URL,
     off_basic_auth,
     off_user_agent,
@@ -45,19 +48,76 @@ def _get_client() -> httpx.AsyncClient:
     return _read_client
 
 
-async def fetch_product(barcode: str) -> Optional[dict]:
-    url = f"{OFF_BASE_URL}/{barcode}.json"
+def _resolve_product_source(data: dict, requested: str) -> str:
+    """Deriva source/product_type da payload v3 o dal tipo richiesto.
+
+    Cerca product_type/istanza nel payload (top-level o product); mappa
+    host/istanze contenenti food/beauty/petfood/productsfacts al gemello
+    corrispondente. Fallback al tipo richiesto se specifico, altrimenti
+    "product" (mai "all").
+    """
+    candidates: list[str] = []
+    if isinstance(data, dict):
+        for key in ("product_type", "instance", "source"):
+            val = data.get(key)
+            if isinstance(val, str) and val.strip():
+                candidates.append(val.strip().lower())
+        product = data.get("product")
+        if isinstance(product, dict):
+            for key in ("product_type", "instance"):
+                val = product.get(key)
+                if isinstance(val, str) and val.strip():
+                    candidates.append(val.strip().lower())
+    for cand in candidates:
+        if "beauty" in cand:
+            return "beauty"
+        if "petfood" in cand or "pet-food" in cand or "pet_food" in cand:
+            return "petfood"
+        if "productsfacts" in cand or cand == "product":
+            return "product"
+        if "food" in cand:
+            return "food"
+        if cand in ("beauty", "petfood", "product", "food"):
+            return cand
+    if requested in ("food", "beauty", "petfood", "product"):
+        return requested
+    return "product"
+
+
+async def _fetch_single_v3(url: str, params: dict, barcode: str) -> Optional[dict]:
+    """Singolo GET v3 con max 1 retry su timeout/5xx/trasporto (~300ms)."""
+    response: Optional[httpx.Response] = None
+    for attempt in range(2):
+        try:
+            response = await _get_client().get(url, params=params)
+        except httpx.HTTPError as exc:
+            if attempt == 0:
+                await asyncio.sleep(0.3)
+                continue
+            logger.warning("OFF fetch failed for %s: %s", barcode, exc)
+            return None
+        if response.status_code >= 500:
+            if attempt == 0:
+                await asyncio.sleep(0.3)
+                continue
+            logger.warning("OFF fetch failed for %s: 5xx %s", barcode, response.status_code)
+            return None
+        break
+    if response is None:
+        return None
+    if response.status_code == 404:
+        return {"found": False}
     try:
-        response = await _get_client().get(url)
         response.raise_for_status()
         data = response.json()
-    except (httpx.HTTPError, httpx.TimeoutException, ValueError) as exc:
+    except (httpx.HTTPError, ValueError) as exc:
         logger.warning("OFF fetch failed for %s: %s", barcode, exc)
+        return None
+    if not isinstance(data, dict):
         return None
 
     product = data.get("product")
-    status = data.get("status")
-    if status != 1 or product is None:
+    if _parse_off_status(data) != 1 or not isinstance(product, dict):
         return {"found": False}
 
     # pnns_groups_1: testo libero ("Milk and dairy products") o tag "en:…";
@@ -65,7 +125,7 @@ async def fetch_product(barcode: str) -> Optional[dict]:
     # di PNNS_TO_INTERNAL (config). Le enumerazioni con virgola ("Fish, meat
     # and eggs") perdono virgole e connettore "and": la tassonomia OFF live
     # canonizza quel gruppo come "Fish Meat Eggs" -> slug "fish-meat-eggs".
-    # None se assente/vuoto/non stringa.
+    # None se assente/vuoto/non stringa (atteso per non-food).
     raw_pnns = product.get("pnns_groups_1")
     pnns_group = None
     if isinstance(raw_pnns, str):
@@ -74,6 +134,8 @@ async def fetch_product(barcode: str) -> Optional[dict]:
             slug = slug.replace(",", "").replace(" and ", " ")
         pnns_group = slug.replace(" ", "-") or None
 
+    requested = str(params.get("product_type", "all")).strip().lower() or "all"
+    resolved = _resolve_product_source(data, requested)
     return {
         "barcode": barcode,
         "name": product.get("product_name", ""),
@@ -81,7 +143,30 @@ async def fetch_product(barcode: str) -> Optional[dict]:
         "categories": [c.split(":")[-1] for c in product.get("categories_tags", [])],
         "pnns_group": pnns_group,
         "image_url": product.get("image_front_small_url") or None,
+        "source": resolved,
+        "product_type": resolved,
     }
+
+
+async def fetch_product(
+    barcode: str, product_type: str = OFF_PRODUCT_TYPE_DEFAULT
+) -> Optional[dict]:
+    """Lettura v3 universale: singolo GET product_type=all (default).
+
+    Il fallback per-host (OFF_V3_HOSTS) è usato solo con product_type
+    esplicito != all e solo su fallimento trasporto/5xx del primo GET,
+    mai su 404 o found=False e mai con fan-out parallelo.
+    """
+    requested = (product_type or OFF_PRODUCT_TYPE_DEFAULT).strip().lower() or "all"
+    params = {"product_type": requested}
+    result = await _fetch_single_v3(f"{OFF_V3_BASE_URL}/{barcode}", params, barcode)
+    if result is not None:
+        return result
+    if requested != "all" and requested in OFF_V3_HOSTS:
+        host = OFF_V3_HOSTS[requested]
+        fallback_url = f"https://{host}/api/v3/product/{barcode}"
+        return await _fetch_single_v3(fallback_url, params, barcode)
+    return None
 
 
 async def contribute_product(

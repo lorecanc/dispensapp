@@ -113,6 +113,8 @@ class ScanHistory(Base):
     barcode = Column(String, nullable=False, unique=True, index=True)
     name = Column(String, nullable=False)
     category = Column(String, nullable=True)
+    source = Column(String, nullable=True)
+    product_type = Column(String, nullable=True)
     times_scanned = Column(Integer, nullable=False, default=1, server_default="1")
     last_scanned_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 

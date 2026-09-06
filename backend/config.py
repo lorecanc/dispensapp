@@ -299,6 +299,18 @@ COMPARTMENT_MAP: dict[str, str] = {
 _DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "inventory.db"
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{_DEFAULT_DB_PATH}")
 OFF_BASE_URL = "https://world.openfoodfacts.org/api/v0/product"
+# API v3 universale (copre food + progetti gemelli via product_type).
+OFF_V3_BASE_URL = os.getenv(
+    "OFF_V3_BASE_URL", "https://world.openfoodfacts.org/api/v3/product"
+)
+OFF_PRODUCT_TYPE_DEFAULT = os.getenv("OFF_PRODUCT_TYPE_DEFAULT", "all")
+# Whitelist host solo diagnostica (nessun enforcement qui).
+OFF_V3_HOSTS: dict[str, str] = {
+    "food": "world.openfoodfacts.org",
+    "beauty": "world.openbeautyfacts.org",
+    "petfood": "world.openpetfoodfacts.org",
+    "product": "world.openproductsfacts.org",
+}
 # Scrittura OFF (contribuzione metadati): default staging .net, prod .org solo via env.
 _off_write_default = "https://world.openfoodfacts.net/cgi"
 _off_write_requested = os.getenv("OFF_WRITE_ENABLED", "false").lower() in ("1", "true", "yes", "on")

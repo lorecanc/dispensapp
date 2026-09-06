@@ -64,6 +64,8 @@ class ScanResponse(BaseModel):
     image_url: Optional[HttpUrl] = None
     found: bool
     message: Optional[str] = None
+    source: Optional[str] = None
+    product_type: Optional[str] = None
 
 
 class InventoryCreate(BaseModel):

@@ -18,19 +18,19 @@ router = APIRouter(prefix="/api", tags=["scan"])
 
 @router.post("/scan", response_model=ScanResponse)
 async def scan_barcode(body: ScanRequest, db: Session = Depends(get_db)):
-    result = await fetch_product(body.barcode)
+    result = await fetch_product(body.barcode, product_type="all")
 
     if result is None:
         raise HTTPException(
             status_code=502,
-            detail="Errore durante la comunicazione con Open Food Facts",
+            detail="Errore durante la comunicazione con i database Open* Facts",
         )
 
     if result.get("found") is False:
         return ScanResponse(
             found=False,
             barcode=body.barcode,
-            message="Prodotto non trovato nel database Open Food Facts",
+            message="Prodotto non trovato nei database Open* Facts",
         )
 
     # Hook ScanHistory: increment times_scanned or create
@@ -40,6 +40,8 @@ async def scan_barcode(body: ScanRequest, db: Session = Depends(get_db)):
             name = result.get("name") or ""
             categories = result.get("categories") or []
             category = categories[0] if categories else None
+            source = result.get("source")
+            product_type = result.get("product_type")
             existing = db.query(ScanHistory).filter(ScanHistory.barcode == barcode).first()
             now = datetime.now(timezone.utc)
             if existing:
@@ -49,6 +51,10 @@ async def scan_barcode(body: ScanRequest, db: Session = Depends(get_db)):
                     existing.name = name
                 if category:
                     existing.category = category
+                if source:
+                    existing.source = source
+                if product_type:
+                    existing.product_type = product_type
                 existing.last_scanned_at = now
             else:
                 # ensure name not empty for NOT NULL constraint; fallback to barcode
@@ -56,6 +62,8 @@ async def scan_barcode(body: ScanRequest, db: Session = Depends(get_db)):
                     barcode=barcode,
                     name=name or barcode,
                     category=category,
+                    source=source,
+                    product_type=product_type,
                     times_scanned=1,
                     last_scanned_at=now,
                 )
@@ -85,4 +93,6 @@ async def scan_barcode(body: ScanRequest, db: Session = Depends(get_db)):
         categories=result.get("categories", []),
         image_url=result.get("image_url"),
         suggested_category=suggested,
+        source=result.get("source"),
+        product_type=result.get("product_type"),
     )
