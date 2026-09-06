@@ -11,8 +11,13 @@
   - Modules: backend-api.md (7 routers, Alembic lifespan, error handler, CORS without Idempotency-Key), backend-service-expiration.md (exact match + aliases, get_status, resolve_expiration, 26 categories), backend-service-markdown-export.md (get_status reuse, escaping, DD/MM/YYYY, shopping_markdown reference)
   - Components: ios-category-picker.md (CategoryRegistry-driven), ios-empty-state-view.md (custom Material card + params, not ContentUnavailableView), ios-manual-entry-view.md (registry categories, offline enqueue, pantry-scoped client), ios-quantity-stepper.md (accessibility), ios-settings-view.md (Terra colors, ShareLink subject/message, store.client), ios-status-badge.md (Terra colors, Label + border + a11y)
   - Concepts: expiration-estimation.md (exact match, resolve_expiration section, 26 categories), item-status.md (get_status delegation, Terra colors, updated badge snippet)
-- **Pages added:** 0
+- **Pages added:** 1
+  - Modules: backend-routes-contribute.md (code-unit reference for routes/contribute.py, mirroring the scan route + API pattern)
 - **Pages removed:** 0
+- **Notes:**
+  - `backend/routes/categories.py` linked as source_file of the Category Registry concept (no standalone module page: 36 lines, behavior covered).
+  - Shopping side (`ShoppingStore`, `ShoppingListView`, `compartment.py`, `shopping_markdown.py`) verified covered via Shopping Routes module + Shopping Departments concept — no new pages.
+  - `modules/backend-config.md` vs `config/backend-config.md` kept as-is: already split by angle (code constants vs env-var reference) with cross-links.
 
 ## [2026-06-24] initial-generation | Wiki initialization — all 39 pages created
 

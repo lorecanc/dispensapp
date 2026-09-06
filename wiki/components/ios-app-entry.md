@@ -6,6 +6,7 @@ source_files:
   - ios/Inventario/InventarioApp.swift
   - ios/Inventario/ContentView.swift
   - ios/Inventario/State/InventoryStore.swift
+  - ios/Inventario/Features/ShoppingList/ShoppingListView.swift
   - ios/Inventario/Info.plist
 created: "2026-06-24"
 last_updated: "2026-09-05"
@@ -96,47 +97,24 @@ When a valid token is found, it is stored in `pendingInviteToken`, which drives 
 
 ## Tab Navigation
 
-`ContentView` presents a `TabView` with two tabs:
+`ContentView` presents a `TabView` with two tabs (the former *Aggiungi* tab was removed; product entry now lives inside *Dispensa* — see below):
 
 | Tab | Label | Icon | Destination |
 |-----|-------|------|-------------|
 | 1 | Dispensa | `refrigerator` | `NavigationStack` → [InventoryListView](../components/ios-inventory-list-view.md) |
-| 2 | Aggiungi | `plus.circle` | `NavigationStack` → `AddMenuView` |
+| 2 | Spesa | `cart` | `NavigationStack` → `ShoppingListView` (see [Shopping Departments](../concepts/shopping-departments.md)) |
 
-Both tabs wrap their content in a `NavigationStack` to support push navigation.
+Both tabs wrap their content in a `NavigationStack` to support push navigation. Style adapts to the OS: iOS 26 uses `.sidebarAdaptable` with `.tabBarMinimizeBehavior(.onScrollDown)`; iOS 18 uses `.sidebarAdaptable`; older versions fall back to classic `.tabItem` labels.
 
-## AddMenuView
+## Product Entry (inside Dispensa)
 
-`AddMenuView` is defined inline in `ContentView.swift`. It presents a `List` with two options for adding a product:
+With no dedicated tab, scanning and manual entry are launched from `InventoryListView`:
 
-1. **Scansiona codice a barre** — A `Button` with the `barcode.viewfinder` icon. Tapping it sets `showScanner = true`, which presents [ScannerViewWrapper](../components/ios-scanner-view.md) as a `.fullScreenCover`.
+1. **Toolbar scanner button** — `barcode.viewfinder` icon (top-bar trailing) opening the scanner directly.
+2. **"Aggiungi prodotto" pill** — an oval Material capsule that opens a `confirmationDialog` with two choices: **Scansiona** (barcode) or **Inserimento manuale** (form).
+3. **Overflow menu** — a `NavigationLink` to [ManualEntryView](../components/ios-manual-entry-view.md) alongside invite/history actions.
 
-2. **Inserimento manuale** — A `NavigationLink` with the `pencil` icon. Tapping it pushes [ManualEntryView](../components/ios-manual-entry-view.md) onto the navigation stack.
-
-The view's navigation title is "Aggiungi prodotto".
-
-```swift
-struct AddMenuView: View {
-    @State private var showScanner = false
-
-    var body: some View {
-        List {
-            Button {
-                showScanner = true
-            } label: {
-                Label("Scansiona codice a barre", systemImage: "barcode.viewfinder")
-            }
-            NavigationLink(destination: ManualEntryView()) {
-                Label("Inserimento manuale", systemImage: "pencil")
-            }
-        }
-        .navigationTitle("Aggiungi prodotto")
-        .fullScreenCover(isPresented: $showScanner) {
-            ScannerViewWrapper()
-        }
-    }
-}
-```
+The scanner ([ScannerViewWrapper](../components/ios-scanner-view.md)) and the manual form are presented as `.sheet`s from list state (`showScanner`, `showManual`).
 
 ## InventoryStore
 
@@ -153,23 +131,25 @@ The store is injected via `.environment()` at the app root and accessed via `@En
 graph TD
     InventarioApp -->|.environment(store)| ContentView
     ContentView -->|tab 1| DispensaTab["Dispensa Tab"]
-    ContentView -->|tab 2| AggiungiTab["Aggiungi Tab"]
+    ContentView -->|tab 2| SpesaTab["Spesa Tab"]
 
     DispensaTab --> NavigationStack1["NavigationStack"]
     NavigationStack1 --> InventoryListView
 
-    AggiungiTab --> NavigationStack2["NavigationStack"]
-    NavigationStack2 --> AddMenuView
+    InventoryListView --> Pill["Aggiungi prodotto pill"]
+    InventoryListView --> ToolbarScan["Toolbar: barcode.viewfinder"]
+    Pill -->|confirmationDialog| ScanChoice["Scansiona"]
+    Pill -->|confirmationDialog| ManualChoice["Inserimento manuale"]
+    ToolbarScan -->|sheet| ScannerViewWrapper
+    ScanChoice -->|sheet| ScannerViewWrapper
+    ManualChoice -->|sheet| ManualEntryView
 
-    AddMenuView --> ScanButton["Button: Scansiona codice a barre"]
-    AddMenuView --> ManualLink["NavigationLink: Inserimento manuale"]
-
-    ScanButton -->|fullScreenCover| ScannerViewWrapper
-    ManualLink --> ManualEntryView
+    SpesaTab --> NavigationStack2["NavigationStack"]
+    NavigationStack2 --> ShoppingListView
 
     InventarioURL["inventario:// URL"] -->|onOpenURL| inviteToken["inviteToken(from:)"]
     inviteToken -->|valid| pendingInviteToken["pendingInviteToken"]
     pendingInviteToken -->|confirmationDialog| acceptInviteToken["store.acceptInviteToken(token)"]
 ```
 
-The app uses a simple two-tab layout: the *Dispensa* (pantry) tab lists all items, and the *Aggiungi* (add) tab provides two entry methods — barcode scanning or manual form input. Shared-pantry invites arrive via `inventario://` deep link, are validated locally, confirmed by the user, then accepted through the store.
+The app uses a simple two-tab layout: the *Dispensa* (pantry) tab lists all items and hosts product entry (scanner + manual form via pill/dialog/sheets), and the *Spesa* (shopping) tab hosts the compartment-grouped shopping lists. Shared-pantry invites arrive via `inventario://` deep link, are validated locally, confirmed by the user, then accepted through the store.

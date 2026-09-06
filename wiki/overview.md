@@ -126,7 +126,7 @@ Inventario/
 │   └── tests/                # pytest suite
 ├── ios/Inventario/
 │   ├── InventarioApp.swift   # App entry, @main, injects InventoryStore
-│   ├── ContentView.swift     # Root TabView: Dispensa + Aggiungi tabs
+│   ├── ContentView.swift     # Root TabView: Dispensa + Spesa tabs
 │   ├── State/
 │   │   ├── InventoryStore.swift    # @Observable @MainActor store, outbox replay
 │   │   ├── OutboxStore.swift       # Persistent FIFO offline mutation queue

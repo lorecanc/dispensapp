@@ -126,15 +126,24 @@ See the [Architecture](./architecture.md) page for a detailed breakdown of syste
 
 ## API Endpoints
 
+All pantry-scoped routes require the `X-Pantry-Token` header (see [Pantry Sharing](./concepts/pantry-sharing.md)). Legacy unscoped `/api/inventory...` aliases still exist alongside the canonical `/api/pantries/{pantry_id}/inventory...` paths.
+
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/scan` | Lookup a barcode |
-| POST | `/api/inventory` | Create an inventory item from a scan |
-| POST | `/api/inventory/manual` | Create an inventory item manually |
-| GET | `/api/inventory` | List all inventory items |
-| PATCH | `/api/inventory/{id}` | Update an item |
-| DELETE | `/api/inventory/{id}` | Delete an item |
-| GET | `/api/inventory/export` | Export inventory as Markdown |
+| POST | `/api/scan` | Lookup a barcode via Open Food Facts |
+| POST | `/api/scan/contribute` | Contribute missing metadata to OFF (opt-in, rate-limited) |
+| POST | `/api/scan/contribute/photo` | Upload a product photo to OFF (JPEG/PNG/HEIC, ≤ 5 MB) |
+| GET/POST/DELETE | `/api/pantries...` | Pantry lifecycle, invites, members (see [Pantries API](./api/pantries.md)) |
+| GET | `/api/pantries/{pantry_id}/inventory` | List pantry items (paginated) |
+| POST | `/api/pantries/{pantry_id}/inventory` | Create an inventory item from a scan |
+| POST | `/api/pantries/{pantry_id}/inventory/manual` | Create an inventory item manually |
+| GET/PATCH/DELETE | `/api/pantries/{pantry_id}/inventory/{id}` | Read, update, or delete an item |
+| POST | `/api/inventory/{id}/consume` | Atomically decrement quantity (409 if over-drawn) |
+| GET | `/api/inventory/{id}/history` | Consumption history ledger |
+| GET | `/api/pantries/{pantry_id}/inventory/export` | Export inventory as Markdown |
+| GET | `/api/categories`, `/api/compartments` | Server-driven category/compartment taxonomy |
+| GET | `/api/suggestions` | Scan-history autocomplete (prefix search) |
+| * | `/api/pantries/{pantry_id}/shopping-lists...` | Shopping-list CRUD, check/uncheck, markdown export |
 
 ## Project Conventions
 

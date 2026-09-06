@@ -3,6 +3,7 @@ title: "Category Registry"
 description: "Server-driven category/compartment registry on iOS — CategoryRegistry.update(with:) from GET /api/categories with embedded offline fallback"
 category: "concepts"
 source_files:
+  - "backend/routes/categories.py"
   - "ios/Inventario/Models/CategoryRegistry.swift"
   - "ios/Inventario/Networking/APIClient.swift"
   - "ios/Inventario/State/InventoryStore.swift"

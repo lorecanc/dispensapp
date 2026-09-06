@@ -18,6 +18,7 @@
 | [Backend Config](./modules/backend-config.md) | Central configuration constants for the Inventario backend service | 2026-09-05 |
 | [Backend Database](./modules/backend-database.md) | SQLAlchemy engine, session factory, ORM base, constraints, and Alembic migrations for SQLite | 2026-09-05 |
 | [Backend Models](./modules/backend-models.md) | SQLAlchemy ORM models for pantries, members, invites, inventory, shopping lists, and consumption events | 2026-09-05 |
+| [Backend Routes — Contribute](./modules/backend-routes-contribute.md) | POST /api/scan/contribute and /photo endpoints proxying opt-in OFF writes with validation, rate-limit, and strict photo checks | 2026-09-05 |
 | [Backend Routes — Inventory](./modules/backend-routes-inventory.md) | Pantry-scoped inventory CRUD, atomic consume, and consumption history | 2026-09-05 |
 | [Backend Routes — Pantries](./modules/backend-routes-pantries.md) | Pantry lifecycle, invite creation/acceptance, and member management | 2026-09-05 |
 | [Barcode Scan Route](./modules/backend-routes-scan.md) | POST /api/scan endpoint that looks up products by barcode via Open Food Facts | 2026-09-05 |
