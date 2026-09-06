@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -65,6 +66,18 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     if isinstance(exc.detail, str):
         content["message"] = exc.detail
     return JSONResponse(status_code=exc.status_code, content=content)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    # uniforma errori di validazione a {"detail": str, "message": str} per compatibilità iOS [String:String]
+    parts = []
+    for err in exc.errors():
+        loc = ".".join(str(p) for p in err.get("loc", []) if p != "body")
+        msg = err.get("msg", "")
+        parts.append(f"{loc}: {msg}" if loc else msg)
+    detail = "; ".join(parts) if parts else "Errore di validazione"
+    return JSONResponse(status_code=422, content={"detail": detail, "message": detail})
 
 
 app.include_router(scan_router)

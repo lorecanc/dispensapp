@@ -8,7 +8,15 @@ from sqlalchemy.orm import Session
 
 from backend.database import get_db
 from backend.dependencies.pantry import PantryContext, get_current_pantry, get_pantry_context
-from backend.models import Invite, Pantry, PantryMember
+from backend.models import (
+    ConsumptionEvent,
+    InventoryItem,
+    Invite,
+    Pantry,
+    PantryMember,
+    ShoppingList,
+    ShoppingListItem,
+)
 from backend.schemas import InviteCreate, InviteOut, MemberOut, PantryCreate, PantryOut
 
 logger = logging.getLogger(__name__)
@@ -125,6 +133,31 @@ def delete_pantry(
             status_code=403, detail="Solo l'owner può eliminare la pantry"
         )
     try:
+        list_ids = [
+            r[0]
+            for r in db.query(ShoppingList.id)
+            .filter(ShoppingList.pantry_id == pantry.id)
+            .all()
+        ]
+        if list_ids:
+            db.query(ShoppingListItem).filter(
+                ShoppingListItem.shopping_list_id.in_(list_ids)
+            ).delete(synchronize_session=False)
+        db.query(ShoppingList).filter(
+            ShoppingList.pantry_id == pantry.id
+        ).delete(synchronize_session=False)
+        db.query(InventoryItem).filter(
+            InventoryItem.pantry_id == pantry.id
+        ).delete(synchronize_session=False)
+        db.query(ConsumptionEvent).filter(
+            ConsumptionEvent.pantry_id == pantry.id
+        ).delete(synchronize_session=False)
+        db.query(Invite).filter(
+            Invite.pantry_id == pantry.id
+        ).delete(synchronize_session=False)
+        db.query(PantryMember).filter(
+            PantryMember.pantry_id == pantry.id
+        ).delete(synchronize_session=False)
         db.delete(pantry)
         db.commit()
     except Exception:
