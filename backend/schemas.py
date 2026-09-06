@@ -1,12 +1,23 @@
-from datetime import date, datetime, timedelta
-from typing import Optional
+from datetime import date, datetime, timedelta, timezone
+from typing import Annotated, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, computed_field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, PlainSerializer, computed_field, field_validator, model_validator
 
 from backend.services.expiration import get_status
 
 # EAN-8 / UPC-A / EAN-13 / EAN-14
 BARCODE_PATTERN = r"^\d{8,14}$"
+
+# Storage resta UTC naive; la serializzazione aggiunge il suffisso +00:00
+# richiesto dal decoder iOS. Pydantic 2 emette "Z" per datetime UTC aware nel
+# JSON, quindi si formatta con isoformat() e si mantiene lo schema date-time.
+UtcDatetime = Annotated[
+    datetime,
+    PlainSerializer(
+        lambda dt: (dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt).isoformat(),
+        return_type=Annotated[str, Field(json_schema_extra={"format": "date-time"})],
+    ),
+]
 
 
 def _validate_expiration(v: Optional[date]) -> Optional[date]:
@@ -143,7 +154,7 @@ class InventoryOut(BaseModel):
     is_estimated: bool = False
     category: Optional[str] = None
     image_url: Optional[HttpUrl] = None
-    created_at: datetime
+    created_at: UtcDatetime
     quantity: int = 1
     compartment: Optional[str] = None
     pantry_id: Optional[int] = None
@@ -211,7 +222,7 @@ class ConsumptionEventOut(BaseModel):
     barcode: Optional[str] = None
     delta: int
     reason: Optional[str] = None
-    created_at: datetime
+    created_at: UtcDatetime
 
 
 # --- Pantry / Invites / Members (T2) ---
@@ -234,7 +245,7 @@ class PantryOut(BaseModel):
 
     id: int
     name: str
-    created_at: datetime
+    created_at: UtcDatetime
 
 
 class InviteCreate(BaseModel):
@@ -258,8 +269,8 @@ class InviteOut(BaseModel):
     pantry_id: int
     token: str
     status: str
-    expires_at: datetime
-    created_at: datetime
+    expires_at: UtcDatetime
+    created_at: UtcDatetime
 
 
 class MemberOut(BaseModel):
@@ -267,7 +278,7 @@ class MemberOut(BaseModel):
 
     pantry_id: int
     role: str
-    joined_at: datetime
+    joined_at: UtcDatetime
 
 
 class MessageResponse(BaseModel):
@@ -324,7 +335,7 @@ class ShoppingListItemOut(BaseModel):
     quantity: int
     checked: bool
     compartment: Optional[str] = None
-    created_at: datetime
+    created_at: UtcDatetime
 
 
 class ShoppingListOut(BaseModel):
@@ -333,5 +344,5 @@ class ShoppingListOut(BaseModel):
     id: int
     pantry_id: int
     name: str
-    created_at: datetime
+    created_at: UtcDatetime
     items: list[ShoppingListItemOut] = []
