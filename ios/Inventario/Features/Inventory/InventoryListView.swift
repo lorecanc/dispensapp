@@ -4,7 +4,6 @@ struct InventoryListView: View {
     @Environment(InventoryStore.self) private var store
     @State private var searchText = ""
     @State private var selectedCompartment: Compartment? = nil
-    @State private var selectedProductType: ProductSource? = nil
     @State private var showSettings = false
     @State private var showDetailItem: InventoryItem?
     @State private var showScanner = false
@@ -40,8 +39,7 @@ struct InventoryListView: View {
             items: store.items,
             archivedIDs: store.archivedIDs,
             searchText: searchText,
-            selectedCompartment: selectedCompartment,
-            selectedProductType: selectedProductType
+            selectedCompartment: selectedCompartment
         )
     }
 
@@ -53,7 +51,6 @@ struct InventoryListView: View {
         let itemsFingerprint: Int
         let searchText: String
         let selectedCompartment: Compartment?
-        let selectedProductType: ProductSource?
         let archivedIDs: Set<Int>
     }
 
@@ -78,7 +75,6 @@ struct InventoryListView: View {
             itemsFingerprint: hasher.finalize(),
             searchText: searchText,
             selectedCompartment: selectedCompartment,
-            selectedProductType: selectedProductType,
             archivedIDs: store.archivedIDs
         )
     }
@@ -87,8 +83,7 @@ struct InventoryListView: View {
         items: [InventoryItem],
         archivedIDs: Set<Int>,
         searchText: String,
-        selectedCompartment: Compartment?,
-        selectedProductType: ProductSource?
+        selectedCompartment: Compartment?
     ) -> [(ItemStatus, [InventoryItem])] {
         let filtered = items.filter { item in
             guard !archivedIDs.contains(item.id) else { return false }
@@ -108,13 +103,6 @@ struct InventoryListView: View {
                 matchesCompartment = CategoryRegistry.compartmentMap[category] == selectedCompartment.rawValue
             } else {
                 matchesCompartment = true
-            }
-            // T8c: filtro per tipo prodotto. Item senza tipo (o tipo
-            // sconosciuto) -> visibile solo con "Tutti" (nil).
-            if let selectedProductType {
-                guard let raw = item.source ?? item.productType,
-                    ProductSource(rawValue: raw) == selectedProductType
-                else { return false }
             }
             return matchesSearch && matchesCompartment
         }
@@ -143,14 +131,6 @@ struct InventoryListView: View {
                 Section {
                     compartmentFilterBar
                         .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 4, trailing: 0))
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                }
-
-                // MARK: T8c product-type filter chips — Tutti + ProductSource.allCases
-                Section {
-                    productTypeFilterBar
-                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 4, trailing: 0))
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                 }
@@ -384,8 +364,7 @@ struct InventoryListView: View {
                 items: store.items,
                 archivedIDs: store.archivedIDs,
                 searchText: searchText,
-                selectedCompartment: selectedCompartment,
-                selectedProductType: selectedProductType
+                selectedCompartment: selectedCompartment
             )
         }
     }
@@ -728,39 +707,6 @@ struct InventoryListView: View {
                     }
                     .accessibilityLabel("Filtro \(compartment.label)")
                     .accessibilityHint("Filtra la dispensa per reparto \(compartment.label)")
-                    .accessibilityValue(isSelected ? "Selezionato" : "Non selezionato")
-                    .accessibilityAddTraits(isSelected ? .isSelected : [])
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 4)
-        }
-    }
-
-    // MARK: - T8c product-type filter chips (stesso linguaggio dei chip reparto)
-
-    private var productTypeFilterBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                compartmentChip(label: "Tutti", isSelected: selectedProductType == nil) {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        selectedProductType = nil
-                    }
-                }
-                .accessibilityLabel("Filtro tipo Tutti")
-                .accessibilityHint("Mostra tutti i prodotti senza filtro tipo")
-                .accessibilityValue(selectedProductType == nil ? "Selezionato" : "Non selezionato")
-                .accessibilityAddTraits(selectedProductType == nil ? .isSelected : [])
-
-                ForEach(ProductSource.allCases, id: \.self) { source in
-                    let isSelected = selectedProductType == source
-                    compartmentChip(label: source.displayName, isSelected: isSelected) {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            selectedProductType = isSelected ? nil : source
-                        }
-                    }
-                    .accessibilityLabel("Filtro tipo \(source.displayName)")
-                    .accessibilityHint("Filtra la dispensa per tipo \(source.displayName)")
                     .accessibilityValue(isSelected ? "Selezionato" : "Non selezionato")
                     .accessibilityAddTraits(isSelected ? .isSelected : [])
                 }
