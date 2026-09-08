@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 from typing import Optional
 
-from backend.config import CATEGORY_ALIASES, DEFAULT_SHELF_LIFE, EXPIRING_SOON_DAYS
+from backend.config import CATEGORY_ALIASES, DEFAULT_SHELF_LIFE, EXPIRING_SOON_DAYS, OFF_TO_INTERNAL
 
 
 def get_status(expiration_date: Optional[date]) -> str:
@@ -31,7 +31,8 @@ def estimate_expiration(
         for tag in category_tags:
             # Strip language prefix (e.g. "en:pasta" -> "pasta") before matching
             normalized = tag.split(":")[-1].lower().strip()
-            # alias normalizzazione (yogurt -> yogurts)
+            # stesso path di normalize_category: prima OFF_TO_INTERNAL, poi CATEGORY_ALIASES
+            normalized = OFF_TO_INTERNAL.get(normalized, normalized)
             normalized = CATEGORY_ALIASES.get(normalized, normalized)
             for key, days in DEFAULT_SHELF_LIFE.items():
                 if key != "default" and key == normalized:
@@ -76,7 +77,8 @@ def resolve_expiration(
         if not stripped:
             continue
         norm = stripped.split(":")[-1].strip().lower()
-        # alias normalizzazione (yogurt -> yogurts)
+        # stesso path di normalize_category: prima OFF_TO_INTERNAL, poi CATEGORY_ALIASES
+        norm = OFF_TO_INTERNAL.get(norm, norm)
         norm = CATEGORY_ALIASES.get(norm, norm)
         if not norm or norm in seen:
             continue

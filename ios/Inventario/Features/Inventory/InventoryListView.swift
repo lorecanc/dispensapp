@@ -99,12 +99,11 @@ struct InventoryListView: View {
                     || (item.brand?.localizedCaseInsensitiveContains(searchText) ?? false)
                     || (item.category?.localizedCaseInsensitiveContains(searchText) ?? false)
             }
-            // T13: filtro per comparto via CategoryRegistry.compartmentMap.
-            // Category nil/sconosciuta -> visibile solo con "Tutti" (nil).
+            // T13/T2: filtro per comparto via Compartment.inferCompartment(name:category:)
+            // (stessa cascata del grouping). nil/unknown -> dispensaSecca.
             let matchesCompartment: Bool
             if let selectedCompartment {
-                guard let category = item.category else { return false }
-                matchesCompartment = CategoryRegistry.compartmentMap[category] == selectedCompartment.rawValue
+                matchesCompartment = Compartment.inferCompartment(name: item.name, category: item.category) == selectedCompartment
             } else {
                 matchesCompartment = true
             }
@@ -544,7 +543,7 @@ struct InventoryListView: View {
         if groupedItems.isEmpty {
             inventoryEmptySections
         } else {
-            ForEach(groupedItems, id: \.0) { status, items in
+            ForEach(groupedItems, id: \.0.rawValue) { status, items in
                 statusSection(status: status, items: items)
             }
         }
@@ -571,28 +570,23 @@ struct InventoryListView: View {
     }
 
     @ViewBuilder private func statusSection(status: ItemStatus, items: [InventoryItem]) -> some View {
-        if status == .ok {
-            Section {
-                ForEach(compartmentGroups(for: items), id: \.0) { compartment, cItems in
-                    compartmentGroup(status: status, compartment: compartment, items: cItems)
-                }
+        Section {
+            ForEach(compartmentGroups(for: items), id: \.0.rawValue) { compartment, cItems in
+                compartmentGroup(status: status, compartment: compartment, items: cItems)
             }
-            .listSectionSeparator(.hidden, edges: .bottom)
-        } else {
-            Section {
-                ForEach(compartmentGroups(for: items), id: \.0) { compartment, cItems in
-                    compartmentGroup(status: status, compartment: compartment, items: cItems)
-                }
-            } header: {
+        } header: {
+            if status != .ok {
                 // HIG: icona+label per stato, colori palette
                 Label(status.label, systemImage: status.symbol)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(status.color)
                     .textCase(nil)
                     .padding(.vertical, 2)
+            } else {
+                EmptyView()
             }
-            .listSectionSeparator(.hidden, edges: .bottom)
         }
+        .listSectionSeparator(.hidden, edges: .bottom)
     }
 
     private func compartmentGroup(status: ItemStatus, compartment: Compartment, items: [InventoryItem]) -> some View {

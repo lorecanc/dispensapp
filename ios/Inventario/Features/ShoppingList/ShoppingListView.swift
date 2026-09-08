@@ -195,7 +195,7 @@ struct ShoppingListView: View {
                                 .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                         }
                     } else {
-                        ForEach(groupedItems, id: \.0) { compartment, items in
+                        ForEach(groupedItems, id: \.0.rawValue) { compartment, items in
                             Section {
                                 DisclosureGroup(isExpanded: binding(for: compartment)) {
                                     ForEach(items) { item in

@@ -46,6 +46,8 @@
 		ACA42871A52D25691B8D5E43 /* CategoryPickerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30D477A9B7C1A70B12B220DF /* CategoryPickerTests.swift */; };
 		B0672BBAD269CFEA1904F9E0 /* ShoppingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC6C5341A9C35D665CE0C709 /* ShoppingModels.swift */; };
 		B66D0495873B27AA7126DF8A /* PantryToken.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0012DC80FC9C820E749CC36D /* PantryToken.swift */; };
+		B8328BE179D371FAB69C4250 /* InventoryCompartmentFilterRedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 365E74032249E041185322DF /* InventoryCompartmentFilterRedTests.swift */; };
+		C71E94A31F3B4D88A9E55C02 /* InventoryCompartmentFilterGreenTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C71E94A21F3B4D88A9E55C01 /* InventoryCompartmentFilterGreenTests.swift */; };
 		B9C0B8471138F1A8D55A66AA /* ScanAcquiredOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2C52FEA36BEB0C77127F221 /* ScanAcquiredOverlay.swift */; };
 		BACB0CA5C2F4E17666F31B13 /* ScanResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA44B717AF2EB38D4EA39710 /* ScanResult.swift */; };
 		C1E43DCA76220664CEFE0E9C /* Material+Glass.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41ABC96640772D70FAE52129 /* Material+Glass.swift */; };
@@ -81,6 +83,8 @@
 		29EAF4C8EECA0F5B3F76C4A8 /* InventoryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InventoryStoreTests.swift; sourceTree = "<group>"; };
 		30D477A9B7C1A70B12B220DF /* CategoryPickerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryPickerTests.swift; sourceTree = "<group>"; };
 		32DF4D4AB0F29F017F85E362 /* APIClientBodyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientBodyTests.swift; sourceTree = "<group>"; };
+		365E74032249E041185322DF /* InventoryCompartmentFilterRedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InventoryCompartmentFilterRedTests.swift; sourceTree = "<group>"; };
+		C71E94A21F3B4D88A9E55C01 /* InventoryCompartmentFilterGreenTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InventoryCompartmentFilterGreenTests.swift; sourceTree = "<group>"; };
 		3FFEB0D9B6F668A2DC23B8B8 /* JoinPantrySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JoinPantrySheet.swift; sourceTree = "<group>"; };
 		41ABC96640772D70FAE52129 /* Material+Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Material+Glass.swift"; sourceTree = "<group>"; };
 		4345213EB8153D2443492DD7 /* ScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScannerView.swift; sourceTree = "<group>"; };
@@ -174,6 +178,8 @@
 				30D477A9B7C1A70B12B220DF /* CategoryPickerTests.swift */,
 				6C69E7E0337B768635D7C61F /* CategoryRegistryTests.swift */,
 				6E9DE98970D9CEDF659376EE /* ContributeProductTypeRedTests.swift */,
+				365E74032249E041185322DF /* InventoryCompartmentFilterRedTests.swift */,
+				C71E94A21F3B4D88A9E55C01 /* InventoryCompartmentFilterGreenTests.swift */,
 				9B8678ABCD8350396646ED50 /* InventoryDateDecodingTests.swift */,
 				248D4E252368D897CEA5C44A /* InventoryPagingRedTests.swift */,
 				29EAF4C8EECA0F5B3F76C4A8 /* InventoryStoreTests.swift */,
@@ -397,6 +403,8 @@
 				ACA42871A52D25691B8D5E43 /* CategoryPickerTests.swift in Sources */,
 				D63F9DB5300B4C6CA3ACD6A6 /* CategoryRegistryTests.swift in Sources */,
 				4849874C422CA8E27BBEC052 /* ContributeProductTypeRedTests.swift in Sources */,
+				B8328BE179D371FAB69C4250 /* InventoryCompartmentFilterRedTests.swift in Sources */,
+				C71E94A31F3B4D88A9E55C02 /* InventoryCompartmentFilterGreenTests.swift in Sources */,
 				729210509B35F01D6D646730 /* InventoryDateDecodingTests.swift in Sources */,
 				A7F24CB1B78459322938F1F8 /* InventoryPagingRedTests.swift in Sources */,
 				E2F07AEF620AD17FEFA9A5F9 /* InventoryStoreTests.swift in Sources */,

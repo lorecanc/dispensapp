@@ -101,6 +101,21 @@ def test_expiration_uses_resolved_category(client, db_session):
     assert exp == today + timedelta(days=365)
 
 
+def test_resolve_pastas_direct():
+    ref = date(2026, 1, 1)
+    exp, is_est = resolve_expiration(category="pastas", reference_date=ref)
+    assert exp == ref + timedelta(days=365)
+    assert is_est is True
+    est = estimate_expiration(category_tags=["pastas"], reference_date=ref)
+    assert est == ref + timedelta(days=365)
+    # pet-food -> animali shelf
+    exp2, _ = resolve_expiration(category="pet-food", reference_date=ref)
+    assert exp2 == ref + timedelta(days=DEFAULT_SHELF_LIFE["animali"])
+    # alias esistenti invariati
+    exp3, _ = resolve_expiration(category="yogurt", reference_date=ref)
+    assert exp3 == ref + timedelta(days=DEFAULT_SHELF_LIFE["yogurts"])
+
+
 def test_resolve_centralizzata_integration_via_api(client, db_session):
     from backend.models import Pantry
 

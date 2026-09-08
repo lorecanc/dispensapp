@@ -73,7 +73,7 @@ struct PantryCheckResponse: Codable {
     let items: [PantryCheckItem]
 }
 
-// MARK: - Compartment (supermercato - 10 corsie)
+// MARK: - Compartment (supermercato - 11 corsie)
 
 enum Compartment: String, CaseIterable, Hashable {
     case ortofrutta = "Ortofrutta"
@@ -86,6 +86,7 @@ enum Compartment: String, CaseIterable, Hashable {
     case cantina = "Cantina"
     case fornoEPanetteria = "Forno e Panetteria"
     case igieneECasa = "Igiene e Casa"
+    case animali = "Animali"
 
     var label: String { rawValue }
 
@@ -101,12 +102,13 @@ enum Compartment: String, CaseIterable, Hashable {
         case .cantina: return "wineglass.fill"
         case .fornoEPanetteria: return "flame.fill"
         case .igieneECasa: return "sparkles"
+        case .animali: return "pawprint.fill"
         }
     }
 
     /// Ordine di percorrenza corsie supermercato (allineato a backend SUPER_MARKET_COMPARTMENTS).
     static var supermarketOrder: [Compartment] {
-        [.ortofrutta, .latticiniEUova, .salumiEFormaggi, .carneEPesce, .surgelati, .dispensaSecca, .bevande, .cantina, .fornoEPanetteria, .igieneECasa]
+        [.ortofrutta, .latticiniEUova, .salumiEFormaggi, .carneEPesce, .surgelati, .dispensaSecca, .bevande, .cantina, .fornoEPanetteria, .igieneECasa, .animali]
     }
 
     // Compat: alias per codice esistente
@@ -163,14 +165,35 @@ enum Compartment: String, CaseIterable, Hashable {
     }
 
     /// Normalizza una categoria grezza a chiave canonica (trim, lowercase,
-    /// forma "prefix:key"). Gli alias legacy/OFF (backend CATEGORY_ALIASES) non
-    /// sono più replicati qui: il backend normalizza in persistenza, quindi i
-    /// valori salvati/spediti usano già le chiavi canoniche del registry.
+    /// forma "prefix:key" + subset alias mirror backend config.py CATEGORY_ALIASES/
+    /// OFF_TO_INTERNAL). Subset display/offline: la normalizzazione OFF completa
+    /// resta del backend in persistenza.
     private static func normalizeCategoryKey(_ raw: String?) -> String? {
         guard let raw, !raw.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
         var k = raw.trimmingCharacters(in: .whitespaces).lowercased()
         if k.contains(":") { k = k.split(separator: ":").last.map(String.init) ?? k }
         k = k.trimmingCharacters(in: .whitespaces).lowercased()
+        let aliases: [String: String] = [
+            "dog-food": "animali",
+            "dog-foods": "animali",
+            "cat-food": "animali",
+            "cat-foods": "animali",
+            "pet-food": "animali",
+            "pet-foods": "animali",
+            "petfood": "animali",
+            "yogurt": "yogurts",
+            "milk": "fresh-milk",
+            "tuna": "canned-fish",
+            "sardines": "canned-fish",
+            "water": "beverages-water",
+            "juice": "beverages-juices",
+            "coffee": "coffee-tea",
+            "tea": "coffee-tea",
+            "alcohol": "alcoholic-beverages",
+            "cleaning": "cleaning-hygiene",
+            "hygiene": "cleaning-hygiene",
+        ]
+        k = aliases[k] ?? k
         return k.isEmpty ? nil : k
     }
 
@@ -187,6 +210,7 @@ enum Compartment: String, CaseIterable, Hashable {
         (["acqua", "succo", "bevanda", "bibita", "cola", "aranciata", "caffè", "caffe", "tè", "the", "tisana"], .bevande),
         (["vino", "birra", "prosecco", "champagne", "whisky", "vodka", "liquore", "alcol"], .cantina),
         (["detersivo", "sapone", "shampoo", "bagnoschiuma", "dentifricio", "candeggina", "igiene", "puliz"], .igieneECasa),
+        (["crocchette", "pet-food", "dog-food", "cat-food"], .animali),
         (["pasta", "spaghetti", "riso", "farina", "olio", "passata", "pelati", "legumi", "ceci", "lenticchie", "fagioli", "biscotti", "cioccolato", "marmellata", "sale", "zucchero", "scatolame", "tonno"], .dispensaSecca),
     ]
 
