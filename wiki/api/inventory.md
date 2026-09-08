@@ -5,7 +5,7 @@ category: "api"
 source_files:
   - "backend/routes/inventory.py"
 created: "2026-06-24"
-last_updated: "2026-09-05"
+last_updated: "2026-09-06"
 ---
 
 # Inventory API
@@ -26,9 +26,9 @@ Scoped routes require pantry membership via `get_current_pantry` (`X-Pantry-Toke
 
 ### POST /api/pantries/{pantry_id}/inventory
 
-**Description**: Create an item from a barcode scan. Resolves expiration via `resolve_expiration`, infers `compartment` when omitted, normalizes category, stores `pantry_id` and `created_by_token`.
+**Description**: Create an item from a barcode scan. Resolves expiration via `resolve_expiration`, infers `compartment` when omitted, normalizes category, persists `source`/`product_type` (explicit `_create_scoped_item` param wins, fallback to body; `NULL` = not set), stores `pantry_id` and `created_by_token`.
 
-**Request**: Path `pantry_id: int`. Body `InventoryCreate` (`barcode`, `name`, `brand`, `expiration_date`, `category`, `image_url`, `quantity`, `compartment`). Header `X-Pantry-Token`.
+**Request**: Path `pantry_id: int`. Body `InventoryCreate` (`barcode`, `name`, `brand`, `expiration_date`, `category`, `image_url`, `quantity`, `compartment`, `off_category_tags`, `storage_location`, `source`, `product_type`; see [Backend Schemas](../modules/backend-schemas.md)). Header `X-Pantry-Token`.
 
 **Response**: `201` `InventoryOut`. `500` on persistence failure.
 
@@ -36,9 +36,9 @@ Scoped routes require pantry membership via `get_current_pantry` (`X-Pantry-Toke
 
 ### POST /api/pantries/{pantry_id}/inventory/manual
 
-**Description**: Create an item via manual entry (`barcode=None`). Same expiration/compartment handling as the barcode route, with `allow_none=True` so a missing date and category yields `expiration_date=None`.
+**Description**: Create an item via manual entry (`barcode=None`). Same expiration/compartment handling as the barcode route, with `allow_none=True` so a missing date and category yields `expiration_date=None`. Persists `source`/`product_type` with the same explicit-param-wins fallback as the barcode route.
 
-**Request**: Path `pantry_id: int`. Body `InventoryCreateManual` (same fields minus `barcode`). Header `X-Pantry-Token`.
+**Request**: Path `pantry_id: int`. Body `InventoryCreateManual` (same fields minus `barcode`, plus `off_category_tags`, `storage_location`, `source`, `product_type`; see [Backend Schemas](../modules/backend-schemas.md)). Header `X-Pantry-Token`.
 
 **Response**: `201` `InventoryOut`. `500` on persistence failure.
 

@@ -29,6 +29,7 @@ final class CategoryRegistryTests: XCTestCase {
         // categorie aggiuntive (backend/config.py)
         XCTAssertEqual(CategoryRegistry.displayName(for: "cold-cuts"), "Salumi e affettati")
         XCTAssertEqual(CategoryRegistry.displayName(for: "cleaning-hygiene"), "Igiene e pulizia")
+        XCTAssertEqual(CategoryRegistry.displayName(for: "animali"), "Animali")
     }
 
     func testDisplayNameUnknownFallsBackToKey() {
@@ -42,11 +43,11 @@ final class CategoryRegistryTests: XCTestCase {
         XCTAssertTrue(CategoryRegistry.validCategoryKeys.contains("pasta"))
         XCTAssertFalse(CategoryRegistry.validCategoryKeys.contains("default"))
         XCTAssertFalse(CategoryRegistry.validCategoryKeys.contains("unknown"))
-        XCTAssertEqual(CategoryRegistry.validCategoryKeys.count, 26)
+        XCTAssertEqual(CategoryRegistry.validCategoryKeys.count, 27)
     }
 
     func testCategoriesCountAndUniqueness() {
-        XCTAssertEqual(CategoryRegistry.categories.count, 26)
+        XCTAssertEqual(CategoryRegistry.categories.count, 27)
         let keys = CategoryRegistry.categories.map(\.key)
         XCTAssertEqual(Set(keys).count, keys.count, "keys should be unique")
         let labels = CategoryRegistry.categories.map(\.label)
@@ -56,6 +57,7 @@ final class CategoryRegistryTests: XCTestCase {
     func testEmbeddedCompartmentMapFallback() {
         XCTAssertEqual(CategoryRegistry.compartmentMap["yogurts"], "Latticini e Uova")
         XCTAssertEqual(CategoryRegistry.compartmentMap["alcoholic-beverages"], "Cantina")
+        XCTAssertEqual(CategoryRegistry.compartmentMap["animali"], "Animali")
         XCTAssertNil(CategoryRegistry.compartmentMap["scoops"])
     }
 
@@ -88,7 +90,7 @@ final class CategoryRegistryTests: XCTestCase {
     func testResetRestoresEmbeddedSnapshot() {
         CategoryRegistry.update(with: makeResponse())
         CategoryRegistry.resetToEmbedded()
-        XCTAssertEqual(CategoryRegistry.categories.count, 26)
+        XCTAssertEqual(CategoryRegistry.categories.count, 27)
         XCTAssertTrue(CategoryRegistry.validCategoryKeys.contains("yogurts"))
         XCTAssertEqual(CategoryRegistry.compartmentMap["yogurts"], "Latticini e Uova")
     }
@@ -104,7 +106,7 @@ final class CategoryRegistryTests: XCTestCase {
             compartmentMap: [:]
         ))
         XCTAssertEqual(CategoryRegistry.validCategoryKeys, embeddedKeys)
-        XCTAssertEqual(CategoryRegistry.categories.count, 26)
+        XCTAssertEqual(CategoryRegistry.categories.count, 27)
 
         // Vale anche su snapshot non-embedded: l'update vuoto è ignorato, non distruttivo.
         CategoryRegistry.update(with: makeResponse())
@@ -162,6 +164,7 @@ final class CategoryRegistryTests: XCTestCase {
         XCTAssertEqual(CategoryRegistry.storageLocation(for: "yogurts"), "frigo")
         XCTAssertEqual(CategoryRegistry.storageLocation(for: "frozen-foods"), "freezer")
         XCTAssertEqual(CategoryRegistry.storageLocation(for: "pasta"), "dispensa")
+        XCTAssertEqual(CategoryRegistry.storageLocation(for: "animali"), "dispensa")
         // Chiavi sconosciute (o senza mappatura embedded) → dispensa.
         XCTAssertEqual(CategoryRegistry.storageLocation(for: "scoops"), "dispensa")
         XCTAssertEqual(CategoryRegistry.storageLocation(for: ""), "dispensa")

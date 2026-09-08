@@ -4,9 +4,11 @@ description: "Scan-history autocomplete endpoint GET /api/suggestions — prefix
 category: "api"
 source_files:
   - "backend/routes/suggestions.py"
+  - "backend/routes/scan.py"
+  - "backend/models.py"
   - "backend/tests/test_suggestions.py"
 created: "2026-09-05"
-last_updated: "2026-09-05"
+last_updated: "2026-09-06"
 ---
 
 # Suggestions
@@ -60,6 +62,8 @@ last_updated: "2026-09-05"
 - Prefix-only matching: `q=lat` matches `Latte fresco` and `latticino` but `q=tte` matches nothing (not a substring search).
 - Whitespace in `q` is trimmed (`q=  LAT  ` works); empty `q` returns the top-10 by frequency.
 - Result cap is 10 rows.
+- `ScanHistory` rows now also carry nullable `source` / `product_type` (persisted by `POST /api/scan` from the OFF result in `backend/routes/scan.py`), but this endpoint does not expose them — the minimal-fields shape is unchanged.
+- Ordering is unchanged: `times_scanned` descending, then `last_scanned_at` descending (`backend/routes/suggestions.py:23`).
 
 **Source**: `backend/routes/suggestions.py:11-36`
 

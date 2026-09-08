@@ -8,7 +8,7 @@ source_files:
   - "ios/Inventario/Networking/APIClient.swift"
   - "ios/Inventario/State/InventoryStore.swift"
 created: "2026-06-24"
-last_updated: "2026-09-05"
+last_updated: "2026-09-06"
 ---
 
 # SettingsView (iOS)
@@ -70,11 +70,11 @@ sequenceDiagram
 
     User->>SettingsView: Tap "Test connessione"
     SettingsView->>SettingsView: connectionStatus = .testing
-    SettingsView->>APIClient: store.client.list()
-    APIClient->>Server: GET /api/inventory
+    SettingsView->>APIClient: store.client.listPantries()
+    APIClient->>Server: GET /api/pantries
     alt Success
         Server-->>APIClient: 200 OK
-        APIClient-->>SettingsView: [InventoryItem]
+        APIClient-->>SettingsView: [Pantry]
         SettingsView->>SettingsView: connectionStatus = .success
     else Failure
         Server-->>APIClient: Error / Timeout
@@ -88,11 +88,11 @@ sequenceDiagram
 
 The `apiURL` text field writes to `APIConfig.baseURLString` on every change via `.onChange(of: apiURL)`.
 
-`APIConfig` is a `struct` with a static computed property backed by `UserDefaults.standard` with key `"apiBaseURL"`. The default value is `http://127.0.0.1:8000`.
+`APIConfig` is a `struct` with a static computed property backed by `UserDefaults.standard` with key `"apiBaseURL"`. The default value is the production server `https://dispensapp.onrender.com` (`fallbackURL` remains `http://127.0.0.1:8000` for display-only use).
 
 ```swift
 static var baseURLString: String {
-    get { UserDefaults.standard.string(forKey: "apiBaseURL") ?? "http://127.0.0.1:8000" }
+    get { UserDefaults.standard.string(forKey: "apiBaseURL") ?? "https://dispensapp.onrender.com" }
     set { UserDefaults.standard.set(newValue, forKey: "apiBaseURL") }
 }
 ```
@@ -111,5 +111,5 @@ This means the URL persists across app launches without any additional setup.
 The view is built with [Apple frameworks](../dependencies/apple-dependencies.md) (SwiftUI, Foundation) and relies on three external types:
 
 - **InventoryStore** — an `@Observable` `@MainActor` class providing `exportedMarkdown`, the `exportMarkdown()` method, and the `client` used for the connection test.
-- **APIClient** — a `@MainActor` final class (reached via `store.client`) providing `list()` (used for connection testing) and `exportMarkdown()`.
+- **APIClient** — a `@MainActor` final class (reached via `store.client`) providing `listPantries()` (used for connection testing) and `exportMarkdown()`.
 - **APIConfig** — a static configuration struct backing the API URL with `UserDefaults`.

@@ -1,5 +1,33 @@
 # Wiki Log
 
+## [2026-09-06] incremental-update | OFF v3 universal, naive-UTC fixes, two-axis categories, pantry cascade, iOS paging/TZ/outbox, prod default, CI + test suites (35 updated, 0 added)
+
+- **Watermark range:** 179b4a5..25037bc (18 commits)
+- **Pages created:** 0
+- **Pages updated:** 35
+  - Root: overview.md, architecture.md, getting-started.md (3)
+  - Modules: backend-api.md, backend-config.md, backend-database.md, backend-models.md, backend-routes-contribute.md, backend-routes-inventory.md, backend-routes-pantries.md, backend-routes-scan.md, backend-schemas.md, backend-service-off.md, backend-tests.md (11)
+  - Components: ios-category-picker.md, ios-inventory-list-view.md, ios-inventory-row-view.md, ios-item-detail-view.md, ios-scan-preview-sheet.md, ios-settings-view.md (6)
+  - API: contribute.md, inventory.md, pantries.md, scan.md, suggestions.md (5)
+  - Concepts: category-registry.md, ios-models.md, ios-networking.md, ios-offline-outbox.md, ios-state-management.md, off-integration.md, shopping-departments.md (7)
+  - Config: backend-config.md, ios-config.md (2)
+  - Dependencies: python-dependencies.md (1)
+- **Pages deprecated:** 0
+- **Depth:** Incremental (all categories + root touched, no structural changes)
+- **Commit:** 25037bc
+- **Themes:**
+  - OFF v0→v3 universal rewrite (product_type=all): OFF_V3_BASE_URL / OFF_PRODUCT_TYPE_DEFAULT / OFF_V3_HOSTS, resolve_write_url
+  - UtcDatetime + naive-UTC fixes; inventoryDate no-fraction naive step, outbound device-local TZ
+  - Two-axis categories/storage_location; suggest_category / storage_for_category; source/product_type + ProductSource badges (sourceBadge)
+  - Contribute product_type + 413-before-validation (413 wins over 422); uniform 422 handler
+  - Pantry delete 6-table cascade
+  - iOS listScoped paging loop; outbox stop on 401/403/408/429
+  - APIConfig prod default; alembic-heads CI
+  - 8 new backend test suites + iOS Red suites
+- **Notes:**
+  - `api/contribute.md` frontmatter description reads "Opt-in Open Facts write API" (missing "Food"); the index keeps the correct "Open Food Facts" spelling — wiki-writer should fix the frontmatter typo.
+  - No new/removed pages; index descriptions synced from frontmatter (category-picker, category-registry, shopping-departments).
+
 ## [2026-09-05] audit-fix | Corrupted-session audit: root-link repair, frontmatter/terminology normalization, 11 stale pages refreshed
 
 - **Scope:** form + content audit of the 2026-09-05 incremental update; no code changes (watermark unchanged: 179b4a5..179b4a5)

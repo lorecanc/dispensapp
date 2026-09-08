@@ -67,3 +67,9 @@ def test_categories_preexisting_fields_unchanged(client):
     assert pasta["label"] == "Pasta"
     assert pasta["shelf_life_days"] == 365
     assert pasta["compartment"] == "Dispensa Secca"
+    # spot-check first-class Animali
+    animali = next(e for e in body["categories"] if e["key"] == "animali")
+    assert animali["label"] == "Animali"
+    assert animali["shelf_life_days"] == 365
+    assert animali["compartment"] == "Animali"
+    assert animali["storage_location"] == "dispensa"

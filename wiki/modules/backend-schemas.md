@@ -4,8 +4,10 @@ description: "Pydantic v2 request/response schemas for inventory, pantry, invite
 category: "modules"
 source_files:
   - "backend/schemas.py"
+  - "backend/tests/test_datetime_serialization.py"
+  - "backend/tests/test_scan.py"
 created: "2026-06-24"
-last_updated: "2026-09-05"
+last_updated: "2026-09-06"
 ---
 
 # Backend Schemas
@@ -21,6 +23,14 @@ Defines all Pydantic v2 models used for request validation, response serializati
 | `backend/schemas.py` | All Pydantic model definitions, field validators, and computed `status` |
 
 Shared validation: `BARCODE_PATTERN` (`^\d{8,14}$`, EAN-8/UPC-A/EAN-13/EAN-14), `_validate_expiration` (rejects dates >2 years in the past or >10 years in the future), and strip-to-`None` helpers for optional strings.
+
+## Datetime Serialization
+
+All output timestamps use the `UtcDatetime` alias (`backend/schemas.py:14-20`): an `Annotated[datetime, PlainSerializer(...)]` that formats with `isoformat()` and attaches `timezone.utc` when the value is naive. Storage stays UTC naive; serialization appends the `+00:00` suffix required by the iOS decoder (Pydantic 2 would otherwise emit `Z` for aware UTC datetimes in JSON).
+
+The serializer's `return_type` is `Annotated[str, Field(json_schema_extra={"format": "date-time"})]` so the OpenAPI schema keeps `type: string, format: date-time`. Covered by `backend/tests/test_datetime_serialization.py`: naive `datetime(2026, 9, 6, 10, 2, 0)` must serialize to `"2026-09-06T10:02:00+00:00"`, and each field's serialization schema must keep `format: date-time`.
+
+Applied to 8 fields: `InventoryOut.created_at`, `ConsumptionEventOut.created_at`, `PantryOut.created_at`, `InviteOut.expires_at`, `InviteOut.created_at`, `MemberOut.joined_at`, `ShoppingListItemOut.created_at`, `ShoppingListOut.created_at`.
 
 ## Schemas
 
@@ -45,6 +55,8 @@ Response returned after a barcode lookup.
 | `image_url` | `Optional[HttpUrl]` | `None` | Product image URL |
 | `found` | `bool` | — | Whether a product was found |
 | `message` | `Optional[str]` | `None` | Additional context (e.g. error message) |
+| `source` | `Optional[str]` | `None` | Product source (`food`/`beauty`), propagated from `fetch_product` — see [Scan API](../api/scan.md) |
+| `product_type` | `Optional[str]` | `None` | Product type (`food`/`beauty`), propagated from `fetch_product` |
 
 ### InventoryCreate
 
@@ -60,10 +72,12 @@ Request body when adding an item from a barcode scan — used in the [inventory 
 | `image_url` | `Optional[HttpUrl]` | `None` | Product image URL |
 | `quantity` | `int` | `1` | Item count, `ge=1, le=999` |
 | `compartment` | `Optional[str]` | `None` | Storage compartment, `max_length=32` |
+| `source` | `Optional[str]` | `None` | Product source, blank stripped to `None` via `strip_optional` |
+| `product_type` | `Optional[str]` | `None` | Product type, blank stripped to `None` via `strip_optional` |
 
 ### InventoryCreateManual
 
-Request body when adding an item manually (no barcode scan). Same validation as `InventoryCreate` minus `barcode`.
+Request body when adding an item manually (no barcode scan). Same validation as `InventoryCreate` minus `barcode` — used in the [Inventory API](../api/inventory.md).
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -74,10 +88,12 @@ Request body when adding an item manually (no barcode scan). Same validation as 
 | `quantity` | `int` | `1` | Item count, `ge=1, le=999` |
 | `image_url` | `Optional[HttpUrl]` | `None` | Product image URL |
 | `compartment` | `Optional[str]` | `None` | Storage compartment, `max_length=32` |
+| `source` | `Optional[str]` | `None` | Product source, blank stripped to `None` via `strip_optional` |
+| `product_type` | `Optional[str]` | `None` | Product type, blank stripped to `None` via `strip_optional` |
 
 ### InventoryOut
 
-Response model for inventory items. Configured with `ConfigDict(from_attributes=True)` for ORM mapping.
+Response model for inventory items. Configured with `ConfigDict(from_attributes=True)` for ORM mapping — used in the [Inventory API](../api/inventory.md).
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -89,10 +105,12 @@ Response model for inventory items. Configured with `ConfigDict(from_attributes=
 | `is_estimated` | `bool` | `False` | Whether the expiration was auto-calculated |
 | `category` | `Optional[str]` | `None` | Product category |
 | `image_url` | `Optional[HttpUrl]` | `None` | Product image URL |
-| `created_at` | `datetime` | — | Timestamp of when the item was added |
+| `created_at` | `UtcDatetime` | — | Timestamp of when the item was added, serialized with `+00:00` suffix |
 | `quantity` | `int` | `1` | Item count |
 | `compartment` | `Optional[str]` | `None` | Storage compartment |
 | `pantry_id` | `Optional[int]` | `None` | Owning pantry ID (multi-pantry support) |
+| `source` | `Optional[str]` | `None` | Product source |
+| `product_type` | `Optional[str]` | `None` | Product type |
 | `status` | `str` | *(computed)* | `"ok"`, `"expiring_soon"`, or `"expired"` — see [item status](../concepts/item-status.md) |
 
 #### Status computation
@@ -140,7 +158,7 @@ Response model for a consumption audit event. `ConfigDict(from_attributes=True)`
 | `barcode` | `Optional[str]` | `None` | Item barcode snapshot |
 | `delta` | `int` | — | Units consumed |
 | `reason` | `Optional[str]` | `None` | Consumption reason |
-| `created_at` | `datetime` | — | Event timestamp |
+| `created_at` | `UtcDatetime` | — | Event timestamp, serialized with `+00:00` suffix |
 
 ### PantryCreate
 
@@ -158,7 +176,7 @@ Response model for a pantry. `ConfigDict(from_attributes=True)`.
 |-------|------|---------|-------------|
 | `id` | `int` | — | Pantry primary key |
 | `name` | `str` | — | Pantry name |
-| `created_at` | `datetime` | — | Creation timestamp |
+| `created_at` | `UtcDatetime` | — | Creation timestamp, serialized with `+00:00` suffix |
 
 ### InviteCreate
 
@@ -178,8 +196,8 @@ Response model for a pantry invite. `ConfigDict(from_attributes=True)`.
 | `pantry_id` | `int` | — | Inviting pantry ID |
 | `token` | `str` | — | Opaque invite token |
 | `status` | `str` | — | Invite status (e.g. pending/accepted/expired) |
-| `expires_at` | `datetime` | — | Expiration timestamp |
-| `created_at` | `datetime` | — | Creation timestamp |
+| `expires_at` | `UtcDatetime` | — | Expiration timestamp, serialized with `+00:00` suffix |
+| `created_at` | `UtcDatetime` | — | Creation timestamp, serialized with `+00:00` suffix |
 
 ### MemberOut
 
@@ -189,7 +207,7 @@ Response model for a pantry membership. `ConfigDict(from_attributes=True)`.
 |-------|------|---------|-------------|
 | `pantry_id` | `int` | — | Pantry ID |
 | `role` | `str` | — | Member role |
-| `joined_at` | `datetime` | — | Join timestamp |
+| `joined_at` | `UtcDatetime` | — | Join timestamp, serialized with `+00:00` suffix |
 
 ### ShoppingListCreate
 
@@ -213,11 +231,11 @@ Response model for a pantry membership. `ConfigDict(from_attributes=True)`.
 
 ### ShoppingListItemOut
 
-`ConfigDict(from_attributes=True)`. Fields: `id: int`, `shopping_list_id: int`, `name: str`, `quantity: int`, `checked: bool`, `compartment: Optional[str]`, `created_at: datetime`.
+`ConfigDict(from_attributes=True)`. Fields: `id: int`, `shopping_list_id: int`, `name: str`, `quantity: int`, `checked: bool`, `compartment: Optional[str]`, `created_at: UtcDatetime` (serialized with `+00:00` suffix).
 
 ### ShoppingListOut
 
-`ConfigDict(from_attributes=True)`. Fields: `id: int`, `pantry_id: int`, `name: str`, `created_at: datetime`, `items: list[ShoppingListItemOut] = []`.
+`ConfigDict(from_attributes=True)`. Fields: `id: int`, `pantry_id: int`, `name: str`, `created_at: UtcDatetime` (serialized with `+00:00` suffix), `items: list[ShoppingListItemOut] = []`.
 
 ### MessageResponse
 
@@ -237,7 +255,7 @@ graph LR
 ```
 
 - **Internal**: `get_status` from expiration service for `InventoryOut.status`
-- **External**: Pydantic v2 (`BaseModel`, `ConfigDict`, `Field`, `HttpUrl`, `computed_field`, `field_validator`, `model_validator`); Python standard library (`date`, `datetime`, `timedelta`, `Optional`)
+- **External**: Pydantic v2 (`BaseModel`, `ConfigDict`, `Field`, `HttpUrl`, `PlainSerializer`, `computed_field`, `field_validator`, `model_validator`); Python standard library (`date`, `datetime`, `timezone`, `timedelta`, `Annotated`, `Optional`)
 
 ## Usage Examples
 

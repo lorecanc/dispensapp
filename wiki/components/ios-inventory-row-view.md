@@ -6,7 +6,7 @@ source_files:
   - "ios/Inventario/Features/Inventory/InventoryRowView.swift"
   - "ios/Inventario/Components/CachedThumbnail.swift"
 created: "2026-06-24"
-last_updated: "2026-09-05"
+last_updated: "2026-09-06"
 ---
 
 # InventoryRowView
@@ -70,6 +70,33 @@ The category identifier (kebab-case server key) is resolved through `CategoryReg
 
 The chip is an `HStack(spacing: 4)` with a `tag.fill` symbol and the display name (both `.caption2`, medium name weight), in `textSecondary`, inside a capsule filled with `.thinMaterial` + `pantryCream` 45 % and stroked with `pantryOat` 0.5 pt. It carries its own `accessibilityLabel`/`accessibilityHint`.
 
+## Source Badge (Tipo Prodotto)
+
+Rendered only when the product type is known. The typed source resolves with `source` taking precedence over the `productType` fallback, mapped tolerantly to `ProductSource` (unknown strings → `nil`, no badge):
+
+```swift
+private var productSource: ProductSource? {
+    (item.source ?? item.productType).flatMap(ProductSource.init)
+}
+```
+
+The badge is a non-tappable capsule in the same chip language (`.caption2` medium, `textSecondary`, `.thinMaterial` + `pantryLinen` 45 % fill, `pantryOat` 0.5 pt stroke), deliberately never using status colors. It carries `accessibilityLabel("Tipo: \(source.displayName)")`:
+
+```swift
+@ViewBuilder
+private var sourceBadge: some View {
+    if let source = productSource {
+        Text(source.displayName)
+            // ... capsule styling ...
+            .accessibilityLabel("Tipo: \(source.displayName)")
+    }
+}
+```
+
+`ProductSource` (`food` → "Alimentare", `beauty` → "Cosmetici", `petfood` → "Pet food", `product` → "Non alimentare") and the `source` / `productType` fields on `InventoryItem` are documented in [iOS Models](../concepts/ios-models.md). The same badge appears in the scan preview "Sorgente" row ([iOS Scan Preview Sheet](./ios-scan-preview-sheet.md)) and the detail header ([iOS ItemDetailView](./ios-item-detail-view.md)).
+
+The parent list's `FilterKey` fingerprint in `InventoryListView` hashes `item.source` and `item.productType` alongside the other visible fields (`InventoryItem` is id-only `Equatable`), so any source/type change re-derives sections and refreshes the row.
+
 ## Disclosure Indicator
 
 The row renders **no chevron of its own**. Navigation uses tap-to-present (the parent's `onTapGesture` opens the detail sheet), so there is no `NavigationLink` disclosure indicator to duplicate — a previous double-chevron (system disclosure plus custom arrow) was removed. The only chevrons nearby belong to other views: `chevron.down` on the pantry picker menu and a single `chevron.right` on the add-product pill, both in `InventoryListView`.
@@ -78,7 +105,7 @@ The row renders **no chevron of its own**. Navigation uses tap-to-present (the p
 
 The row is a single accessible element (`children: .combine`, `.isButton` trait):
 
-- **Label**: name, brand, category display name, status label, `quantità N`, and formatted expiry date when present.
+- **Label**: name, brand, category display name, `Tipo: <source display name>` (only when `item.source ?? item.productType` resolves to a known `ProductSource`), storage label, status label, `quantità N`, and formatted expiry date when present.
 - **Value**: `"<status label>, quantità N"`.
 - **Hint**: tap for details, swipe left to delete, swipe right to mark consumed.
 - Dynamic Type range `.xSmall ... .accessibility3`.

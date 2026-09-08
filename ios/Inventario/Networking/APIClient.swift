@@ -509,14 +509,16 @@ final class APIClient: Sendable {
         offTags: [String]? = nil,
         storageLocation: String? = nil,
         source: String? = nil,
-        productType: String? = nil
+        productType: String? = nil,
+        pnnsGroup: String? = nil
     ) async throws -> InventoryItem {
         let body = try Self.inventoryBody(
             barcode: barcode, name: name, brand: brand,
             expirationDate: expirationDate, category: category,
             imageURL: imageURL, quantity: quantity,
             offTags: offTags, storageLocation: storageLocation,
-            source: source, productType: productType
+            source: source, productType: productType,
+            pnnsGroup: pnnsGroup
         )
         return try await sendInventory(
             method: "POST", path: "api/pantries/\(pantryId)/inventory", body: body
@@ -615,7 +617,8 @@ final class APIClient: Sendable {
         offTags: [String]? = nil,
         storageLocation: String? = nil,
         source: String? = nil,
-        productType: String? = nil
+        productType: String? = nil,
+        pnnsGroup: String? = nil
     ) throws -> Data {
         var body: [String: Any?] = [
             "barcode": barcode,
@@ -643,6 +646,7 @@ final class APIClient: Sendable {
         // Campi additivi (T8c): presenti nel body solo se valorizzati.
         if let source, !source.isEmpty { body["source"] = source }
         if let productType, !productType.isEmpty { body["product_type"] = productType }
+        if let pnnsGroup, !pnnsGroup.isEmpty { body["pnns_group"] = pnnsGroup }
         return try JSONSerialization.data(
             withJSONObject: body.filter { $0.value != nil }.mapValues { $0! }
         )

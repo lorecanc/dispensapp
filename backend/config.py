@@ -33,6 +33,7 @@ DEFAULT_SHELF_LIFE = {
     "coffee-tea": 365,
     "alcoholic-beverages": 1095,
     "cleaning-hygiene": 730,
+    "animali": 365,
     "default": 30,
 }
 
@@ -64,6 +65,7 @@ CATEGORY_LABELS = {
     "coffee-tea": "Caffè e tè",
     "alcoholic-beverages": "Bevande alcoliche",
     "cleaning-hygiene": "Igiene e pulizia",
+    "animali": "Animali",
 }
 
 # Luogo di conservazione predefinito per categoria (chiavi = CATEGORY_LABELS)
@@ -97,6 +99,7 @@ CATEGORY_STORAGE_DEFAULT: dict[str, str] = {
     "coffee-tea": "dispensa",
     "alcoholic-beverages": "dispensa",
     "cleaning-hygiene": "dispensa",
+    "animali": "dispensa",
 }
 
 # Fallback per chiavi categoria sconosciute
@@ -231,15 +234,15 @@ OFF_TO_INTERNAL: dict[str, str] = {
     "hair-care": "cleaning-hygiene",
     "haircare": "cleaning-hygiene",
     "personal-care": "cleaning-hygiene",
-    # pet-food: varianti normalizzate a token "pet-food" (fuori registry/map:
-    # defer, mai cibo umano né igiene; comparto via default Dispensa Secca)
-    "dog-food": "pet-food",
-    "dog-foods": "pet-food",
-    "cat-food": "pet-food",
-    "cat-foods": "pet-food",
-    "pet-food": "pet-food",
-    "pet-foods": "pet-food",
-    "petfood": "pet-food",
+    # pet-food first-class (categoria "animali"): varianti OFF normalizzate
+    # alla chiave di registry "animali" (comparto dedicato "Animali")
+    "dog-food": "animali",
+    "dog-foods": "animali",
+    "cat-food": "animali",
+    "cat-foods": "animali",
+    "pet-food": "animali",
+    "pet-foods": "animali",
+    "petfood": "animali",
 }
 
 # Tag generici Open Products Facts: da soli valgono "nessuna categoria"
@@ -305,6 +308,7 @@ SUPER_MARKET_COMPARTMENTS: list[str] = [
     "Cantina",
     "Forno e Panetteria",
     "Igiene e Casa",
+    "Animali",
 ]
 
 # Categoria interna -> comparto
@@ -335,6 +339,7 @@ COMPARTMENT_MAP: dict[str, str] = {
     "alcoholic-beverages": "Cantina",
     "bread-bakery": "Forno e Panetteria",
     "cleaning-hygiene": "Igiene e Casa",
+    "animali": "Animali",
 }
 
 # DATABASE_URL configurabile via env var; default risolto come path assoluto

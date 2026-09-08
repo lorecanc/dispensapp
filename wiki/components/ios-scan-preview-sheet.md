@@ -6,7 +6,7 @@ source_files:
   - "ios/Inventario/Features/Scan/ScanPreviewSheet.swift"
   - "ios/Inventario/Models/ScanResult.swift"
 created: "2026-06-24"
-last_updated: "2026-09-05"
+last_updated: "2026-09-06"
 ---
 
 # iOS Scan Preview Sheet
@@ -68,10 +68,17 @@ struct ScanResult: Codable, Sendable {
     let imageURL: String?
     let found: Bool
     let message: String?
+    var suggestedCategory: String? = nil
+    var source: String? = nil
+    var productType: String? = nil
+
+    var sourceEnum: ProductSource? { source.flatMap(ProductSource.init) }
 }
 ```
 
 The `found` field distinguishes a product resolved via Open Food Facts (`true`) from one not found (`false`). When `found` is `false`, `name` and `brand` are typically `nil` and `message` contains guidance text.
+
+`source` / `productType` are additive backend v3 twin fields (raw strings such as `"food"`, `"beauty"`, `"petfood"`, `"product"`), `nil` with older backends. They decode tolerantly and default to `nil` so the memberwise init stays unchanged for existing call sites. `sourceEnum` maps `source` to the typed `ProductSource` view, returning `nil` for unknown values instead of failing decode. `ProductSource.displayName` provides the user-facing label (`food` → "Alimentare", `beauty` → "Cosmetici", `petfood` → "Pet food", `product` → "Non alimentare"). See [iOS Models](../concepts/ios-models.md) for the full model reference.
 
 ### needsEnrichment
 
@@ -156,8 +163,33 @@ Only shown when `result.found == false`: orange headline label plus `result.mess
 #### Details Section
 
 - Barcode display: monospaced, secondary color.
+- Sorgente row: shown only when `result.sourceEnum` is non-nil — an `HStack` with `Text("Sorgente")`, a `Spacer`, and the `sourceBadge(source)` capsule (see below). The row combines its children for VoiceOver and carries `accessibilityLabel("Sorgente: \(source.displayName)")`.
 - Name field: `TextField("Nome *", text: $name)`, autocorrection disabled, required (save disabled when empty).
 - Brand field: `TextField("Marca", text: $brand)`, optional.
+
+#### Sorgente Badge (sourceBadge)
+
+```swift
+private func sourceBadge(_ source: ProductSource) -> some View {
+    Text(source.displayName)
+        .font(.caption2.weight(.medium))
+        .foregroundStyle(Color.textSecondary)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background {
+            Capsule()
+                .fill(.thinMaterial)
+                .overlay(Capsule().fill(Color.pantryLinen.opacity(0.45)))
+        }
+        .overlay(
+            Capsule()
+                .strokeBorder(Color.pantryOat, lineWidth: 0.5)
+        )
+        .accessibilityHidden(true)
+}
+```
+
+Non-tappable capsule in the same category-chip style (capsule + `.thinMaterial` + `pantryLinen` 45 % fill, `pantryOat` 0.5 pt stroke, `textSecondary` caption text). The badge itself is `accessibilityHidden` — the VoiceOver label lives on the calling "Sorgente" row. The same visual language is reused by the row and detail badges (see [InventoryRowView](./ios-inventory-row-view.md) and [iOS ItemDetailView](./ios-item-detail-view.md)).
 
 #### Picker & Date Section
 
@@ -192,7 +224,7 @@ Below a `Divider` in the same section:
 
 ### 6. Save Flow
 
-The toolbar "Salva" button (`.glassProminent` + `pantryMoss` tint on iOS 26+) is disabled when the trimmed name is empty or `isSaving` is true. On tap, `saveItem()` delegates to `InventoryStore.add(...)` (POST `/api/inventory`); on success the sheet dismisses, on failure a `.alert` shows the error. "Annulla" dismisses at any point, discarding unsaved changes.
+The toolbar "Salva" button (`.glassProminent` + `pantryMoss` tint on iOS 26+) is disabled when the trimmed name is empty or `isSaving` is true. On tap, `saveItem()` delegates to `InventoryStore.add(...)` (POST `/api/inventory`), forwarding `source: scanResult?.source` and `productType: scanResult?.productType` so the saved item keeps the backend-provided product type; on success the sheet dismisses, on failure a `.alert` shows the error. "Annulla" dismisses at any point, discarding unsaved changes.
 
 ## Internal Visibility (for Tests)
 

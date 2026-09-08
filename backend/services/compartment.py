@@ -39,7 +39,7 @@ _KEYWORD_MAP: list[tuple[list[str], str]] = [
     (["vino", "birra", "prosecco", "champagne", "whisky", "vodka", "liquore", "alcol"], "Cantina"),
     (["detersivo", "sapone", "shampoo", "bagnoschiuma", "dentifricio", "candeggina", "igiene", "puliz"], "Igiene e Casa"),
     (["pasta", "spaghetti", "riso", "farina", "olio", "passata", "pelati", "legumi", "ceci", "lenticchie", "fagioli", "biscotti", "cioccolato", "marmellata", "sale", "zucchero", "scatolame", "tonno"], "Dispensa Secca"),
-    (["crocchette", "pet-food", "dog-food", "cat-food"], "Dispensa Secca"),
+    (["crocchette", "pet-food", "dog-food", "cat-food"], "Animali"),
 ]
 
 

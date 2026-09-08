@@ -7,8 +7,12 @@ source_files:
   - "backend/alembic/versions/e5f6a7b8c9d0_consumption_events.py"
   - "backend/alembic/versions/f1a2b3c4d5e6_invite_token_64_backfill_null.py"
   - "backend/alembic/versions/a2b3c4d5e6f7_remove_actor_token.py"
+  - "backend/alembic/versions/b3c4d5e6f7a8_add_storage_location.py"
+  - "backend/alembic/versions/c4d5e6f7a8b9_scan_history_source_product_type.py"
+  - "backend/alembic/versions/d5e6f7a8b9c0_inventory_item_source_product_type.py"
+  - ".github/workflows/alembic-heads.yml"
 created: "2026-06-24"
-last_updated: "2026-09-05"
+last_updated: "2026-09-06"
 ---
 
 # Backend Database
@@ -25,6 +29,10 @@ The `backend/database.py` module establishes the SQLAlchemy database layer for t
 | `backend/alembic/versions/e5f6a7b8c9d0_consumption_events.py` | Creates `consumption_events`, adds `quantity CHECK >= 0` on `inventory_items` |
 | `backend/alembic/versions/f1a2b3c4d5e6_invite_token_64_backfill_null.py` | Widens `invites.token` to `String(64)`, backfills `inventory_items.pantry_id NULL` |
 | `backend/alembic/versions/a2b3c4d5e6f7_remove_actor_token.py` | Drops `consumption_events.actor_token` (privacy) |
+| `backend/alembic/versions/b3c4d5e6f7a8_add_storage_location.py` | Adds `inventory_items.storage_location String(16)` nullable, no backfill |
+| `backend/alembic/versions/c4d5e6f7a8b9_scan_history_source_product_type.py` | Adds `scan_history.source` + `product_type` nullable, no backfill |
+| `backend/alembic/versions/d5e6f7a8b9c0_inventory_item_source_product_type.py` | Adds `inventory_items.source` + `product_type` nullable, no backfill |
+| `.github/workflows/alembic-heads.yml` | CI gate enforcing a single Alembic head |
 
 ## Public API
 
@@ -76,6 +84,7 @@ Enforced in `backend/models.py` and applied idempotently by migration `e5f6a7b8c
 - `inventory_items.quantity`: `CheckConstraint("quantity >= 0", name="ck_inventory_items_quantity_nonnegative")` with `default=1` / `server_default="1"`.
 - `invites.token`: `String(64)`, `unique=True`, `index=True`, `nullable=False` — sized for `secrets.token_urlsafe(32)` (~43 chars); previous `String(36)` truncated valid tokens.
 - `consumption_events`: append-only ledger — `pantry_id FK CASCADE NOT NULL`, `item_id FK SET NULL nullable`, `name_snapshot String(200) NOT NULL`, `delta Integer NOT NULL`, `reason Text nullable`, no `actor_token` column (privacy: never persisted, API type `ConsumptionEventOut` never exposed it). Index `ix_consumption_events_pantry_created (pantry_id, created_at)`.
+- `inventory_items.storage_location String(16)` and `source` / `product_type` on `inventory_items` and `scan_history`: all `nullable=True` with no backfill — legacy rows stay `NULL`. Column definitions live in [Backend Models](./backend-models.md).
 
 ## Migrations
 
@@ -86,6 +95,18 @@ Linear head chain (all upgrades idempotent, best-effort `try/except` so partial 
 | `e5f6a7b8c9d0` | `b2c3d4e5f6a7` | Create `consumption_events` (+ `actor_token(36)` at the time) with indexes `ix_consumption_events_pantry_id`, `ix_consumption_events_pantry_created`, `ix_consumption_events_id`; ensure `ix_inventory_items_pantry_id` and `CHECK ck_inventory_items_quantity_nonnegative` |
 | `f1a2b3c4d5e6` | `e5f6a7b8c9d0` | `invites.token String(36) -> String(64)` (only if length < 64); backfill `inventory_items.pantry_id IS NULL` to `MIN(pantries.id)` or a newly created `"La mia dispensa"` pantry; downgrade only narrows the column when no token exceeds 36 chars, backfill is not reversed |
 | `a2b3c4d5e6f7` | `f1a2b3c4d5e6` | Drop `consumption_events.actor_token` via `batch_alter_table` if present (write path in `_consume_scoped_item` already stopped persisting the token); downgrade re-adds it as nullable `String(36)` |
+| `b3c4d5e6f7a8` | `a2b3c4d5e6f7` | Add `inventory_items.storage_location String(16)` nullable via `batch_alter_table` if missing; no backfill — `NULL` means derived from category; downgrade drops the column if present |
+| `c4d5e6f7a8b9` | `b3c4d5e6f7a8` | Add `scan_history.source` + `product_type` (`String`, nullable) via `batch_alter_table` if missing; no backfill for legacy rows; downgrade drops `product_type` then `source` if present |
+| `d5e6f7a8b9c0` | `c4d5e6f7a8b9` | Add `inventory_items.source` + `product_type` (`String`, nullable) via `batch_alter_table` if missing; no backfill (see [Backend Models](./backend-models.md)); downgrade drops `product_type` then `source` if present |
+
+Current head: `d5e6f7a8b9c0`.
+
+## CI
+
+The `alembic-heads` workflow (`.github/workflows/alembic-heads.yml`) enforces a single-head migration chain on every push and pull request:
+
+- Job `single-head` runs on `ubuntu-latest` with Python `3.11`, installs `alembic` + `sqlalchemy`, then runs `python -m alembic heads` from `backend/`.
+- It counts heads and fails when the count is not exactly 1 (`Multiple alembic heads, merge required`), so branched heads must be merged before landing.
 
 ## Dependencies
 
@@ -95,7 +116,7 @@ graph LR
     DbMod --> Session["SessionLocal<br/>(sessionmaker)"]
     Session --> get_db["get_db()<br/>(FastAPI dependency)"]
     get_db --> Routes["API Route Handlers"]
-    Mig["Alembic versions<br/>e5f6 -> f1a2 -> a2b3"] --> Schema["SQLite schema<br/>constraints + indexes"]
+    Mig["Alembic versions<br/>e5f6 -> f1a2 -> a2b3 -> b3c4 -> c4d5 -> d5e6"] --> Schema["SQLite schema<br/>constraints + indexes"]
     DbMod --> Schema
 ```
 

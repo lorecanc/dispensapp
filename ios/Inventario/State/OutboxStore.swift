@@ -28,6 +28,8 @@ struct OutboxStore {
             /// Campi additivi (T8c): come sopra, entry vecchie senza chiavi → nil.
             var source: String? = nil
             var productType: String? = nil
+            /// Campo additivo: gruppo PNNS, entry vecchie senza chiave → nil.
+            var pnnsGroup: String? = nil
         }
         struct Consume: Codable, Equatable {
             var itemId: Int

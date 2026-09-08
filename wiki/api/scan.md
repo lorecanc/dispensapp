@@ -5,8 +5,11 @@ category: "api"
 source_files:
   - "backend/routes/scan.py"
   - "backend/routes/contribute.py"
+  - "backend/schemas.py"
+  - "backend/services/off.py"
+  - "backend/models.py"
 created: "2026-06-24"
-last_updated: "2026-09-05"
+last_updated: "2026-09-06"
 ---
 
 # Scan
@@ -27,7 +30,7 @@ The scan API looks up product data by barcode via Open Food Facts (OFF) and, whe
 
 ### POST /api/scan
 
-**Description**: Accepts a barcode string, delegates to the OFF API via `fetch_product(barcode)`, and returns product details if found. On a successful lookup it also records the scan in `ScanHistory` without blocking the response.
+**Description**: Accepts a barcode string, delegates to the OFF API via `fetch_product(barcode, product_type)` (universal v3 read, default `product_type=all`), and returns product details if found. On a successful lookup it also records the scan in `ScanHistory` without blocking the response. Product provenance (`source` / `product_type`) flows from the [OFF service](../modules/backend-service-off.md) through `ScanResponse` and is mirrored by the [iOS Models](../concepts/ios-models.md).
 
 **Request body** (`ScanRequest`):
 
@@ -50,8 +53,11 @@ The scan API looks up product data by barcode via Open Food Facts (OFF) and, whe
 | `brand` | `string` or `null` | Product brand |
 | `categories` | `array` of `string` | Category tags reduced to last hierarchy segment (e.g. `en:pastas` → `pastas`) |
 | `image_url` | `string` or `null` | Front-of-pack small image URL |
+| `suggested_category` | `string` or `null` | Internal category suggestion derived from OFF tags + PNNS group |
 | `found` | `boolean` | Whether the product was found in OFF |
 | `message` | `string` or `null` | Set only when `found` is `false` |
+| `source` | `string` or `null` | Resolved OFF twin (`food` / `beauty` / `petfood` / `product`) |
+| `product_type` | `string` or `null` | Mirrors `source`; persisted to `ScanHistory` |
 
 **Response states**:
 
@@ -64,8 +70,11 @@ The scan API looks up product data by barcode via Open Food Facts (OFF) and, whe
   "brand": "Barilla",
   "categories": ["pasta", "groceries"],
   "image_url": "https://images.openfoodfacts.org/images/products/.../front_small.jpg",
+  "suggested_category": "pasta",
   "found": true,
-  "message": null
+  "message": null,
+  "source": "food",
+  "product_type": "food"
 }
 ```
 
@@ -81,24 +90,24 @@ Returned when OFF responds but has no data for this barcode (`status != 1` or no
   "categories": [],
   "image_url": null,
   "found": false,
-  "message": "Prodotto non trovato nel database Open Food Facts"
+  "message": "Prodotto non trovato nei database Open* Facts"
 }
 ```
 
 **3. OFF communication failure (502 Bad Gateway)**
 
-Returned when the HTTP request to OFF fails (HTTP error, timeout, or invalid JSON). Body is `{"detail": "Errore durante la comunicazione con Open Food Facts"}`.
+Returned when the HTTP request to OFF fails (HTTP error, timeout, or invalid JSON). Body is `{"detail": "Errore durante la comunicazione con i database Open* Facts"}`.
 
-**Backend flow** (`backend/routes/scan.py:19-82`):
+**Backend flow** (`backend/routes/scan.py:19-98`):
 
 1. `scan_barcode()` receives the `ScanRequest` body.
-2. Calls `fetch_product(barcode)` with a 10-second timeout against `{OFF_BASE_URL}/{barcode}.json`.
+2. Calls `fetch_product(barcode, product_type)` with default `product_type=all` — a single universal v3 GET against `{OFF_V3_BASE_URL}/{barcode}` (see [OFF service](../modules/backend-service-off.md)); per-host fallback (`OFF_V3_HOSTS`) applies only for an explicit non-`all` type on transport/5xx failure.
 3. If `fetch_product` returns `None` → `502`.
 4. If result is `{"found": False}` → `200` with `found=false` (no history write).
-5. Otherwise persists `ScanHistory` in a worker thread via `anyio.to_thread.run_sync` (synchronous SQLAlchemy session must not block the event loop): increments `times_scanned` or creates a row (`name` falls back to barcode for the NOT NULL constraint, `category` is the first tag), updates `name`/`category`/`last_scanned_at`. This history powers [Suggestions](./suggestions.md). Failures roll back and are logged without blocking the scan response.
-6. Returns `200` with `found=true` and the enriched product data.
+5. Otherwise persists `ScanHistory` in a worker thread via `anyio.to_thread.run_sync` (synchronous SQLAlchemy session must not block the event loop): increments `times_scanned` or creates a row (`name` falls back to barcode for the NOT NULL constraint, `category` is the first tag), creates/updates `source` and `product_type` from the OFF result, updates `name`/`category`/`last_scanned_at`. This history powers [Suggestions](./suggestions.md). Failures roll back and are logged without blocking the scan response.
+6. Returns `200` with `found=true` and the enriched product data, including `suggested_category`, `source`, and `product_type` (consumed on iOS as described in [iOS Models](../concepts/ios-models.md)).
 
-**Source**: `backend/routes/scan.py:18-82`
+**Source**: `backend/routes/scan.py:19-98`
 
 ---
 
@@ -180,8 +189,8 @@ Oversize uploads fail fast: a `Content-Length` pre-check (5 MB + 1 KB multipart 
 
 | Scenario | HTTP Status | Response shape | Details |
 |----------|-------------|----------------|---------|
-| OFF unreachable (scan) | 502 | `HTTPException` | JSON `{"detail": "Errore durante la comunicazione con Open Food Facts"}` |
-| Product not found (scan) | 200 | `ScanResponse` | `found=false` with Italian not-found message |
+| OFF unreachable (scan) | 502 | `HTTPException` | JSON `{"detail": "Errore durante la comunicazione con i database Open* Facts"}` |
+| Product not found (scan) | 200 | `ScanResponse` | `found=false` with `Prodotto non trovato nei database Open* Facts` |
 | Consent missing (contribute/photo) | 400 | `HTTPException` | CC BY-SA consent required |
 | Write disabled (contribute/photo) | 403 | `HTTPException` | `OFF_WRITE_ENABLED` gate |
 | Validation failure | 422 | Pydantic / `HTTPException` | Barcode pattern, at-least-one-field, `imagefield` allowlist, min dimensions |
@@ -194,9 +203,9 @@ Oversize uploads fail fast: a `Content-Length` pre-check (5 MB + 1 KB multipart 
 
 | Dependency | Source | Role |
 |------------|--------|------|
-| `fetch_product` | `backend/services/off.py` | OFF read (`GET {OFF_BASE_URL}/{barcode}.json`) |
+| `fetch_product` | `backend/services/off.py` | OFF read (`fetch_product(barcode, product_type)`, universal v3 `GET {OFF_V3_BASE_URL}/{barcode}?product_type=all`; see [OFF service](../modules/backend-service-off.md)) |
 | `contribute_product` | `backend/services/off.py` | OFF metadata write (`product_jqm2.pl`) |
 | `upload_product_image` | `backend/services/off.py` | OFF photo upload (`product_image_upload.pl`) |
-| `ScanHistory` | `backend/models.py` | ORM model for scan counts (`times_scanned`, `last_scanned_at`) |
+| `ScanHistory` | `backend/models.py` | ORM model for scan counts (`times_scanned`, `last_scanned_at`, plus `source` / `product_type`) |
 | `get_db` | `backend/database.py` | FastAPI dependency for DB session |
 | `BARCODE_PATTERN` | `backend/schemas.py` | Shared `^\d{8,14}$` pattern for scan and contribute routes |

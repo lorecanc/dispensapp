@@ -5,7 +5,7 @@ category: "config"
 source_files:
   - "backend/config.py"
 created: "2026-06-24"
-last_updated: "2026-09-05"
+last_updated: "2026-09-06"
 ---
 
 # Backend Configuration
@@ -19,9 +19,11 @@ Environment-driven configuration for the FastAPI backend. All values are defined
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `DATABASE_URL` | `str` | `sqlite:///<repo>/inventory.db` | [SQLite](../modules/backend-database.md) connection string. Default is an absolute path resolved relative to `backend/config.py`, not CWD. Override via env. |
-| `OFF_BASE_URL` | `str` | `"https://world.openfoodfacts.org/api/v0/product"` | Read-only base URL for the [Open Food Facts API](../concepts/off-integration.md). Product code appended as `{base}/{barcode}.json`. Not env-configurable. |
+| `OFF_V3_BASE_URL` | `str` | `"https://world.openfoodfacts.org/api/v3/product"` (via `OFF_V3_BASE_URL` env) | Universal read-only base URL for the [OFF service](../modules/backend-service-off.md) (food + twin projects via `product_type`). Only `https` with host in `world.openfoodfacts.org` / `world.openbeautyfacts.org` / `world.openpetfoodfacts.org` / `world.openproductsfacts.org`; otherwise falls back to default with a warning. See [OFF integration](../concepts/off-integration.md). |
+| `OFF_PRODUCT_TYPE_DEFAULT` | `str` | `"all"` (via `OFF_PRODUCT_TYPE_DEFAULT` env) | Default `product_type` for v3 reads (`all` queries every project). |
+| `OFF_V3_HOSTS` | `dict[str, str]` | `food`/`beauty`/`petfood`/`product` -> world hosts | Per-`product_type` fallback hosts used by the [OFF service](../modules/backend-service-off.md) when the first v3 `GET` fails with an explicit type. Not env-configurable. |
 | `OFF_WRITE_ENABLED` | `bool` | `false` | Master write gate for `POST /api/scan/contribute` and `/photo` (see [Contribute](../api/contribute.md)). Truthy values: `1/true/yes/on`. Effective `true` only when credentials are set AND the write base URL passes host/scheme validation. See [OFF integration](../concepts/off-integration.md) and [scan API](../api/scan.md). |
-| `OFF_WRITE_BASE_URL` | `str` | `"https://world.openfoodfacts.net/cgi"` | OFF write endpoint (staging `.net` by default; production `.org` only via explicit env). Host outside `openfoodfacts.org`/`.net` or non-https scheme falls back to staging default with a warning (`http` allowed only for `localhost`/`127.0.0.1`). |
+| `OFF_WRITE_BASE_URL` | `str` | `"https://world.openfoodfacts.net/cgi"` | OFF write endpoint (staging `.net` by default; production `.org` only via explicit env). Host outside `openfoodfacts.org`/`.net` (incl. `openbeautyfacts.org`, `openpetfoodfacts.org`, `openproductsfacts.org` and subdomains) or non-https scheme falls back to staging default with a warning (`http` allowed only for `localhost`/`127.0.0.1`). |
 | `OFF_USER` | `str` | `""` | Personal OFF account for writes. Never logged. On staging use a staging-created account, not production. |
 | `OFF_PASS` | `str` | `""` | OFF password. Never logged. |
 | `OFF_STAGING_BASIC_USER` | `str` | `"off"` | HTTP Basic user for the protected staging host `world.openfoodfacts.net`. Sent only on staging hosts via `off_basic_auth()`. |
@@ -73,6 +75,8 @@ The `default` key is the fallback for unmatched categories after `normalize_cate
 ## `.env.example`
 
 ```env
+OFF_V3_BASE_URL=https://world.openfoodfacts.org/api/v3/product
+OFF_PRODUCT_TYPE_DEFAULT=all
 OFF_WRITE_ENABLED=false
 OFF_WRITE_BASE_URL=https://world.openfoodfacts.net/cgi
 OFF_USER=
@@ -91,11 +95,11 @@ OFF_CONTACT_EMAIL=
 Modules import these values directly from `config`:
 
 ```python
-from config import DATABASE_URL, OFF_BASE_URL, EXPIRING_SOON_DAYS
+from config import DATABASE_URL, OFF_V3_BASE_URL, EXPIRING_SOON_DAYS
 ```
 
 - `DATABASE_URL` is consumed by the SQLAlchemy engine in the database initialization module.
-- `OFF_BASE_URL` is used by the barcode lookup service when querying Open Food Facts.
+- `OFF_V3_BASE_URL` is used by the [OFF service](../modules/backend-service-off.md) when querying Open Food Facts (API v3, `?product_type=` from `OFF_PRODUCT_TYPE_DEFAULT`).
 - `OFF_WRITE_ENABLED`, `off_basic_auth()`, and `off_user_agent()` gate and authenticate the contribute/photo write path.
 - `CORS_ORIGINS` is passed to FastAPI's `CORSMiddleware`.
 - `EXPIRING_SOON_DAYS` is used by inventory queries that filter for items near their expiration date.

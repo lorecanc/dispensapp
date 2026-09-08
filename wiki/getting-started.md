@@ -11,7 +11,7 @@ source_files:
   - "ios/README.md"
   - "ios/Inventario/Networking/APIConfig.swift"
 created: "2026-06-24"
-last_updated: "2026-09-05"
+last_updated: "2026-09-06"
 ---
 
 # Getting Started
@@ -104,19 +104,20 @@ XcodeGen notes (`ios/project.yml`):
 
 ### Configure the API URL
 
-The iOS app communicates with the backend at `http://127.0.0.1:8000` by default. The base URL is defined in [`APIConfig.swift`](./config/ios-config.md):
+The iOS app communicates with the production backend at `https://dispensapp.onrender.com` by default. The base URL is defined in `APIConfig.swift` (see [iOS Configuration](./config/ios-config.md) for build-time settings and the [Settings screen](./components/ios-settings-view.md) for runtime details):
 
 ```swift
 struct APIConfig {
     static var baseURLString: String {
-        get { UserDefaults.standard.string(forKey: "apiBaseURL") ?? "http://127.0.0.1:8000" }
+        get { UserDefaults.standard.string(forKey: "apiBaseURL") ?? "https://dispensapp.onrender.com" }
         set { UserDefaults.standard.set(newValue, forKey: "apiBaseURL") }
     }
-    static var baseURL: URL { URL(string: baseURLString)! }
+    /// Validated optional URL plus a `fallbackURL` (`http://127.0.0.1:8000`) for display-only use.
+    static var baseURL: URL? { /* nil when malformed; see APIConfig.swift */ }
 }
 ```
 
-The URL can be changed in-app via the Settings screen — the value is persisted in `UserDefaults`. This allows pointing the app at a different host (e.g. a local network IP or a deployed instance) without rebuilding.
+The URL can be changed in-app via the [Settings screen](./components/ios-settings-view.md) — the value is persisted in `UserDefaults`. For local development, point it at `http://127.0.0.1:8000` to match `uvicorn backend.main:app --host 0.0.0.0 --port 8000` above; the connection test calls `store.client.listPantries()` (`GET /api/pantries`). This allows pointing the app at a different host (e.g. a local network IP or a deployed instance) without rebuilding.
 
 ### Build and Run
 

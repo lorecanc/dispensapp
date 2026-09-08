@@ -4,11 +4,13 @@ description: "Python packages used by the Inventario backend and their roles"
 category: "dependencies"
 source_files:
   - "requirements.txt"
+  - "Dockerfile"
+  - ".github/workflows/alembic-heads.yml"
   - "backend/routes/scan.py"
   - "backend/services/off.py"
   - "backend/routes/contribute.py"
 created: "2026-06-24"
-last_updated: "2026-09-05"
+last_updated: "2026-09-06"
 ---
 
 # Python Dependencies
@@ -54,6 +56,12 @@ Data validation and schema definition library (v2). FastAPI uses Pydantic models
 
 Used in: request bodies, response models, query parameters, and internal data structures.
 
+### python-multipart
+
+Multipart parser Starlette requires for `Form` / `File` / `UploadFile` (`multipart/form-data`). Pinned explicitly in `requirements.txt` so production installs (Render, Docker) include it; without it the photo-upload form parsing in `backend/routes/contribute.py` fails at runtime.
+
+Used in: `POST /api/scan/contribute/photo` and any `Form`-based endpoint.
+
 ### anyio (transitive, not pinned)
 
 `anyio` is **not** listed in `requirements.txt`; it arrives transitively via FastAPI / Starlette. It is imported directly in exactly one place: `backend/routes/scan.py` (`import anyio.to_thread`).
@@ -81,3 +89,9 @@ Used in: all test files under `tests/`.
 Async test support for pytest. Enables `async def` test functions so that async endpoint handlers and database operations can be tested directly without extra boilerplate.
 
 Used in: async test cases in the test suite.
+
+## Production Install & Migration Notes
+
+The `Dockerfile` installs `requirements.txt` first (layer cache), then adds `alembic` + `psycopg2-binary` via a separate `pip install` — they are intentionally not in `requirements.txt`. `alembic` is needed because the lifespan in `backend/main.py` runs `alembic upgrade head` at startup; `psycopg2-binary` is needed for Postgres `DATABASE_URL`s. `.dockerignore` keeps `ios/`, `wiki/`, and local DB files out of the image.
+
+CI (`.github/workflows/alembic-heads.yml`) installs `alembic` + `sqlalchemy` and fails the build unless `alembic heads` reports exactly one head, so divergent migrations must be merged before push.

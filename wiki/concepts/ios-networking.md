@@ -8,8 +8,9 @@ source_files:
   - "ios/Inventario/Networking/APIError.swift"
   - "ios/Inventario/Networking/PantryToken.swift"
   - "ios/Inventario/Networking/ConnectivityMonitor.swift"
+  - "ios/Inventario/Models/InventoryItem.swift"
 created: "2026-06-24"
-last_updated: "2026-09-05"
+last_updated: "2026-09-06"
 ---
 
 # iOS Networking
@@ -24,7 +25,7 @@ The iOS networking layer is a pantry-scoped, type-safe HTTP client for the backe
 
 - `APIClient` — all endpoints; injects auth via `decorated(_:)`; central `perform(_:)` + `sendInventory` / `deleteItem` / `fetchMarkdown` helpers.
 - `PantryToken` — `X-Pantry-Token` value in Keychain (`Inventario` / `pantryToken`, `accessibleAfterFirstUnlockThisDeviceOnly`); one-time legacy `UserDefaults` migration; per-install `UUID` generation; no zero-UUID fallback; never logged.
-- `APIConfig` — server base URL in `UserDefaults` (`apiBaseURL`, default `http://127.0.0.1:8000`); validated optional `baseURL` (nil on malformed input, throws `APIError.invalidURL`); `isValidURL` + `fallbackURL` for display.
+- `APIConfig` — server base URL in `UserDefaults` (`apiBaseURL`, default `https://dispensapp.onrender.com`); validated optional `baseURL` (nil on malformed input, throws `APIError.invalidURL`); `isValidURL` + `fallbackURL` (`http://127.0.0.1:8000`) for display.
 - `APIError` — `invalidURL / transport / decoding / http / notFound / offline` with Italian descriptions; 401/403 get pantry-specific messages.
 - `ConnectivityMonitor` — `@Observable` `@MainActor` wrapper over `NWPathMonitor`; publishes `isOnline`; injectable monitor for tests.
 
@@ -40,7 +41,7 @@ Note: the client does not auto-provision a pantry on first 401/403 — the backe
 
 ## APIClient Endpoints
 
-All methods are `async throws`. Bodies use `JSONSerialization` with nil-values filtered out; dates serialize as `yyyy-MM-dd` (UTC, `en_US_POSIX`).
+All methods are `async throws`. Bodies use `JSONSerialization` with nil-values filtered out; dates serialize as `yyyy-MM-dd` (`en_US_POSIX`, `.autoupdatingCurrent` — device timezone, so a local-midnight `DatePicker` value keeps its calendar day).
 
 ### Scan / contribute / suggestions / categories
 
@@ -66,10 +67,12 @@ All methods are `async throws`. Bodies use `JSONSerialization` with nil-values f
 
 ### Pantry-scoped inventory
 
+Decoded type is `InventoryItem` (see [iOS Models](./ios-models.md)); server paging contract is documented in [Inventory API](../api/inventory.md).
+
 | Method | HTTP | Path |
 |--------|------|------|
-| `listScoped(pantryId:)` | GET | `/api/pantries/{id}/inventory` |
-| `createScoped(pantryId:barcode:name:brand:expirationDate:category:imageURL:quantity:)` | POST | `/api/pantries/{id}/inventory` |
+| `listScoped(pantryId:)` | GET (paged loop) | `/api/pantries/{id}/inventory?limit=50&offset=` — client-side loop, appends each page, stops when `page.count < limit`; single `GET` per page |
+| `createScoped(pantryId:barcode:name:brand:expirationDate:category:imageURL:quantity:offTags:storageLocation:source:productType:)` | POST | `/api/pantries/{id}/inventory` (`source` / `product_type` sent only when non-empty) |
 | `createManualScoped(pantryId:name:brand:expirationDate:category:quantity:)` | POST | `/api/pantries/{id}/inventory/manual` |
 | `updateScoped(pantryId:id:name:brand:expirationDate:category:quantity:)` | PATCH | `/api/pantries/{id}/inventory/{item}` |
 | `deleteScoped(pantryId:id:)` | DELETE | `/api/pantries/{id}/inventory/{item}` (200/204) |
@@ -78,6 +81,29 @@ All methods are `async throws`. Bodies use `JSONSerialization` with nil-values f
 | `exportScoped(pantryId:)` | GET | `/api/pantries/{id}/inventory/export` (markdown) |
 
 Legacy unscoped `list / create / createManual / update / delete / exportMarkdown` variants remain for backwards compatibility.
+
+```swift
+// APIClient.listScoped — transparent client-side paging (same signature)
+let limit = 50
+var offset = 0
+var all: [InventoryItem] = []
+while true {
+    comps.queryItems = [
+        URLQueryItem(name: "limit", value: "\(limit)"),
+        URLQueryItem(name: "offset", value: "\(offset)")
+    ]
+    let page = try Self.decoder.decode([InventoryItem].self, from: data)
+    all.append(contentsOf: page)
+    if page.count < limit { break }
+    offset += limit
+}
+```
+
+```swift
+// APIClient.inventoryBody — additive fields only when non-empty
+if let source, !source.isEmpty { body["source"] = source }
+if let productType, !productType.isEmpty { body["product_type"] = productType }
+```
 
 ### Shopping lists (pantry-scoped)
 
@@ -104,7 +130,7 @@ Legacy unscoped `list / create / createManual / update / delete / exportMarkdown
 
 Specialized helpers bypass `perform(_:)` but apply `decorated(_:)` themselves:
 
-- `sendInventory(method:path:body:)` — JSON POST/PATCH returning one `InventoryItem`; backs `createScoped / createManualScoped / updateScoped` with bodies built by `inventoryBody(...)` (nil fields omitted).
+- `sendInventory(method:path:body:)` — JSON POST/PATCH returning one `InventoryItem`; backs `createScoped / createManualScoped / updateScoped` with bodies built by `inventoryBody(...)` (nil fields omitted; `off_category_tags` capped to 50 tags / 200 chars, `storage_location` / `source` / `product_type` only when non-empty).
 - `deleteItem(at:)` — DELETE expecting 200/204; backs `deleteScoped`; `deletePantry` / `removeMember` / `deleteShopping*` duplicate the pattern inline.
 - `fetchMarkdown(from:)` — GET with `Accept: text/markdown`, raw UTF-8 → `String` (failure → `APIError.decoding`); backs `exportScoped`.
 
@@ -136,8 +162,15 @@ Specialized helpers bypass `perform(_:)` but apply `decorated(_:)` themselves:
 
 ## Date Handling
 
-- Outgoing: static `DateFormatter` (`yyyy-MM-dd`, `en_US_POSIX`, UTC) applied manually in `inventoryBody`; scan/contribute encode via `JSONEncoder`.
-- Incoming: shared `JSONDecoder.dateDecodingStrategy = .inventoryDate`, tried in order: ISO 8601 with fractional seconds → ISO 8601 plain → SQLite-style `yyyy-MM-dd'T'HH:mm:ss.SSSSSS` (UTC) → date-only `yyyy-MM-dd`; else `dataCorruptedError`.
+```swift
+// APIClient outbound — device timezone so picked calendar day survives
+f.dateFormat = "yyyy-MM-dd"
+f.locale = Locale(identifier: "en_US_POSIX")
+f.timeZone = .autoupdatingCurrent
+```
+
+- Outgoing: static `DateFormatter` (`yyyy-MM-dd`, `en_US_POSIX`, `.autoupdatingCurrent`) applied manually in `inventoryBody`; scan/contribute encode via `JSONEncoder`. Device timezone is intentional: a `DatePicker` local-midnight rendered in GMT would shift to day-1 for users east of UTC. Inbound decoding stays GMT.
+- Incoming: shared `JSONDecoder.dateDecodingStrategy = .inventoryDate` (defined in `InventoryItem.swift`, see [iOS Models](./ios-models.md)), tried in order: ISO 8601 with fractional seconds → ISO 8601 plain → naive `yyyy-MM-dd'T'HH:mm:ss` (GMT, `isoNoTzNoFractionFormatter`) → SQLite-style `yyyy-MM-dd'T'HH:mm:ss.SSSSSS` (GMT) → date-only `yyyy-MM-dd` (GMT); else `dataCorruptedError`. Backend date semantics are in [Inventory API](../api/inventory.md).
 - File-scope models: `Pantry`, `Invite`, `PantryMember`, `ConsumptionEvent`, `CategoriesResponse` (snake_case keys).
 
 ## Gotchas

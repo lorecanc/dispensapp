@@ -6,15 +6,16 @@ source_files:
   - "backend/routes/pantries.py"
   - "backend/schemas.py"
   - "backend/dependencies/pantry.py"
+  - "backend/main.py"
 created: "2026-09-05"
-last_updated: "2026-09-05"
+last_updated: "2026-09-06"
 ---
 
 # Backend Routes — Pantries
 
 ## Purpose
 
-Pantry lifecycle and sharing for the multi-pantry model: create and list pantries owned or joined by the caller, fetch or delete a single pantry, issue single-use invites, accept invites via body or path token, and list or remove members. All routes live in a 302-line `APIRouter(prefix="/api", tags=["pantries"])` in `backend/routes/pantries.py`. See the [Pantries API](../api/pantries.md) page for the endpoint reference. Validation shapes live in the [Pydantic schemas](./backend-schemas.md); auth and membership checks come from `backend/dependencies/pantry.py`.
+Pantry lifecycle and sharing for the multi-pantry model: create and list pantries owned or joined by the caller, fetch or delete a single pantry, issue single-use invites, accept invites via body or path token, and list or remove members. All routes live in a 335-line `APIRouter(prefix="/api", tags=["pantries"])` in `backend/routes/pantries.py`. See the [Pantries API](../api/pantries.md) page for the endpoint reference. Validation shapes live in the [Backend Schemas](./backend-schemas.md); auth and membership checks come from `backend/dependencies/pantry.py`. Sharing semantics (owner/editor roles, invite flow) are described in [Pantry Sharing](../concepts/pantry-sharing.md).
 
 ## Key Files
 
@@ -33,7 +34,7 @@ Auth is per request via the `X-Pantry-Token` header (UUID v4). `GET/POST /pantri
 | GET | `/api/pantries` | 200 | List pantries where token is owner or member |
 | POST | `/api/pantries` | 201 / 200 | Create pantry; idempotent retry returns existing with 200 |
 | GET | `/api/pantries/{pantry_id}` | 200 | Get one pantry (members only) |
-| DELETE | `/api/pantries/{pantry_id}` | 204 | Delete pantry (owner only) |
+| DELETE | `/api/pantries/{pantry_id}` | 204 | Delete pantry with explicit 6-table cascade (owner only) |
 | POST | `/api/pantries/{pantry_id}/invites` | 201 | Create pending invite, 7-day expiry (owner only) |
 | POST | `/api/invites/accept` | 200 | Accept invite via body `{token}` |
 | POST | `/api/invites/{token}/accept` | 200 | Accept invite via path token (body wins if both) |
@@ -44,9 +45,11 @@ Owner-vs-member rules: any member can read the pantry and list members; only `_i
 
 Idempotency: `POST /pantries` reuses an existing pantry with the same `name + owner_token`, returning 200 instead of 201, with an `IntegrityError` retry for concurrent double-POST. Invite claiming is an atomic conditional `UPDATE ... WHERE status == "pending" AND expires_at > now`; only one accept wins, losers see 404.
 
+Delete cascade: `delete_pantry` (`backend/routes/pantries.py:123-169`) deletes child rows explicitly before `db.delete(pantry)`, in order `ShoppingListItem` → `ShoppingList` → `InventoryItem` → `ConsumptionEvent` → `Invite` → `PantryMember` → `Pantry`. SQLite has no `PRAGMA foreign_keys=ON`, so DB-level `ondelete=CASCADE` is inert; the explicit deletes (all with `synchronize_session=False` in a single transaction, rollback to `500` on failure) prevent orphans that previously survived delete and broke recreate via rowid reuse. Covered by `backend/tests/test_pantry_delete_cleanup.py`, which asserts zero rows remain in all six tables and that recreating the same pantry name returns `201`.
+
 Privacy: invite tokens are never logged (`_claim_invite` logs no token value), and consumption-style actor tokens are not persisted — `accepted_by_token` is the only actor field, scoped to the invite claim.
 
-Errors: 401 missing/malformed `X-Pantry-Token` (also 422 `token mancante` when the accept body has no token); 403 valid non-member token or non-owner attempting an owner-only action; 404 unknown pantry, consumed/expired invite, or unknown member; 500 on DB failure during create/delete/invite/member operations.
+Errors: 401 missing/malformed `X-Pantry-Token` (also 422 `token mancante` when the accept body has no token); 403 valid non-member token or non-owner attempting an owner-only action; 404 unknown pantry, consumed/expired invite, or unknown member; 500 on DB failure during create/delete/invite/member operations. Validation (`422`) bodies use the uniform `{"detail": str, "message": str}` shape from `validation_exception_handler` in `backend/main.py` for iOS `[String: String]` compatibility.
 
 ## Dependencies
 
@@ -55,10 +58,10 @@ graph LR
     PantryRoutes["Pantry Routes"] --> PantryDep["dependencies.pantry.get_current_pantry"]
     PantryRoutes --> PantryCtx["dependencies.pantry.get_pantry_context"]
     PantryRoutes --> Schemas["schemas.Pantry/Invite/Member"]
-    PantryRoutes --> ORM["Pantry + PantryMember + Invite"]
+    PantryRoutes --> ORM["Pantry + PantryMember + Invite + InventoryItem + ShoppingList/Item + ConsumptionEvent"]
 ```
 
-- Internal: `backend.database.get_db`, `backend.models.Pantry`, `backend.models.PantryMember`, `backend.models.Invite`
+- Internal: `backend.database.get_db`, `backend.models.Pantry`, `backend.models.PantryMember`, `backend.models.Invite`, `backend.models.InventoryItem`, `backend.models.ShoppingList`, `backend.models.ShoppingListItem`, `backend.models.ConsumptionEvent`
 - External: FastAPI, SQLAlchemy, Pydantic
 
 ## Usage Example

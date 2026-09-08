@@ -78,6 +78,29 @@ def test_estimate_empty_tags_uses_default():
     assert est3 == ref + timedelta(days=30)
 
 
+def test_expiration_uses_resolved_category(client, db_session):
+    from backend.models import Pantry
+
+    p = Pantry(id=1, name="La mia dispensa", owner_token="00000000-0000-0000-0000-000000000000")
+    db_session.add(p)
+    db_session.commit()
+    headers = {"X-Pantry-Token": "00000000-0000-0000-0000-000000000000"}
+    # "pastas" normalizza a "pasta" via OFF_TO_INTERNAL: scadenza da pasta (365),
+    # non fallback default (30) del raw non normalizzato.
+    today = date.today()
+    resp = client.post(
+        "/api/inventory",
+        json={"barcode": "12345678", "name": "Pasta Test", "category": "pastas", "quantity": 1},
+        headers=headers,
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["category"] == "pasta"
+    assert body["is_estimated"] is True
+    exp = date.fromisoformat(body["expiration_date"])
+    assert exp == today + timedelta(days=365)
+
+
 def test_resolve_centralizzata_integration_via_api(client, db_session):
     from backend.models import Pantry
 

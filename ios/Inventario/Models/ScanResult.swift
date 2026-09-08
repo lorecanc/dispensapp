@@ -33,6 +33,10 @@ struct ScanResult: Codable, Sendable {
     /// invariato per i call site esistenti.
     var source: String? = nil
     var productType: String? = nil
+    /// Campo additivo: gruppo PNNS OFF (pnns_groups_1 slugificato) dal backend v3.
+    /// Nil con backend non aggiornati. `var` + default: memberwise init
+    /// invariato per i call site esistenti.
+    var pnnsGroup: String? = nil
 
     /// Vista tipizzata e tollerante di `source`: valori sconosciuti -> nil,
     /// mai fatalError/force-unwrap, mai fallimento di Decodable.
@@ -43,6 +47,7 @@ struct ScanResult: Codable, Sendable {
         case imageURL = "image_url"
         case suggestedCategory = "suggested_category"
         case productType = "product_type"
+        case pnnsGroup = "pnns_group"
     }
 
     /// True quando il prodotto manca o ha dati incompleti e vale la pena arricchirlo.

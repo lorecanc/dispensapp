@@ -5,7 +5,7 @@ category: "modules"
 source_files:
   - "backend/main.py"
 created: "2026-06-24"
-last_updated: "2026-09-05"
+last_updated: "2026-09-06"
 ---
 
 # Backend API
@@ -30,6 +30,7 @@ graph LR
     LS["Lifespan<br/>(Alembic upgrade head,<br/>create_all fallback)"]
     CORS["CORSMiddleware<br/>(localhost allowlist)"]
     ERR["HTTPException handler<br/>(detail + message alias)"]
+    VAL["RequestValidationError handler<br/>(detail + message strings)"]
     Scan["scan_router<br/>prefix=/api"]
     Contrib["contribute_router<br/>prefix=/api"]
     Inventory["inventory_router<br/>prefix=/api"]
@@ -41,6 +42,7 @@ graph LR
     LS --> App
     CORS --> App
     ERR --> App
+    VAL --> App
     App --> Scan
     App --> Contrib
     App --> Inventory
@@ -51,7 +53,7 @@ graph LR
     App --> Uvicorn["uvicorn runner<br/>(python -m backend.main)"]
 ```
 
-The diagram shows the app initialization flow: the lifespan handler, CORS middleware, and exception handler are attached to the FastAPI app, which then includes seven routers and can be started via the uvicorn runner.
+The diagram shows the app initialization flow: the lifespan handler, CORS middleware, and exception handlers are attached to the FastAPI app, which then includes seven routers and can be started via the uvicorn runner.
 
 ## App Initialization
 
@@ -125,6 +127,27 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         content["message"] = exc.detail
     return JSONResponse(status_code=exc.status_code, content=content)
 ```
+
+### Validation Errors
+
+A `RequestValidationError` handler normalizes all request-validation failures to a uniform `422` body with string fields:
+
+```python
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    # uniforma errori di validazione a {"detail": str, "message": str} per compatibilità iOS [String:String]
+    parts = []
+    for err in exc.errors():
+        loc = ".".join(str(p) for p in err.get("loc", []) if p != "body")
+        msg = err.get("msg", "")
+        parts.append(f"{loc}: {msg}" if loc else msg)
+    detail = "; ".join(parts) if parts else "Errore di validazione"
+    return JSONResponse(status_code=422, content={"detail": detail, "message": detail})
+```
+
+Each entry in `exc.errors()` contributes `"<loc>: <msg>"` (location parts joined with `.`, excluding `"body"`), joined with `"; "`. The result is always `{"detail": str, "message": str}` with identical values, so iOS clients can decode error bodies as `[String: String]`. Without it FastAPI returns the default `{"detail": [{loc, msg, type}, ...]}` array shape, which loses the message on iOS (see `backend/tests/test_validation_errors.py`, which triggers a `422` via `POST /api/scan` with an invalid barcode).
+
+**Source**: `backend/main.py:71-80`
 
 ## Uvicorn Runner
 

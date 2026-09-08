@@ -5,7 +5,7 @@ category: "components"
 source_files:
   - "ios/Inventario/Features/Inventory/InventoryListView.swift"
 created: "2026-06-24"
-last_updated: "2026-09-05"
+last_updated: "2026-09-06"
 ---
 
 # InventoryListView
@@ -24,13 +24,13 @@ last_updated: "2026-09-05"
 |------|------|----------|-------------|
 | `store` | `InventoryStore` (`@Environment`) | yes | Source of `items`, `pantries`, `selectedPantryId`, `selectedPantryName`, `archivedIDs`, `history`, `isOffline`, `error` |
 | `searchText` | `String` (`@State`) | no | Drives `.searchable` client-side filter on name/brand/category |
-| `selectedCategory` | `String?` (`@State`) | no | Category chip filter, options from `CategoryRegistry.categories` |
+| `selectedCompartment` | `Compartment?` (`@State`) | no | Reparto chip filter, options from `Compartment.supermarketOrder`; match via `CategoryRegistry.compartmentMap` (nil/unknown category visible only with Tutti) |
 | `showDetailItem` | `InventoryItem?` (`@State`) | no | Presents `ItemDetailView` sheet on row tap |
 | `showScanner` / `showManual` / `showAddChoice` | `Bool` (`@State`) | no | Add flow: `addProductPill` → confirmation dialog (Scansiona / Inserimento manuale) → `ScannerViewWrapper` or `ManualEntryView` sheet |
 | `showHistorySheet` | `Bool` (`@State`) | no | Presents Storico history sheet (medium/large detents) from overflow menu |
 | `showManagePantries` / `showDeletePantryConfirm` / `pendingDeletePantry` | state | no | Pantry management sheet + delete confirmation dialogs |
 | `showSettings` / `showInviteMembers` | `Bool` (`@State`) | no | Presents `SettingsView` / `InviteMembersSheet` from overflow menu |
-| `cachedSections` / `filterKey` | derived state | no | Cached `[(ItemStatus, [InventoryItem])]` recomputed in `.task(id: filterKey)` from items fingerprint + search + category + `archivedIDs` |
+| `cachedSections` / `filterKey` | derived state | no | Cached `[(ItemStatus, [InventoryItem])]` recomputed in `.task(id: filterKey)` from items fingerprint (incl. `source` / `productType`) + search + compartment + `archivedIDs` |
 
 Key store calls: `store.refresh()`, `store.fetchPantries()`, `store.selectPantry(_:)`, `store.deletePantry(id:)`, `store.delete(id:)`, `store.consume(item:)` (atomic server-side), `store.fetchHistory(itemId:)`, `store.exportMarkdown()`.
 
@@ -50,10 +50,10 @@ Header: `navigationTitle` is `store.selectedPantryName`. Leading toolbar is `pan
 
 Body sections in the `List`:
 
-- `categoryFilterBar`: horizontal chips (Tutti + `CategoryRegistry`), toggle `selectedCategory`.
+- `compartmentFilterBar`: horizontal chips (Tutti + `Compartment.supermarketOrder`), toggle `selectedCompartment`; reparto-only filtering, no `ProductSource` filter pills.
 - `addProductPill`: capsule button opening the Scansiona/Manuale choice dialog.
 - Status sections: `ForEach(groupedItems)` with `Label(status.label, systemImage: status.symbol)` headers; rows are `InventoryRowView` with leading consume (`fork.knife`, `store.consume`) and trailing delete (`trash`, `store.delete`) swipe actions (`allowsFullSwipe: false`) plus matching `contextMenu` items.
-- Empty states: `EmptyStateView()` when the pantry is empty, `EmptyStateView(magnifyingglass / Nessun risultato)` when filters match nothing.
+- Empty states: `EmptyStateView()` when the pantry is empty, `EmptyStateView(magnifyingglass / Nessun risultato / "Prova a cambiare ricerca o filtri.")` when filters match nothing.
 - Overlay (top): `OfflinePill()` when `store.isOffline` (see [iOS Offline Outbox](../concepts/ios-offline-outbox.md)), unified `BannerView(style: .error, autoDismiss: true)` when `store.error != nil`.
 
 Storico (`historySheet`): `NavigationStack` sheet listing `store.archivedIDs` with per-item `store.history[id]` events (`delta × nameSnapshot` + timestamp; see [Inventory Consume & History](../concepts/inventory-consume-history.md)), lazy `fetchHistory(itemId:)` per section, `ContentUnavailableView` when empty.

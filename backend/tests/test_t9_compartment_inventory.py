@@ -19,8 +19,8 @@ def test_infer_shampoos_to_igiene_casa():
 
 
 def test_infer_dog_food_to_dispensa_secca():
-    assert infer_compartment(off_category_tags=["en:dog-food"]) == "Dispensa Secca"
-    assert infer_compartment(name="Crocchette dog-food") == "Dispensa Secca"
+    assert infer_compartment(off_category_tags=["en:dog-food"]) == "Animali"
+    assert infer_compartment(name="Crocchette dog-food") == "Animali"
 
 
 def test_inventory_source_product_type_persisted(client, db_session):

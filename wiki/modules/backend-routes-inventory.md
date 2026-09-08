@@ -5,7 +5,7 @@ category: "modules"
 source_files:
   - "backend/routes/inventory.py"
 created: "2026-06-24"
-last_updated: "2026-09-05"
+last_updated: "2026-09-06"
 ---
 
 # Backend Routes — Inventory
@@ -44,7 +44,7 @@ Legacy shims (deprecated, same handlers on the default pantry):
 |--------|------|-------|
 | POST / POST / GET / GET / GET / PATCH / DELETE / POST / GET | `/api/inventory`, `/api/inventory/manual`, `/api/inventory`, `/api/inventory/export`, `/api/inventory/{item_id}`, `/api/inventory/{item_id}`, `/api/inventory/{item_id}`, `/api/inventory/{item_id}/consume`, `/api/inventory/{item_id}/history` | Auth via `_default_pantry_ctx` against `DEFAULT_PANTRY_ID = 1`; queries pass `allow_null=True` so pre-scoping rows with `pantry_id NULL` remain visible. Scoped routes use `allow_null=False`. |
 
-Creation shares `_create_scoped_item`: `resolve_expiration()` computes `expiration_date`/`is_estimated` (`allow_none=True` for manual), missing `compartment` is inferred via `infer_compartment()`, `category` is normalized, and failures return 500. Listing shares `_list_scoped_items`: `quantity > 0` filter, `limit` default 50 (`ge=1, le=100`), `offset` default 0 (`ge=0`). History shares `_history_scoped_items` with the same pagination, ordered by `created_at DESC, id DESC`.
+Creation shares `_create_scoped_item`: `resolve_expiration()` computes `expiration_date`/`is_estimated` (`allow_none=True` for manual), missing `compartment` is inferred via `infer_compartment()`, `category` is normalized, `source`/`product_type` use the explicit `source`/`product_type` param when not `None` and fall back to the body field (`NULL` = not set), and failures return 500. Body fields and stripping rules are defined in [Backend Schemas](./backend-schemas.md) (`InventoryCreate`/`InventoryCreateManual`). Listing shares `_list_scoped_items`: `quantity > 0` filter, `limit` default 50 (`ge=1, le=100`), `offset` default 0 (`ge=0`). History shares `_history_scoped_items` with the same pagination, ordered by `created_at DESC, id DESC`.
 
 Consume (`_consume_scoped_item`) is a single conditional `UPDATE ... WHERE id AND pantry AND quantity >= delta`. On zero matched rows it rolls back and returns 404 when the item does not exist in the pantry, otherwise 409 `Quantità insufficiente`. Each success appends a `ConsumptionEvent` (`pantry_id`, `item_id`, `name_snapshot`, `barcode`, `delta=-delta`, `reason`); no actor token is persisted. Contract A: when quantity reaches zero the item row is deleted and a zero-quantity snapshot is returned, while history stays queryable on `pantry_id + item_id` without requiring the row.
 

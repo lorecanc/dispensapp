@@ -30,12 +30,12 @@ source_files:
   - "ios/Inventario/Models/ItemStatus.swift"
   - "ios/Inventario/Models/ScanResult.swift"
 created: "2026-06-24"
-last_updated: "2026-09-05"
+last_updated: "2026-09-06"
 ---
 
 # Project Overview
 
-**Inventario** is a pantry inventory management application. Users scan or manually enter food products, track expiration dates, and view their pantry grouped by freshness status. The app uses the [*Open Food Facts*](./concepts/off-integration.md) (OFF) public database for barcode lookups, automatically estimates expiration dates based on product category when none is provided, and lets users contribute missing data and photos back to OFF.
+**Inventario** is a pantry inventory management application. Users scan or manually enter food products, track expiration dates, and view their pantry grouped by freshness status. The app uses the [*Open Food Facts*](./concepts/off-integration.md) (OFF) v3 universal API (food|beauty|petfood|product) for barcode lookups, automatically estimates expiration dates based on product category when none is provided, and lets users contribute missing data and photos back to OFF.
 
 The system follows a [**client-server architecture**](./architecture.md): a SwiftUI iOS frontend communicates with a Python FastAPI backend over HTTP REST. The backend hosts a multi-pantry shared model — every inventory, scan, and history route is scoped to a pantry selected via the `X-Pantry-Token` header — and handles barcode resolution (via OFF), expiration estimation, atomic consumption with a history ledger, and CRUD operations against a SQLite database.
 
@@ -52,7 +52,7 @@ The system follows a [**client-server architecture**](./architecture.md): a Swif
 - **[Three-way item status](./concepts/item-status.md)** — Every item is classified as `ok`, `expiring_soon` (within *EXPIRING_SOON_DAYS* = 3 days), or `expired`, with associated color (green, orange, red) and SF Symbol.
 - **[Offline-first outbox](./concepts/ios-offline-outbox.md)** — Mutations made offline (create, consume, update, delete) are queued in a persistent FIFO `OutboxStore` (Application Support, atomic writes) with per-pantry replay, temp-id remapping, and last-write-wins reconciliation; a `LocalInventoryCache` snapshot keeps the list readable and a connectivity monitor triggers replay on reconnect.
 - **Markdown export** — Generates a markdown table of the full inventory with status indicators and estimated-expiration notes, sharable via the system share sheet.
-- **[Configurable backend URL](./getting-started.md)** — The server address is stored in `UserDefaults` and editable from the settings screen.
+- **[Configurable backend URL](./getting-started.md)** — The server address is stored in `UserDefaults` (prod default `https://dispensapp.onrender.com`) and editable from the settings screen.
 - **Connection test** — Settings include a button to verify connectivity to the configured backend.
 
 ## Tech Stack

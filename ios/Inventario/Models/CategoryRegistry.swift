@@ -136,6 +136,7 @@ enum CategoryRegistry {
             ("coffee-tea", "Caffè e tè"),
             ("alcoholic-beverages", "Bevande alcoliche"),
             ("cleaning-hygiene", "Igiene e pulizia"),
+            ("animali", "Animali"),
         ],
         compartmentMap: [
             "fresh-fruits": "Ortofrutta",
@@ -164,6 +165,7 @@ enum CategoryRegistry {
             "alcoholic-beverages": "Cantina",
             "bread-bakery": "Forno e Panetteria",
             "cleaning-hygiene": "Igiene e Casa",
+            "animali": "Animali",
         ],
         storageDefaults: [
             // frigo
@@ -195,6 +197,7 @@ enum CategoryRegistry {
             "coffee-tea": "dispensa",
             "alcoholic-beverages": "dispensa",
             "cleaning-hygiene": "dispensa",
+            "animali": "dispensa",
         ],
         storageLabels: [
             "frigo": "Frigo",

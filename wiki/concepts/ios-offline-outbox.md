@@ -10,7 +10,7 @@ source_files:
   - "ios/Inventario/Networking/APIError.swift"
   - "ios/Inventario/Components/ErrorBanner.swift"
 created: "2026-09-05"
-last_updated: "2026-09-05"
+last_updated: "2026-09-06"
 ---
 
 # iOS Offline Outbox
@@ -27,7 +27,7 @@ The iOS app stays usable without connectivity: mutations made offline are applie
 
 Four cases (`Mutation`, `Codable + Equatable`):
 
-- `create(Create)` — add/addManual; `barcode == nil` means manual create; carries `tempId` (negative local id).
+- `create(Create)` — add/addManual; `barcode == nil` means manual create; carries `barcode`, `name`, `brand`, `expirationDate`, `category`, `imageURL`, `quantity`, `tempId` (negative local id), plus additive `offTags`, `storageLocation`, `source`, `productType` (missing keys on old disk entries decode as `nil`).
 - `consume(Consume)` — `itemId`, `delta`, `reason` (see [Inventory Consume & History](../concepts/inventory-consume-history.md)).
 - `update(Update)` — PATCH semantics: `nil` fields are untouched (same as `APIClient.updateScoped`).
 - `delete(Delete)` — `itemId`.
@@ -46,15 +46,15 @@ Pure static policy mapping `APIError` to queue behavior:
 
 | Error | Decision | Rationale |
 |-------|----------|-----------|
-| `.notFound`, any HTTP 4xx (incl. 409), `.decoding` | `drop` | Server state wins; the request would never succeed; reconciliation via `refresh()` overrides the local entry |
-| `.transport`, `.offline`, `.invalidURL`, 5xx / other | `stop` | Transient or uncertain: halt replay, retry on the next online event |
+| `.notFound`, HTTP 404/409 and other 4xx except 401/403/408/429, `.decoding` | `drop` | Server state wins; the request would never succeed; reconciliation via `refresh()` overrides the local entry |
+| HTTP 401/403 (auth), 408/429 (transient), `.transport`, `.offline`, `.invalidURL`, 5xx / other | `stop` | Auth needs re-login/permission refresh, transient needs retry: halt replay, keep the entry, retry on the next online event |
 
 ## Replay in InventoryStore
 
-`InventoryStore` owns `outbox: OutboxStore` and `cache: LocalInventoryCache` plus `connectivity: ConnectivityMonitor`:
+`InventoryStore` owns `outbox: OutboxStore` and `cache: LocalInventoryCache` plus `connectivity: ConnectivityMonitor` (see [iOS State Management](../concepts/ios-state-management.md) for store ownership and replay orchestration):
 
 - Every mutating action (`add`, `addManual`, `update`, `delete`, `consume`) first checks `isOffline` (`!connectivity.isOnline`); if offline it applies the change optimistically and enqueues. If online but the request throws a `.offline`-classified error mid-flight, it falls back to the same enqueue path — no error banner.
-- `replayOutbox()` processes `outbox.entries.first` in FIFO order: success → remove entry (+ remap temp-id for creates); `drop` → discard; `stop` → halt, retry later. Reentrancy is coalesced (`isReplayingOutbox` + `replayRequested` triggers one extra pass). It never sets `store.error` — state is already reflected in the UI, a banner would mislead; after real work it calls `refresh()` to reconcile with the server.
+- `replayOutbox()` processes `outbox.entries.first` in FIFO order: success → remove entry (+ remap temp-id for creates); `drop` → discard; `stop` → halt, retry later. Create replay re-sends `source`/`productType` (plus `offTags`/`storageLocation`) via `createScoped`. Reentrancy is coalesced (`isReplayingOutbox` + `replayRequested` triggers one extra pass). It never sets `store.error` — state is already reflected in the UI, a banner would mislead; after real work it calls `refresh()` to reconcile with the server.
 - Triggering: `triggerReplayIfOnline()` covers the race where classification says offline but the path is still satisfied; `startOnlineWatch()` uses `withObservationTracking` on `connectivity.isOnline`, re-arming on every change so no online transition is lost. On flip to online with empty pantries (offline cold-start), it runs `fetchPantries()` first because `refresh()` is inert without verified pantries.
 
 ## LocalInventoryCache
@@ -75,6 +75,6 @@ Pure static policy mapping `APIError` to queue behavior:
 
 - Outbox must stay in Application Support; moving it to Caches risks silent mutation loss on system purge.
 - Replay uses each entry's own `pantryId` — never the current selection.
-- `OutboxStore.decision`: all 4xx drop. A 409 on consume (insufficient quantity) during live use still surfaces a banner, but during replay it drops in favor of server state.
+- `OutboxStore.decision`: drop on 404/409/other 4xx and decode; stop on 401/403/408/429, transport/offline, and 5xx. A 409 on consume (insufficient quantity) during live use still surfaces a banner, but during replay it drops in favor of server state.
 - No request dedup anywhere: debounce rapid double-taps in UI/store.
 - Snapshot staleness is by design (cold-start); `refresh()` + post-replay `refresh()` are the reconciliation points.

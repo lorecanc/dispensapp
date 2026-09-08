@@ -78,8 +78,9 @@ def test_makeup_maps_cleaning_hygiene_via_source():
 
 
 def test_petfood_defers_none_not_cleaning():
-    assert suggest_category(["en:pet-food", "en:dog-food"], source="petfood") is None
-    assert infer_compartment(off_category_tags=["en:dog-food"]) == "Dispensa Secca"
+    assert suggest_category(["en:pet-food", "en:dog-food"], source="petfood") == "animali"
+    assert suggest_category(["en:pet-food", "en:dog-food"], source="petfood") != "cleaning-hygiene"
+    assert infer_compartment(off_category_tags=["en:dog-food"]) == "Animali"
 
 
 def test_tuna_source_guard_food_vs_petfood():
@@ -106,8 +107,13 @@ def test_product_laptop_defers_none():
     assert suggest_category(["en:product", "en:laptop"], source="product") is None
 
 
+def test_product_pasta_maps_pasta():
+    # "product" filtrato via GENERIC_OPF, "pasta" first-match (guard cleaning non blocca)
+    assert suggest_category(["en:product", "en:pasta"], source="product") == "pasta"
+
+
 def test_petfood_chicken_defers_none():
-    assert suggest_category(["en:petfood", "en:chicken"], source="petfood") is None
+    assert suggest_category(["en:petfood", "en:chicken"], source="petfood") == "animali"
 
 
 def test_beauty_empty_defers_none():

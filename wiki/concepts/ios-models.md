@@ -10,7 +10,7 @@ source_files:
   - "ios/Inventario/Networking/APIClient.swift"
   - "ios/Inventario/Features/ShoppingList/ShoppingModels.swift"
 created: "2026-06-24"
-last_updated: "2026-09-05"
+last_updated: "2026-09-06"
 ---
 
 # iOS Models
@@ -36,6 +36,8 @@ The primary domain model. Every item tracked in the pantry is an `InventoryItem`
 | `createdAt` | `Date` | `created_at` | Timestamp of when the item was added |
 | `quantity` | `Int` | `quantity` | Number of units in stock |
 | `status` | `String` | `status` | Raw status value from server; maps to `ItemStatus` |
+| `source` | `String?` | `source` | Product source (`food`\|`beauty`\|`petfood`\|`product`); nil when unset or backend predates the field |
+| `productType` | `String?` | `product_type` | Product type from backend; nil when unset or backend predates the field |
 
 ### Equality
 
@@ -49,16 +51,17 @@ static func == (lhs: InventoryItem, rhs: InventoryItem) -> Bool {
 
 ### Date Decoding Strategy
 
-`InventoryItem` relies on the shared `JSONDecoder.DateDecodingStrategy.inventoryDate` (also used by the [networking layer](../concepts/ios-networking.md)). It tries four formats in order:
+`InventoryItem` relies on the shared `JSONDecoder.DateDecodingStrategy.inventoryDate` (also used by the [iOS Networking](./ios-networking.md)). It tries five formats in order:
 
 1. ISO 8601 with fractional seconds (e.g. `2026-06-24T15:56:43.156Z`)
 2. ISO 8601 without fractional seconds (e.g. `2026-06-24T15:56:43Z`)
-3. ISO-like without timezone suffix (e.g. `2026-06-24T15:56:43.156523`) — decoded as UTC
-4. Date-only (e.g. `2026-06-24`) — decoded as UTC
+3. Naive timestamp without fractional seconds and without timezone suffix (e.g. `2026-09-06T10:02:00`, format `yyyy-MM-dd'T'HH:mm:ss`) — decoded as UTC
+4. ISO-like without timezone suffix with fractional seconds (e.g. `2026-06-24T15:56:43.156523`, format `yyyy-MM-dd'T'HH:mm:ss.SSSSSS`) — decoded as UTC
+5. Date-only (e.g. `2026-06-24`) — decoded as UTC
 
 Otherwise it throws `DecodingError.dataCorruptedError`.
 
-Implementation detail: the four formatters are shared `static` instances (two `ISO8601DateFormatter` with different `formatOptions`, two `DateFormatter` with `en_US_POSIX` locale and UTC timezone) to avoid allocating a formatter per date field. The ISO formatters are marked `nonisolated(unsafe)` because `ISO8601DateFormatter` lacks a `Sendable` annotation but is thread-safe once configured; the two ISO variants are separate instances so concurrent decoding never mutates shared `formatOptions`.
+Implementation detail: the five formatters are shared `static` instances (two `ISO8601DateFormatter` with different `formatOptions`, three `DateFormatter` with `en_US_POSIX` locale and UTC timezone) to avoid allocating a formatter per date field. The ISO formatters are marked `nonisolated(unsafe)` because `ISO8601DateFormatter` lacks a `Sendable` annotation but is thread-safe once configured; the two ISO variants are separate instances so concurrent decoding never mutates shared `formatOptions`.
 
 ## ScanResult
 
@@ -75,8 +78,10 @@ Transient model for a barcode-lookup response.
 | `imageURL` | `String?` | `image_url` | Product image URL |
 | `found` | `Bool` | `found` | Whether the barcode was found |
 | `message` | `String?` | `message` | Optional human-readable message |
+| `source` | `String?` | `source` | Raw product source from backend; nil with backends predating the field |
+| `productType` | `String?` | `product_type` | Product type from backend; nil with backends predating the field |
 
-Only `imageURL` needs an explicit `CodingKeys` mapping (`image_url`).
+Only `imageURL`, `suggestedCategory` (`suggested_category`), and `productType` (`product_type`) need explicit `CodingKeys` mappings. `source` and `productType` are additive `var` fields with `nil` defaults, so decoding tolerates payloads from older backends and the memberwise initializer is unchanged for existing call sites. See the [Scan API](../api/scan.md) for the backend fields.
 
 ### needsEnrichment
 
@@ -88,6 +93,25 @@ var needsEnrichment: Bool {
     if name?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true { return true }
     return imageURL == nil
 }
+```
+
+## ProductSource
+
+Typed view over the raw `source` string shared by `ScanResult` and `InventoryItem` (see the [Scan API](../api/scan.md) and the [iOS Networking](./ios-networking.md)).
+
+**Conformances**: `Codable`, `Sendable`, `Hashable`, `CaseIterable`
+
+| Case | Raw Value | `displayName` (Italian) |
+|------|-----------|-------------------------|
+| `food` | `food` | Alimentare |
+| `beauty` | `beauty` | Cosmetici |
+| `petfood` | `petfood` | Pet food |
+| `product` | `product` | Non alimentare |
+
+`ScanResult.sourceEnum` is the tolerant typed accessor — unknown raw values decode to `nil`, never a `DecodingError`:
+
+```swift
+var sourceEnum: ProductSource? { source.flatMap(ProductSource.init) }
 ```
 
 ## ItemStatus

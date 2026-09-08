@@ -91,7 +91,7 @@ def _create_scoped_item(
         )
     expiration_date, is_estimated = resolve_expiration(
         expiration_date=body.expiration_date,
-        category=body.category,
+        category=category,
         off_category_tags=body.off_category_tags,
         allow_none=manual,
     )

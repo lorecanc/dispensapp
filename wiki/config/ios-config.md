@@ -6,7 +6,7 @@ source_files:
   - "ios/project.yml"
   - "ios/Inventario/Info.plist"
 created: "2026-06-24"
-last_updated: "2026-09-05"
+last_updated: "2026-09-06"
 ---
 
 # iOS Configuration
@@ -27,7 +27,7 @@ The Xcode project is generated from `ios/project.yml` using [XcodeGen](../depend
 | Marketing version | `1.0.0` |
 | Build number | `1` |
 
-There is no `xcodeVersion` pin (the old `15.0` value was removed as inconsistent with the toolchain in use). `DEVELOPMENT_TEAM` is left empty (set per-machine or overridden at build time).
+There is no `xcodeVersion` pin (the old `15.0` value was removed as inconsistent with the toolchain in use). `DEVELOPMENT_TEAM` is set to `"4YK6GDPC39"` on the `Inventario` app target, with an empty-string default (`""`) at the project base level (overridable per-machine at build time).
 
 ### Target: Inventario
 

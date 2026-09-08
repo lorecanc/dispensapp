@@ -8,7 +8,7 @@ source_files:
   - "ios/Inventario/Models/InventoryItem.swift"
   - "ios/Inventario/Features/Inventory/StatusBadge.swift"
 created: "2026-06-24"
-last_updated: "2026-09-05"
+last_updated: "2026-09-06"
 ---
 
 # iOS ItemDetailView
@@ -45,8 +45,9 @@ NavigationStack
  │              │    ├── name (.title2, .bold)
  │              │    ├── brand (.subheadline, .secondary) — conditional
  │              │    ├── category ("tag" icon + display name) — conditional
- │              │    ├── [StatusBadge](../components/ios-status-badge.md)
- │              │    ├── expiration date or "Nessuna data di scadenza"
+│              │    ├── [StatusBadge](../components/ios-status-badge.md)
+│              │    ├── source badge ("Tipo: ...") — conditional on known source/productType
+│              │    ├── expiration date or "Nessuna data di scadenza"
  │              │    └── estimated date warning — conditional
  │              ├── Divider
  │              └── VStack(spacing: 16) — actions
@@ -68,6 +69,20 @@ Renders via `CachedThumbnail(url:side:contentMode:)` with `side: 250`, `contentM
 - **Brand**: Shown as `.subheadline` secondary text only when `item.brand` is non-nil and non-empty.
 - **Category**: Tag icon + `CategoryRegistry.displayName(for:)` name in secondary style. The local hardcoded API-value table was removed; all naming now comes from the shared `CategoryRegistry` (see [Category Registry](../concepts/category-registry.md)), so adding a category there updates this view automatically.
 - **[StatusBadge](../components/ios-status-badge.md)**: Capsule badge from `ItemStatus.from(statusString: item.status)` (ok/expiring_soon/expired), with top padding.
+- **Source badge (Tipo prodotto)**: shown only when `item.source ?? item.productType` resolves to a known `ProductSource` — `source` takes precedence, unknown strings render no badge. Non-tappable capsule (`.caption` medium, `textSecondary`, `.thinMaterial` + `pantryLinen` 45 % fill, `pantryOat` 0.5 pt stroke), never in status colors:
+
+```swift
+if let raw = item.source ?? item.productType,
+    let source = ProductSource(rawValue: raw)
+{
+    Text(source.displayName)
+        // ... capsule styling ...
+        .accessibilityLabel("Tipo: \(source.displayName)")
+        .accessibilityHint("Tipo di prodotto")
+}
+```
+
+`ProductSource` display names (`food` → "Alimentare", `beauty` → "Cosmetici", `petfood` → "Pet food", `product` → "Non alimentare") and the `source` / `productType` fields are documented in [iOS Models](../concepts/ios-models.md). The same badge style appears in the scan preview "Sorgente" row ([iOS Scan Preview Sheet](./ios-scan-preview-sheet.md)) and the list row ([InventoryRowView](./ios-inventory-row-view.md)).
 
 ## Expiration Info
 
@@ -125,6 +140,7 @@ Every interactive and informative element now carries explicit labels; decorativ
 
 - Brand: `accessibilityLabel("Marca \(brand)")`.
 - Category row: decorative `tag` image `accessibilityHidden`, row label `"Categoria \(name)"` + hint `"Categoria del prodotto"`.
+- Source badge: label `"Tipo: \(source.displayName)"` + hint `"Tipo di prodotto"` (only rendered when the type is known).
 - Expiration row: `.accessibilityElement(children: .combine)` with label `"Scadenza \(date)"`; estimated warning labelled `"Data stimata"` with hint explaining it is category-estimated, not exact.
 - No-date text labelled `"Nessuna data di scadenza"`.
 - Stepper: label `"Quantità"`, value `"\(editQuantity)"`, hint `"Regola la quantità del prodotto"`, clamped `.dynamicTypeSize(.xSmall ... .accessibility2)`.

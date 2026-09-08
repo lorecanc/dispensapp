@@ -4,15 +4,16 @@ description: "Pantry lifecycle, invite creation/acceptance, and member managemen
 category: "api"
 source_files:
   - "backend/routes/pantries.py"
+  - "backend/main.py"
 created: "2026-09-05"
-last_updated: "2026-09-05"
+last_updated: "2026-09-06"
 ---
 
 # Pantries API
 
 ## Endpoints
 
-All routes require the `X-Pantry-Token` header (UUID v4) via `get_pantry_context` or `get_current_pantry` (see [Pantry Sharing](../concepts/pantry-sharing.md)). Missing or malformed header returns `401`; unknown pantry returns `404`; valid token that is not owner/member returns `403` (intentional, not anti-enumeration). Owner-only actions (delete pantry, create invites, remove members) return `403` for non-owners. Invite tokens are never logged.
+All routes require the `X-Pantry-Token` header (UUID v4) via `get_pantry_context` or `get_current_pantry` (see [Pantry Sharing](../concepts/pantry-sharing.md)). Missing or malformed header returns `401`; unknown pantry returns `404`; valid token that is not owner/member returns `403` (intentional, not anti-enumeration). Owner-only actions (delete pantry, create invites, remove members) return `403` for non-owners. Invite tokens are never logged. Request/response shapes are defined in [Backend Schemas](../modules/backend-schemas.md). Validation (`422`) bodies use the uniform `{"detail": str, "message": str}` shape from `validation_exception_handler` in `backend/main.py` for iOS `[String: String]` compatibility.
 
 ### GET /api/pantries
 
@@ -46,13 +47,13 @@ All routes require the `X-Pantry-Token` header (UUID v4) via `get_pantry_context
 
 ### DELETE /api/pantries/{pantry_id}
 
-**Description**: Delete a pantry including members (cascade). Owner only via `_is_owner`.
+**Description**: Delete a pantry with an explicit 6-table cascade. Owner only via `_is_owner`. Deletes child rows before `db.delete(pantry)` in order `ShoppingListItem` → `ShoppingList` → `InventoryItem` → `ConsumptionEvent` → `Invite` → `PantryMember` → `Pantry` (all with `synchronize_session=False` in a single transaction). Explicit deletes are required because SQLite has no `PRAGMA foreign_keys=ON`, so DB-level `ondelete=CASCADE` is inert; previously orphans survived delete and broke recreate via rowid reuse. Verified by `backend/tests/test_pantry_delete_cleanup.py` (zero orphans, recreate same name returns `201`).
 
 **Request**: Path `pantry_id: int`. Header `X-Pantry-Token`.
 
 **Response**: `204` empty body. `403` `{"detail": "Solo l'owner può eliminare la pantry"}` for non-owners. `404` when the pantry does not exist. `500` on persistence failure.
 
-**Source**: `backend/routes/pantries.py:115-136`
+**Source**: `backend/routes/pantries.py:123-169`
 
 ### POST /api/pantries/{pantry_id}/invites
 

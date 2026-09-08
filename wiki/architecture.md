@@ -17,7 +17,7 @@ source_files:
   - "ios/Inventario/Features/Scan/ScanSessionStore.swift"
   - "ios/Inventario/Components/CachedThumbnail.swift"
 created: "2026-06-24"
-last_updated: "2026-09-05"
+last_updated: "2026-09-06"
 ---
 
 # Architecture
@@ -63,7 +63,7 @@ graph TD
     MODELS --> DB
 ```
 
-The iOS stores are the only callers of the API. Every pantry-scoped request carries an `X-Pantry-Token` header validated by the auth dependencies. Persistence is SQLAlchemy over SQLite with Alembic migrations. The scan/contribute services talk to Open Food Facts.
+The iOS stores are the only callers of the API. Every pantry-scoped request carries an `X-Pantry-Token` header validated by the auth dependencies. Persistence is SQLAlchemy over SQLite with Alembic migrations. The scan/contribute services talk to OFF via the v3 universal API (food|beauty|petfood|product).
 
 ## Back-End Layering
 
@@ -97,7 +97,7 @@ Models (`backend/models.py`): `Pantry`, `PantryMember` (owner/editor roles), `In
 
 The offline stack around it:
 
-- `OutboxStore` — FIFO persistent queue (`Application Support`, atomic JSON writes) of create/consume/update/delete mutations with per-entry `pantryId` so replay targets the originating pantry even after a pantry switch; temp negative IDs are remapped to server IDs after a successful create replay; replay policy is drop on 4xx/decode, stop on transport/offline/5xx (see [iOS Offline Outbox](./concepts/ios-offline-outbox.md)).
+- `OutboxStore` — FIFO persistent queue (`Application Support`, atomic JSON writes) of create/consume/update/delete mutations with per-entry `pantryId` so replay targets the originating pantry even after a pantry switch; temp negative IDs are remapped to server IDs after a successful create replay; replay policy is drop on 404/409/other 4xx/decode, stop on 401/403/408/429/transport/offline/5xx (see [iOS Offline Outbox](./concepts/ios-offline-outbox.md)).
 - `LocalInventoryCache` — per-pantry JSON snapshot in `Caches` for instant cold start and offline reading; missing or corrupt files resolve to nil and are removed.
 - `ConnectivityMonitor` — `NWPathMonitor` wrapper publishing `isOnline`; the store exposes `isOffline` and replays the outbox when connectivity returns.
 - `ScanSessionStore` — checkout-style scan queue with 1.5 s per-barcode debounce, duplicate suppression, 20-item cap, and per-item pending/loading/found/notFound/error states (see [iOS Scan Session](./components/ios-scan-session.md)).
@@ -130,7 +130,7 @@ sequenceDiagram
     Store->>Outbox: remove entry, remap temp IDs
 ```
 
-Online mutations follow the same path without the enqueue/replay steps. Reads (`GET /api/inventory`) populate both the store and the disk snapshot. Request lifecycle on the back-end: router → Pydantic validation (422 on failure) → pantry auth dependency (401/403/404) → service call → ORM commit including the ledger insert → serialized response.
+Online mutations follow the same path without the enqueue/replay steps. Reads (`GET /api/inventory`) populate both the store and the disk snapshot. Request lifecycle on the back-end: router → uniform 422 handler (`{"detail": str, "message": str}` for iOS `[String: String]` compat) → pantry auth dependency (401/403/404) → service call → ORM commit including the ledger insert → serialized response.
 
 ## Key Design Decisions
 

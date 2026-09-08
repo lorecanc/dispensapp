@@ -107,4 +107,5 @@ async def scan_barcode(body: ScanRequest, db: Session = Depends(get_db)):
         suggested_category=suggested,
         source=result.get("source"),
         product_type=result.get("product_type"),
+        pnns_group=result.get("pnns_group"),
     )

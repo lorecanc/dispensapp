@@ -531,7 +531,8 @@ struct ScanPreviewSheet: View {
             offTags: scanResult?.categories,
             storageLocation: storageTouched ? selectedStorage : nil,
             source: scanResult?.source,
-            productType: scanResult?.productType
+            productType: scanResult?.productType,
+            pnnsGroup: scanResult?.pnnsGroup
         )
         isSaving = false
         if let error = store.error {

@@ -250,6 +250,27 @@ def test_scan_tuna_petfood_defers_none():
     assert resp.json()["suggested_category"] is None
 
 
+def test_scan_propagates_pnns_group():
+    """pnns_group da fetch_product esposto in ScanResponse."""
+    payload = {
+        "barcode": "8076809514381",
+        "name": "Latte Intero",
+        "brand": None,
+        "categories": ["organic", "vegan"],
+        "pnns_group": "milk-and-dairy-products",
+        "image_url": None,
+    }
+
+    with patch("backend.routes.scan.fetch_product") as mock_fetch:
+        mock_fetch.return_value = payload
+        resp = _call_scan()
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["found"] is True
+    assert body["pnns_group"] == "milk-and-dairy-products"
+
+
 def test_scan_forwards_source_to_suggest_category():
     """Wiring: scan inoltra source a suggest_category (oggi chiamata a 2 args)."""
     payload = {

@@ -5,14 +5,14 @@ category: "modules"
 source_files:
   - "backend/tests/"
 created: "2026-06-24"
-last_updated: "2026-09-05"
+last_updated: "2026-09-06"
 ---
 
 # Backend Tests
 
 ## Purpose
 
-Validate the backend layers — HTTP endpoints (`/api/scan`, `/api/scan/contribute`, `/api/scan/contribute/photo`, `/api/inventory`, `/api/suggestions`, shopping lists) and the [Open Food Facts service](./backend-service-off.md) — with mocked external calls so no real network requests are made. Suite is green: **95 passed**.
+Validate the backend layers — HTTP endpoints (`/api/scan`, `/api/scan/contribute`, `/api/scan/contribute/photo`, `/api/inventory`, `/api/suggestions`, `/api/categories`, shopping lists, pantries) and the [Open Food Facts service](./backend-service-off.md) — with mocked external calls so no real network requests are made. Suite was green with **95 passed** at the previous watermark and has since grown with 8+ new/expanded suites (datetime serialization, pantry delete cleanup, validation-error shape, T9 compartments, scan source fields, OFF v3 twins/retry, contribute `product_type`, categories/storage/compartment/inventory-storage).
 
 ## Test Framework
 
@@ -34,7 +34,7 @@ Both `pytest` and `pytest-asyncio` are declared in `requirements.txt` under `# d
 .venv/bin/pytest backend/tests/ -q -k contribute # subset by name
 ```
 
-DB-backed suites (`test_pagination.py`, `test_suggestions.py`, `test_validation.py`, `test_shopping.py`, `test_expiration.py`) use the `client` / `db_session` fixtures from `conftest.py`: each test gets a fresh in-memory SQLite DB with `get_db` overridden, so tests are isolated and need no external database.
+DB-backed suites (`test_pagination.py`, `test_suggestions.py`, `test_validation.py`, `test_shopping.py`, `test_expiration.py`, `test_categories.py`, `test_inventory_storage.py`, `test_pantry_delete_cleanup.py`, `test_t9_compartment_inventory.py`, `test_validation_errors.py`) use the `client` / `db_session` fixtures from `conftest.py`: each test gets a fresh in-memory SQLite DB with `get_db` overridden, so tests are isolated and need no external database.
 
 ## Key Files
 
@@ -45,7 +45,14 @@ DB-backed suites (`test_pagination.py`, `test_suggestions.py`, `test_validation.
 | `backend/tests/test_off.py` | Unit tests for `backend.services.off.fetch_product` |
 | `backend/tests/test_contribute.py` | Tests for `POST /api/scan/contribute` + `contribute_product` service |
 | `backend/tests/test_contribute_photo.py` | Tests for `POST /api/scan/contribute/photo` + `upload_product_image` service |
-| `backend/tests/test_off_upload_gap_red.py` | Red-phase reproduction tests for OFF upload gaps (multipart part name, lang truncation, string status) |
+| `backend/tests/test_off_upload_gap_red.py` | Regression guards for OFF upload gaps (multipart part name, lang truncation, string status) — formerly red-phase, now green |
+| `backend/tests/test_datetime_serialization.py` | Naive-UTC serialization + `format: date-time` schema guards for all `*Out` models |
+| `backend/tests/test_pantry_delete_cleanup.py` | `DELETE /api/pantries/{id}` orphan cleanup + recreate-after-delete |
+| `backend/tests/test_validation_errors.py` | `RequestValidationError` `{"detail","message"}` string shape for iOS |
+| `backend/tests/test_t9_compartment_inventory.py` | Non-food compartment inference + `source`/`product_type` persistence |
+| `backend/tests/test_categories.py` | `GET /api/categories` storage-location fields |
+| `backend/tests/test_compartment_suggestion.py` | Pure `storage_for_category` / `suggest_category` unit tests |
+| `backend/tests/test_inventory_storage.py` | Inventory create/patch: category auto-assign, `storage_location` echo, `off_category_tags` limits |
 | `backend/tests/test_pagination.py` | `GET /api/inventory` limit/offset pagination |
 | `backend/tests/test_suggestions.py` | `GET /api/suggestions` auth, prefix search, ordering, limits |
 | `backend/tests/test_validation.py` | Pydantic/endpoint validation: quantity, barcode, name |
@@ -67,6 +74,11 @@ Tests the [`POST /api/scan` endpoint](./backend-routes-scan.md). Uses FastAPI's 
 | `test_scan_not_found` | `fetch_product` returns `{"found": False}` → 200 with `found: false` and Italian "non trovato" message |
 | `test_scan_network_error` | `fetch_product` returns `None` → 502 with "comunicazione" message |
 | `test_scan_category_normalization` | Categories arrive pre-normalized (no `en:` prefix) → 200, `found: true` |
+| `test_scan_suggested_category_from_pnns_group` | Unmappable tags + `pnns_group` milk-and-dairy → `suggested_category: fresh-milk` |
+| `test_scan_suggested_category_null_when_nothing_maps` | No mappable tag and no `pnns_group` → `suggested_category: null` |
+| `test_scan_not_found_suggested_category_null` | `found: false` branch still carries `suggested_category: null` |
+| `test_scan_propagates_source_product_type` | `source`/`product_type` from `fetch_product` echoed in `ScanResponse` (e.g. beauty) |
+| `test_scan_non_food_without_pnns` | Non-food without `pnns_group` → `found: true`, no crash |
 
 ### Open Food Facts service tests (`test_off.py`)
 
@@ -79,6 +91,19 @@ Uses `pytest.mark.asyncio`. Mocks `httpx.AsyncClient` at the class level to cont
 | `test_fetch_product_not_found_no_product` | OFF returns `status: 1` but `product` is `None` → `{"found": False}` |
 | `test_fetch_product_network_error` | `httpx.HTTPError` raised → returns `None` |
 | `test_fetch_product_categories_normalization` | `en:` prefix stripped from `categories_tags` |
+| `test_fetch_product_v3_url_and_product_type_all` | Universal v3 URL `/api/v3/product/<barcode>` with `?product_type=all` |
+| `test_fetch_product_url_v3_without_v0` | v3 URL contains no `v0` segment |
+| `test_fetch_product_v3_success_envelope_found` | Live v3 envelope (`status: success`, `product_found`) → found with name |
+| `test_fetch_product_v3_failure_envelope_not_found` | Live v3 envelope (`status: failure`, `product_not_found`) → `{"found": False}` |
+| `test_fetch_product_pnns_free_text` / `..._with_comma` / `..._tag_prefix` | `pnns_groups_1` free text slugified (`Milk and dairy products` → `milk-and-dairy-products`, comma stripped, `en:` prefix stripped) |
+| `test_fetch_product_opf_source_product` / `..._obf_source_beauty` / `..._non_food_no_pnns` | `product_type` propagated as `source`/`product_type`; non-food without PNNS → `pnns_group: None` |
+| `test_fetch_product_retry_once_on_500_then_none` / `..._on_timeout_then_none` | Persistent 500/timeout → exactly 1 retry (2 GETs) then `None` |
+| `test_fetch_product_no_retry_on_404` / `..._on_found_false` | 404 or `status: 0` → no retry (1 GET) |
+| `test_fetch_product_read_user_agent_present` | Read client sends `User-Agent` with app name/version |
+| `test_fetch_product_invalid_barcode_no_network` | Short/non-digit barcode → `None` without network call |
+| `test_fetch_product_categories_tags_none` / `..._string` / `..._mixed` | `categories_tags` `None`/string → `[]`; mixed list keeps strings only, strips language prefix |
+| `test_fetch_product_logs_requested_vs_resolved` | Log distinguishes requested vs resolved `product_type` |
+| `test_off_v3_base_url_allowlist_reject` | Non-allowlisted or `http` `OFF_V3_BASE_URL` falls back to default |
 | `test_fetch_product_uses_shared_client` | Service reuses the shared client instead of creating one per call |
 
 ### Contribute tests (`test_contribute.py`)
@@ -95,6 +120,10 @@ Tests `POST /api/scan/contribute` (endpoint-level, `contribute_product` mocked) 
 | `test_contribute_invalid_barcode_returns_422` | Non-numeric barcode → 422, OFF never called |
 | `test_contribute_product_sends_add_fields_and_user_agent` | POST to `product_jqm2.pl` uses only `add_*` fields (`add_brands`, `add_categories`), `product_name_it`, and a `User-Agent` with app name/version |
 | `test_contribute_product_never_logs_password` | On transport error, logs contain no OFF password |
+| `test_resolve_write_url_per_host_twins` | Per-host write twins: beauty → `world.openbeautyfacts.org`, petfood → `world.openpetfoodfacts.org`, product → `world.openproductsfacts.org` |
+| `test_contribute_product_sends_product_type_in_form` | Write form includes `product_type` (twin host via resolver) |
+| `test_resolve_write_url_staging_food_fallback` | Staging `.net`: any non-food `product_type` falls back to food staging host |
+| `test_contribute_route_forwards_product_type` | `POST /api/scan/contribute` forwards `product_type` to the service |
 
 ### Contribute-photo tests (`test_contribute_photo.py`)
 
@@ -118,10 +147,13 @@ Tests `POST /api/scan/contribute/photo` multipart endpoint plus service-level `u
 | `test_photo_rate_limited_returns_429` | 11th upload from same client → 429 |
 | `test_upload_product_image_posts_multipart` | Service POSTs multipart to `product_image_upload.pl` with `code`, `imagefield`, credentials, `User-Agent`, and the `imgupload_{field}` file part |
 | `test_upload_product_image_never_logs_password` | Transport error logs never contain the OFF password |
+| `test_upload_product_image_same_host_no_product_type` | Image upload reuses the write host with no `product_type` in the form |
+| `test_upload_resolve_write_url_twins_share_contribute_host` | Upload shares the contribute resolver: beauty/petfood/product twins |
+| `test_photo_route_forwards_product_type` | `POST /api/scan/contribute/photo` forwards `product_type` to the upload service |
 
-### OFF upload gap red tests (`test_off_upload_gap_red.py`)
+### OFF upload gap tests (`test_off_upload_gap_red.py`)
 
-Red-phase reproduction tests for OFF upload-spec gaps (written to fail before the executor fix, pass after). All mock `httpx.AsyncClient`; never touch the real network.
+Regression guards for OFF upload-spec gaps (originally red-phase reproductions, now green). All mock `httpx.AsyncClient`; never touch the real network.
 
 | Test | Description |
 |------|-------------|
@@ -161,6 +193,77 @@ Seeds `ScanHistory` rows and exercises `GET /api/suggestions` (see [Suggestions]
 | Quantity | `0`, `1000`, negative → 422 on `POST /api/inventory` and `/api/inventory/manual`; schema-level boundary test (1 and 999 valid, 0 and 1000 raise) |
 | Barcode | Too short, too long, alphabetic → 422 on `POST /api/scan` and inventory create |
 | Name | Empty or whitespace-only → 422 on inventory create, manual create, and shopping-list create; missing name → 422 |
+
+### Datetime serialization tests (`test_datetime_serialization.py`)
+
+No DB needed: `*Out` models are built directly. Pins the iOS decoder contract — naive UTC datetimes must serialize with a `+00:00` suffix (see [iOS models](../concepts/ios-models.md)).
+
+| Test | Description |
+|------|-------------|
+| `test_out_models_serialize_naive_utc_with_timezone_suffix` (7 cases) | `InventoryOut`, `ConsumptionEventOut`, `PantryOut`, `InviteOut` (`expires_at` + `created_at`), `MemberOut` (`joined_at`), `ShoppingListItemOut`, `ShoppingListOut` serialize naive `2026-09-06T10:02:00` as `2026-09-06T10:02:00+00:00` |
+| `test_serialization_schema_keeps_date_time_format` (7 cases) | Serialization JSON schema keeps `type: string` + `format: date-time` so the OpenAPI `date-time` marker survives the `UtcDatetime` return-type elaboration |
+
+### Pantry delete cleanup tests (`test_pantry_delete_cleanup.py`)
+
+Covers `DELETE /api/pantries/{id}` (see [Pantries](../api/pantries.md)): SQLite has no `PRAGMA foreign_keys=ON`, so `ondelete=CASCADE` is inert and the route must delete child rows explicitly.
+
+| Test | Description |
+|------|-------------|
+| `test_delete_pantry_cleans_all_child_tables` | Seeded pantry (2 inventory items, shopping list + item, extra member, invite, consumption event) → 204 with zero orphans in all 6 child tables |
+| `test_recreate_pantry_same_name_after_delete_returns_201` | Recreate with the same name after delete → 201 (no rowid-reuse resurrection or 500) |
+
+### Validation-error shape tests (`test_validation_errors.py`)
+
+| Test | Description |
+|------|-------------|
+| `test_scan_invalid_barcode_returns_string_detail` | `POST /api/scan` with non-numeric barcode → 422 with `{"detail": str, "message": str}` (iOS decodes error bodies as `[String: String]`) |
+
+### T9 compartment + inventory source tests (`test_t9_compartment_inventory.py`)
+
+| Test | Description |
+|------|-------------|
+| `test_infer_shampoos_to_igiene_casa` | `en:shampoos` → `Igiene e Casa` |
+| `test_infer_dog_food_to_dispensa_secca` | `en:dog-food` (tags or name) → `Dispensa Secca` |
+| `test_inventory_source_product_type_persisted` | `POST /api/pantries/1/inventory` with `source`/`product_type: beauty` persists and round-trips via `GET` (see [OFF integration](../concepts/off-integration.md)) |
+
+### Categories tests (`test_categories.py`)
+
+Covers `GET /api/categories` (see [Category registry](../concepts/category-registry.md)).
+
+| Test | Description |
+|------|-------------|
+| `test_categories_storage_location_non_null_for_every_entry` | Every entry exposes non-null `storage_location` within the allowed labels |
+| `test_categories_storage_location_coherent` | Spot checks: yogurts → `frigo`, frozen-foods → `freezer`, pasta → `dispensa` |
+| `test_categories_storage_location_labels_top_level` | Top-level `storage_location_labels` equals `{frigo, freezer, dispensa}` |
+| `test_categories_preexisting_fields_unchanged` | Entry keys, labels, compartments, shelf-life payloads unchanged after the addition |
+
+### Compartment suggestion tests (`test_compartment_suggestion.py`)
+
+Pure unit tests for `backend.services.compartment.storage_for_category` / `suggest_category` (see [Category registry](../concepts/category-registry.md)).
+
+| Test | Description |
+|------|-------------|
+| `test_storage_yogurts_frigo` / `test_storage_frozen_freezer` / `test_storage_pasta_dispensa` | Known categories map to `frigo` / `freezer` / `dispensa` |
+| `test_storage_none_fallback_dispensa` / `test_storage_unknown_fallback_dispensa` | `None` or unknown → `dispensa` fallback |
+| `test_suggest_frozen_override_wins_even_if_canned_first` | Frozen override wins even when canned appears first |
+| `test_suggest_canned_without_frozen` | Canned without frozen → `canned-vegetables` |
+| `test_suggest_first_tag_in_compartment_map` | Unknown tags skipped (`italian-cuisine`), first mapped tag wins (`pasta`) |
+| `test_suggest_tags_win_over_pnns` | Tags win over `pnns_group` |
+| `test_suggest_pnns_fallback_milk` / `test_suggest_pnns_fallback_fish_meat_eggs` | PNNS fallback: milk-and-dairy → `fresh-milk`, fish-meat-eggs → `meat` |
+| `test_suggest_nothing_matches_returns_none` | Unmapped tags + excluded PNNS (`composite-foods`) → `None` |
+| `test_suggest_ignores_non_string_tags` / `test_suggest_empty_pnns_skipped` | Defensive runtime: non-string tags ignored, empty PNNS skipped |
+
+### Inventory storage tests (`test_inventory_storage.py`)
+
+DB-backed via `client` / `db_session` fixtures (see [Inventory](../api/inventory.md)).
+
+| Test | Description |
+|------|-------------|
+| `test_create_auto_assigns_category_from_off_tags` | `off_category_tags: [en:yogurts]` auto-assigns `category: yogurts`, confirmed via single-item `GET` |
+| `test_create_explicit_category_wins_over_off_tags` | Explicit `category: pasta` wins over OFF tags |
+| `test_create_storage_location_echo` | Supplied `storage_location: freezer` echoed back; omitted field → `null` (derivation left to the client by design) |
+| `test_patch_storage_location_not_reset_by_later_patch` | Later `PATCH` without the field does not reset it (`exclude_unset`) |
+| `test_off_category_tags_too_many_422` / `test_off_category_tag_too_long_422` | >50 tags or tag >200 chars → 422 on both barcode and manual create endpoints |
 
 ### Shopping, expiration, CORS, markdown-escape
 
@@ -224,7 +327,19 @@ When `httpx.HTTPError` is raised, `fetch_product` returns `None`. The scan layer
 OFF returns categories with an `en:` prefix (e.g., `en:pasta`). The service strips this prefix before returning. Both `test_off.py` and `test_scan.py` assert that the `en:` prefix is absent from the final output.
 
 ### Contribute write-gate ordering
-Guards are checked before any OFF call: disabled flag → 403, missing consent → 400, invalid barcode → 422. Only then is the service invoked, and its failures surface as 502. Photo upload adds content checks (size → 413, type/magic bytes → 415) and per-client rate limiting (→ 429).
+Schema validation rejects malformed barcodes (→ 422) before the handler runs. Inside the handler, guards are checked before any OFF call in this order: missing consent → 400, disabled flag → 403. Only then is the service invoked, and its failures surface as 502. Photo upload adds content checks (size → 413, type/magic bytes → 415) and per-client rate limiting (→ 429).
 
 ### Suggestions auth
 `GET /api/suggestions` requires pantry ownership: missing, malformed, or unknown tokens all return 401, matching the behavior of other data routes via `get_pantry_context`.
+
+## Related iOS Suites (No Dedicated Wiki Home)
+
+These `ios/InventarioTests/` suites have no `ios-tests.md` page by design — they are referenced here with links to the concept pages that own the behavior:
+
+| iOS Suite | What It Pins | Concept Owner |
+|-----------|--------------|---------------|
+| `InventoryPagingRedTests.testListScopedCollectsFullPantryBeyondBackendCap` | `listScoped` transparently loops limit/offset so a 70-item pantry beyond the backend `limit=50` cap is fully collected | [iOS networking](../concepts/ios-networking.md) |
+| `InventoryDateDecodingTests` (6 tests) | `DateDecodingStrategy.inventoryDate` decodes naive timestamps as UTC, plus Zulu/offset/fractional/date-only variants — the client side of the `test_datetime_serialization` contract | [iOS models](../concepts/ios-models.md) |
+| `OutboxStoreTests.testDecisionDoesNotDropRateLimitAndAuthErrors` | Replay policy: 429/401/403 → `.stop` (retryable, never silently dropped); 400/404/409/422 + decoding errors → `.drop`; offline/transport/5xx → `.stop` | [iOS offline outbox](../concepts/ios-offline-outbox.md) |
+| `APIClientBodyTests.testInventoryBodyCapsOffTagsToBackendLimits` + omit/empty variants | Request body pre-trims `off_category_tags` to backend limits (≤50 tags, ≤200 chars) — the client side of the `test_inventory_storage` 422 boundaries | [iOS networking](../concepts/ios-networking.md) |
+| `APIClientBodyTests.testInventoryBodyPreservesPickedCalendarDayEastOfUTC` | Local-midnight `DatePicker` day (e.g. Europe/Rome 2026-09-06) is sent as `2026-09-06`, not shifted to the previous day by the GMT outbound formatter | [iOS networking](../concepts/ios-networking.md) |

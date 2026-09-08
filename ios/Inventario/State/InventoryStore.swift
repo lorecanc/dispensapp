@@ -295,11 +295,12 @@ final class InventoryStore {
         offTags: [String]? = nil,
         storageLocation: String? = nil,
         source: String? = nil,
-        productType: String? = nil
+        productType: String? = nil,
+        pnnsGroup: String? = nil
     ) async {
         error = nil
         if isOffline {
-            enqueueLocalCreate(barcode: barcode, name: name, brand: brand, expirationDate: expirationDate, category: category, imageURL: imageURL, quantity: quantity, offTags: offTags, storageLocation: storageLocation, source: source, productType: productType)
+            enqueueLocalCreate(barcode: barcode, name: name, brand: brand, expirationDate: expirationDate, category: category, imageURL: imageURL, quantity: quantity, offTags: offTags, storageLocation: storageLocation, source: source, productType: productType, pnnsGroup: pnnsGroup)
             return
         }
         do {
@@ -315,7 +316,8 @@ final class InventoryStore {
                 offTags: offTags,
                 storageLocation: storageLocation,
                 source: source,
-                productType: productType
+                productType: productType,
+                pnnsGroup: pnnsGroup
             )
             guard !Task.isCancelled else { return }
             items.append(item)
@@ -324,7 +326,7 @@ final class InventoryStore {
             if Task.isCancelled { return }
             // Rete caduta a metà tentativo: ottimistico + outbox, niente banner.
             if case .offline = classify(error) {
-                enqueueLocalCreate(barcode: barcode, name: name, brand: brand, expirationDate: expirationDate, category: category, imageURL: imageURL, quantity: quantity, offTags: offTags, storageLocation: storageLocation, source: source, productType: productType)
+                enqueueLocalCreate(barcode: barcode, name: name, brand: brand, expirationDate: expirationDate, category: category, imageURL: imageURL, quantity: quantity, offTags: offTags, storageLocation: storageLocation, source: source, productType: productType, pnnsGroup: pnnsGroup)
                 return
             }
             setError(from: error)
@@ -481,7 +483,8 @@ final class InventoryStore {
         offTags: [String]? = nil,
         storageLocation: String? = nil,
         source: String? = nil,
-        productType: String? = nil
+        productType: String? = nil,
+        pnnsGroup: String? = nil
     ) {
         let tempId = outbox.nextTempId()
         let item = InventoryItem(
@@ -509,7 +512,8 @@ final class InventoryStore {
                 expirationDate: expirationDate, category: category,
                 imageURL: imageURL, quantity: quantity, tempId: tempId,
                 offTags: offTags, storageLocation: storageLocation,
-                source: source, productType: productType
+                source: source, productType: productType,
+                pnnsGroup: pnnsGroup
             )),
             pantryId: selectedPantryId
         )
@@ -668,7 +672,8 @@ final class InventoryStore {
                     brand: p.brand, expirationDate: p.expirationDate,
                     category: p.category, imageURL: p.imageURL, quantity: p.quantity,
                     offTags: p.offTags, storageLocation: p.storageLocation,
-                    source: p.source, productType: p.productType
+                    source: p.source, productType: p.productType,
+                    pnnsGroup: p.pnnsGroup
                 )
             } else {
                 item = try await client.createManualScoped(

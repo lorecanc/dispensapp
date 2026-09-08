@@ -66,6 +66,7 @@ class ScanResponse(BaseModel):
     message: Optional[str] = None
     source: Optional[str] = None
     product_type: Optional[str] = None
+    pnns_group: Optional[str] = Field(default=None, max_length=64)
 
 
 class InventoryCreate(BaseModel):

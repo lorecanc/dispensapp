@@ -5,7 +5,7 @@ category: "modules"
 source_files:
   - "backend/models.py"
 created: "2026-06-24"
-last_updated: "2026-09-05"
+last_updated: "2026-09-06"
 ---
 
 # Backend Models
@@ -104,6 +104,9 @@ Index: `ix_pantry_members_member_token` on `member_token` for reverse lookup (al
 | `pantry_id` | `Integer` | `ForeignKey("pantries.id", ondelete="CASCADE")`, `nullable=True`, `index=True` | `NULL` | Owning pantry; nullable for legacy rows |
 | `created_by_token` | `String(36)` | `nullable=True` | `NULL` | Creator token |
 | `compartment` | `String(32)` | `nullable=True` | `NULL` | Storage compartment |
+| `storage_location` | `String(16)` | `nullable=True` | `NULL` | Storage location override; `NULL` means derived from category |
+| `source` | `String` | `nullable=True` | `NULL` | Provenance for OFF badge/filters; nullable, no backfill |
+| `product_type` | `String` | `nullable=True` | `NULL` | Product type for OFF badge/filters; nullable, no backfill |
 
 Indexes: `ix_inventory_items_pantry_expiration` on (`pantry_id`, `expiration_date`); `ix_inventory_items_pantry_created` on (`pantry_id`, `created_at`).
 
@@ -115,6 +118,8 @@ Indexes: `ix_inventory_items_pantry_expiration` on (`pantry_id`, `expiration_dat
 | `barcode` | `String` | `nullable=False`, `unique=True`, `index=True` | — | Cache key |
 | `name` | `String` | `nullable=False` | — | Last resolved product name |
 | `category` | `String` | `nullable=True` | `NULL` | Last resolved category |
+| `source` | `String` | `nullable=True` | `NULL` | Provenance for OFF badge/filters; nullable, no backfill |
+| `product_type` | `String` | `nullable=True` | `NULL` | Product type for OFF badge/filters; nullable, no backfill |
 | `times_scanned` | `Integer` | `nullable=False` | `1` (Python + `server_default`) | Hit counter |
 | `last_scanned_at` | `DateTime` | `nullable=False` | `lambda: datetime.now(timezone.utc)` | Last hit timestamp (UTC) |
 
@@ -141,6 +146,8 @@ Index: `ix_consumption_events_pantry_created` on (`pantry_id`, `created_at`). No
 - **`pantry_id` foreign keys**: `PantryMember`, `Invite`, `ShoppingList`, `InventoryItem`, and `ConsumptionEvent` all reference `pantries.id` with `ondelete="CASCADE"`, so deleting a pantry removes its memberships, invites, lists, items, and events.
 - **`item_id` nulling**: `ConsumptionEvent.item_id` uses `ondelete="SET NULL"` so history survives item deletion via `name_snapshot`/`barcode`.
 - **Nullable `InventoryItem.pantry_id`**: left nullable only for pre-multi-pantry legacy rows; all new writes set it.
+- **`storage_location`**: `String(16)`, nullable; `NULL` means the location is derived from the category by design (no backfill).
+- **`source` / `product_type`**: `String`, nullable on both `inventory_items` and `scan_history`; no backfill, so legacy rows stay `NULL`. Schema evolution for these columns is tracked in the [database migrations](./backend-database.md#migrations).
 - **Pydantic schemas**: the `InventoryItem` ORM model maps to [Pydantic schemas](./backend-schemas.md) with `from_attributes=True` and computed status at read time.
 
 ## Dependencies
