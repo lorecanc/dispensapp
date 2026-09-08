@@ -46,11 +46,19 @@ struct Suggestion: Codable, Identifiable, Equatable {
     let category: String?
     let timesScanned: Int
 
-    var id: String { barcode }
+    var id: String { barcode.isEmpty ? "name:" + name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() : barcode }
 
     enum CodingKeys: String, CodingKey {
         case barcode, name, category
         case timesScanned = "times_scanned"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        barcode = try container.decodeIfPresent(String.self, forKey: .barcode) ?? ""
+        name = try container.decode(String.self, forKey: .name)
+        category = try container.decodeIfPresent(String.self, forKey: .category)
+        timesScanned = try container.decode(Int.self, forKey: .timesScanned)
     }
 }
 

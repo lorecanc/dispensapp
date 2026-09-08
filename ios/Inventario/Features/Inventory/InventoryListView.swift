@@ -20,6 +20,10 @@ struct InventoryListView: View {
     @State private var showManual = false
     @State private var showJoinPantry = false
     @State private var pendingAdd: AddMethod?
+    @State private var expandedCompartments: Set<String> = Set(ItemStatus.allCases.flatMap { status in Compartment.supermarketOrder.map { "\(status.rawValue)#\($0.rawValue)" } })
+    @State private var pantrySuggestions: [Suggestion] = []
+    @State private var manualPrefillName = ""
+    @State private var manualPrefillCategory = ""
 
     /// Scelta dal foglio "Aggiungi prodotto". L'azione effettiva è rimandata
     /// alla chiusura del foglio (onChange su showAddChoice) per evitare la
@@ -120,6 +124,29 @@ struct InventoryListView: View {
         Compartment.supermarketOrder
     }
 
+    private func compartment(for item: InventoryItem) -> Compartment {
+        Compartment.inferCompartment(name: item.name, category: item.category)
+    }
+
+    private func compartmentGroups(for items: [InventoryItem]) -> [(Compartment, [InventoryItem])] {
+        let grouped = Dictionary(grouping: items, by: compartment(for:))
+        return Compartment.supermarketOrder.compactMap { comp in
+            guard let arr = grouped[comp], !arr.isEmpty else { return nil }
+            return (comp, arr)
+        }
+    }
+
+    private func binding(for status: ItemStatus, comp: Compartment) -> Binding<Bool> {
+        let key = "\(status.rawValue)#\(comp.rawValue)"
+        return Binding(
+            get: { expandedCompartments.contains(key) },
+            set: { expanded in
+                if expanded { expandedCompartments.insert(key) }
+                else { expandedCompartments.remove(key) }
+            }
+        )
+    }
+
     var body: some View {
         @Bindable var storeBindable = store
 
@@ -127,97 +154,7 @@ struct InventoryListView: View {
             Color.pantryCream.ignoresSafeArea()
 
             List {
-                // MARK: Compartment filter chips — single source Compartment.supermarketOrder
-                Section {
-                    compartmentFilterBar
-                        .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 4, trailing: 0))
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                }
-
-                Section {
-                    addProductPill
-                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                }
-
-                if groupedItems.isEmpty {
-                    if store.items.isEmpty {
-                        EmptyStateView()
-                            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
-                    } else {
-                        // No results per search/filter — reuse EmptyState con messaggio diverso
-                        EmptyStateView(
-                            imageName: "magnifyingglass",
-                            title: "Nessun risultato",
-                            message: "Prova a cambiare ricerca o filtri."
-                        )
-                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                    }
-                } else {
-                    ForEach(groupedItems, id: \.0) { status, items in
-                        Section {
-                            ForEach(items) { item in
-                                InventoryRowView(item: item)
-                                    .contentShape(Rectangle())
-                                    .onTapGesture {
-                                        showDetailItem = item
-                                    }
-                                    // T8: consumo atomico server-side; no full-swipe per gesto intuitivo.
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                        Button(role: .destructive) {
-                                            Task { await store.delete(id: item.id) }
-                                        } label: {
-                                            Label("Elimina", systemImage: "trash")
-                                        }
-                                        .tint(Color.statusExpired)
-                                        .accessibilityLabel("Elimina \(item.name)")
-                                        .accessibilityHint("Elimina il prodotto dalla dispensa")
-                                    }
-                                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                                        Button {
-                                            Task { await store.consume(item: item) }
-                                        } label: {
-                                            Label("Consumato", systemImage: "fork.knife")
-                                        }
-                                        .tint(Color.statusFresh)
-                                        .accessibilityLabel("Segna consumato \(item.name)")
-                                        .accessibilityHint("Consuma una unità sul server")
-                                    }
-                                    .contextMenu {
-                                        Button {
-                                            Task { await store.consume(item: item) }
-                                        } label: {
-                                            Label("Consumato", systemImage: "fork.knife")
-                                        }
-                                        .accessibilityLabel("Segna consumato \(item.name)")
-                                        Button(role: .destructive) {
-                                            Task { await store.delete(id: item.id) }
-                                        } label: {
-                                            Label("Elimina", systemImage: "trash")
-                                        }
-                                        .accessibilityLabel("Elimina \(item.name)")
-                                    }
-                                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-                                    .listRowBackground(Color.clear)
-                                    .listRowSeparator(.hidden)
-                            }
-                        } header: {
-                            // HIG: icona+label per stato, colori palette
-                            Label(status.label, systemImage: status.symbol)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(status.color)
-                                .textCase(nil)
-                                .padding(.vertical, 2)
-                        }
-                        .listSectionSeparator(.hidden, edges: .bottom)
-                    }
-                }
+                inventoryListContent
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
@@ -263,52 +200,7 @@ struct InventoryListView: View {
             }
             // Unico Menu overflow puntini.
             ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button {
-                        showManual = true
-                    } label: {
-                        Label("Inserimento manuale", systemImage: "pencil")
-                    }
-
-                    Button {
-                        showInviteMembers = true
-                    } label: {
-                        Label("Invita membri", systemImage: "person.badge.plus")
-                    }
-                    .accessibilityLabel("Invita membri")
-                    .accessibilityHint("Apri inviti e membri: chi ha il link può unirsi")
-
-                    Button {
-                        showJoinPantry = true
-                    } label: {
-                        Label("Unisciti a una dispensa", systemImage: "link.badge.plus")
-                    }
-                    .accessibilityHint("Apri la schermata per unirti a una dispensa con un codice invito")
-
-                    Button {
-                        showSettings = true
-                    } label: {
-                        Label("Impostazioni", systemImage: "gearshape")
-                    }
-
-                    Button {
-                        showHistorySheet = true
-                    } label: {
-                        Label("Storico", systemImage: "clock.arrow.circlepath")
-                    }
-                    .accessibilityLabel("Storico consumati")
-                    .accessibilityHint("Mostra i consumi registrati")
-
-                    Button {
-                        Task { await store.exportMarkdown() }
-                    } label: {
-                        Label("Esporta dispensa", systemImage: "square.and.arrow.up")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
-                .tint(Color.pantryMoss)
-                .accessibilityLabel("Altre azioni dispensa")
+                overflowMenu
             }
         }
         .sheet(isPresented: $showSettings) {
@@ -322,8 +214,11 @@ struct InventoryListView: View {
         }
         .sheet(isPresented: $showManual) {
             NavigationStack {
-                ManualEntryView()
+                ManualEntryView(initialName: manualPrefillName, initialCategory: manualPrefillCategory)
             }
+        }
+        .onChange(of: showManual) { _, presented in
+            if !presented { manualPrefillName = ""; manualPrefillCategory = "" }
         }
         .sheet(isPresented: $showManagePantries) {
             managePantriesSheet
@@ -357,6 +252,7 @@ struct InventoryListView: View {
             await store.fetchPantries()
         }
         .task(id: store.selectedPantryId) {
+            pantrySuggestions = []
             await store.refresh()
         }
         .task(id: filterKey) {
@@ -367,6 +263,68 @@ struct InventoryListView: View {
                 selectedCompartment: selectedCompartment
             )
         }
+        .task(id: searchText) {
+            let trimmed = searchText.trimmingCharacters(in: .whitespaces)
+            guard trimmed.count >= 2 else { pantrySuggestions = []; return }
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled else { return }
+            do {
+                pantrySuggestions = try await APIClient.shared.fetchSuggestions(q: trimmed, scope: "pantry")
+            } catch {
+                pantrySuggestions = []
+            }
+        }
+    }
+
+    // MARK: - Menu overflow (estratto dal body: alleggerisce il type-check)
+
+    private var overflowMenu: some View {
+        Menu {
+            Button {
+                showManual = true
+            } label: {
+                Label("Inserimento manuale", systemImage: "pencil")
+            }
+
+            Button {
+                showInviteMembers = true
+            } label: {
+                Label("Invita membri", systemImage: "person.badge.plus")
+            }
+            .accessibilityLabel("Invita membri")
+            .accessibilityHint("Apri inviti e membri: chi ha il link può unirsi")
+
+            Button {
+                showJoinPantry = true
+            } label: {
+                Label("Unisciti a una dispensa", systemImage: "link.badge.plus")
+            }
+            .accessibilityHint("Apri la schermata per unirti a una dispensa con un codice invito")
+
+            Button {
+                showSettings = true
+            } label: {
+                Label("Impostazioni", systemImage: "gearshape")
+            }
+
+            Button {
+                showHistorySheet = true
+            } label: {
+                Label("Storico", systemImage: "clock.arrow.circlepath")
+            }
+            .accessibilityLabel("Storico consumati")
+            .accessibilityHint("Mostra i consumi registrati")
+
+            Button {
+                Task { await store.exportMarkdown() }
+            } label: {
+                Label("Esporta dispensa", systemImage: "square.and.arrow.up")
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .tint(Color.pantryMoss)
+        .accessibilityLabel("Altre azioni dispensa")
     }
 
     // MARK: - Pantry picker + gestione
@@ -511,6 +469,198 @@ struct InventoryListView: View {
             // Sheet chiusa via swipe durante il Task: niente flag bloccato a true.
             .onDisappear { isCreatingPantry = false }
         }
+    }
+
+    // MARK: - Suggerimenti dispensa (scope pantry)
+
+    private var pantrySuggestionsSection: some View {
+        Section {
+            ForEach(pantrySuggestions) { sug in
+                pantrySuggestionRow(for: sug)
+            }
+        } header: {
+            Label("Suggerimenti", systemImage: "lightbulb")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.pantryMoss)
+                .textCase(nil)
+        }
+        .listSectionSeparator(.hidden, edges: .bottom)
+    }
+
+    private func pantrySuggestionRow(for sug: Suggestion) -> some View {
+        Button {
+            manualPrefillName = sug.name
+            manualPrefillCategory = sug.category ?? ""
+            pantrySuggestions = []
+            searchText = ""
+            showManual = true
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(sug.name)
+                        .foregroundStyle(Color.textPrimary)
+                        .font(.subheadline.weight(.medium))
+                    if let cat = sug.category {
+                        Text(CategoryRegistry.displayName(for: cat))
+                            .font(.caption)
+                            .foregroundStyle(Color.textSecondary)
+                    }
+                }
+                Spacer()
+                Text("×\(sug.timesScanned)")
+                    .font(.caption2)
+                    .foregroundStyle(Color.textSecondary)
+                Image(systemName: "plus.circle.fill")
+                    .foregroundStyle(Color.pantryMoss)
+            }
+        }
+        .accessibilityLabel("\(sug.name), \(sug.timesScanned) scansioni")
+        .accessibilityHint("Tocca per inserire \(sug.name) con inserimento manuale")
+    }
+
+    // MARK: - Sezioni lista (estratte dal body: alleggeriscono il type-check)
+
+    @ViewBuilder
+    private var inventoryListContent: some View {
+        // MARK: Compartment filter chips — single source Compartment.supermarketOrder
+        Section {
+            compartmentFilterBar
+                .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 4, trailing: 0))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+        }
+
+        Section {
+            addProductPill
+                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+        }
+
+        if !pantrySuggestions.isEmpty {
+            pantrySuggestionsSection
+        }
+
+        if groupedItems.isEmpty {
+            inventoryEmptySections
+        } else {
+            ForEach(groupedItems, id: \.0) { status, items in
+                statusSection(status: status, items: items)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var inventoryEmptySections: some View {
+        if store.items.isEmpty {
+            EmptyStateView()
+                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+        } else {
+            // No results per search/filter — reuse EmptyState con messaggio diverso
+            EmptyStateView(
+                imageName: "magnifyingglass",
+                title: "Nessun risultato",
+                message: "Prova a cambiare ricerca o filtri."
+            )
+            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+        }
+    }
+
+    private func statusSection(status: ItemStatus, items: [InventoryItem]) -> some View {
+        Section {
+            ForEach(compartmentGroups(for: items), id: \.0) { compartment, cItems in
+                compartmentGroup(status: status, compartment: compartment, items: cItems)
+            }
+        } header: {
+            // HIG: icona+label per stato, colori palette
+            Label(status.label, systemImage: status.symbol)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(status.color)
+                .textCase(nil)
+                .padding(.vertical, 2)
+        }
+        .listSectionSeparator(.hidden, edges: .bottom)
+    }
+
+    private func compartmentGroup(status: ItemStatus, compartment: Compartment, items: [InventoryItem]) -> some View {
+        DisclosureGroup(isExpanded: binding(for: status, comp: compartment)) {
+            ForEach(items) { item in
+                selectableInventoryRow(for: item)
+            }
+        } label: {
+            compartmentHeader(compartment: compartment, count: items.count)
+        }
+        .tint(Color.pantryMoss)
+    }
+
+    private func compartmentHeader(compartment: Compartment, count: Int) -> some View {
+        HStack(spacing: 8) {
+            Label(compartment.label, systemImage: compartment.icon)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.pantryMoss)
+            Spacer()
+            Text("\(count)")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.textSecondary)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(Color.pantryOat.opacity(0.35)))
+                .overlay(Capsule().strokeBorder(Color.pantryOat, lineWidth: 0.5))
+                .accessibilityLabel("\(count) prodotti in \(compartment.label)")
+        }
+        .contentShape(Rectangle())
+    }
+
+    // MARK: - Riga selezionabile (estratta dal body: alleggerisce il type-check)
+
+    private func selectableInventoryRow(for item: InventoryItem) -> some View {
+        InventoryRowView(item: item)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                showDetailItem = item
+            }
+        // T8: consumo atomico server-side; no full-swipe per gesto intuitivo.
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive) {
+                Task { await store.delete(id: item.id) }
+            } label: {
+                Label("Elimina", systemImage: "trash")
+            }
+            .tint(Color.statusExpired)
+            .accessibilityLabel("Elimina \(item.name)")
+            .accessibilityHint("Elimina il prodotto dalla dispensa")
+        }
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            Button {
+                Task { await store.consume(item: item) }
+            } label: {
+                Label("Consumato", systemImage: "fork.knife")
+            }
+            .tint(Color.statusFresh)
+            .accessibilityLabel("Segna consumato \(item.name)")
+            .accessibilityHint("Consuma una unità sul server")
+        }
+        .contextMenu {
+            Button {
+                Task { await store.consume(item: item) }
+            } label: {
+                Label("Consumato", systemImage: "fork.knife")
+            }
+            .accessibilityLabel("Segna consumato \(item.name)")
+            Button(role: .destructive) {
+                Task { await store.delete(id: item.id) }
+            } label: {
+                Label("Elimina", systemImage: "trash")
+            }
+            .accessibilityLabel("Elimina \(item.name)")
+        }
+        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
     }
 
     // MARK: - T9 storico

@@ -169,8 +169,11 @@ final class ShoppingStore {
             return
         }
         do {
-            suggestions = try await client.fetchSuggestions(q: trimmed)
+            let fresh = try await client.fetchSuggestions(q: trimmed)
+            guard !Task.isCancelled else { return }
+            suggestions = fresh
         } catch {
+            if Task.isCancelled { return }
             // suggerimenti non critici: non sovrascrivere error principale
             suggestions = []
         }

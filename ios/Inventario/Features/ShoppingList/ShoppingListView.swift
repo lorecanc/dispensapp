@@ -1,4 +1,5 @@
 import SwiftUI
+import VisionKit
 
 struct ShoppingListView: View {
     @Environment(InventoryStore.self) private var pantryStore
@@ -13,6 +14,10 @@ struct ShoppingListView: View {
     @State private var pendingDeleteList: ShoppingList?
     @State private var newListName = ""
     @State private var isAddExpanded = false
+    @State private var showAddChoice = false
+    @State private var showShoppingScanner = false
+    @State private var selectedCategory = ""
+    @State private var pendingAdd: ShoppingAddMethod?
     @State private var expandedCompartments: Set<String> = Set(Compartment.supermarketOrder.map(\.rawValue))
 
     // Raggruppamento per comparto inferito (se item ha compartment salvato usalo, altrimenti inferisci da nome)
@@ -73,19 +78,16 @@ struct ShoppingListView: View {
                     Section {
                         VStack(spacing: 12) {
                             Button {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    isAddExpanded.toggle()
-                                }
+                                showAddChoice = true
                             } label: {
                                 HStack {
                                     Label("Aggiungi prodotto", systemImage: "plus.circle")
                                         .font(.subheadline.weight(.semibold))
                                         .foregroundStyle(Color.pantryMoss)
                                     Spacer()
-                                    Image(systemName: "chevron.down")
+                                    Image(systemName: "chevron.right")
                                         .font(.caption.weight(.semibold))
                                         .foregroundStyle(Color.pantryMoss)
-                                        .rotationEffect(.degrees(isAddExpanded ? 180 : 0))
                                 }
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 14)
@@ -97,9 +99,23 @@ struct ShoppingListView: View {
                                 }
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel(isAddExpanded ? "Comprimi aggiunta prodotto" : "Espandi aggiunta prodotto")
-                            .accessibilityValue(isAddExpanded ? "Espansa" : "Compressa")
-                            .accessibilityHint("Tocca per espandere o comprimere il modulo di aggiunta")
+                            .accessibilityLabel("Aggiungi prodotto")
+                            .accessibilityHint("Scegli tra scansione codice e inserimento manuale")
+                            .sheet(isPresented: $showAddChoice) {
+                                addChoiceSheet
+                            }
+                            .onChange(of: showAddChoice) { _, isPresented in
+                                guard !isPresented, let pending = pendingAdd else { return }
+                                pendingAdd = nil
+                                switch pending {
+                                case .scanner:
+                                    showShoppingScanner = true
+                                case .manual:
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        isAddExpanded = true
+                                    }
+                                }
+                            }
 
                             if isAddExpanded {
                                 addItemSection
@@ -294,6 +310,9 @@ struct ShoppingListView: View {
         .sheet(isPresented: $showCreateListSheet) {
             createListSheet
         }
+        .sheet(isPresented: $showShoppingScanner) {
+            ShoppingScannerSheet(store: store, pantryId: pantryStore.selectedPantryId)
+        }
     }
 
     // MARK: - Add item form (solo nome + quantità)
@@ -348,10 +367,14 @@ struct ShoppingListView: View {
                     Task {
                         guard !newItemName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
                         let trimmed = newItemName.trimmingCharacters(in: .whitespaces)
-                        await store.addItem(pantryId: pantryStore.selectedPantryId, name: trimmed, quantity: newItemQuantity, compartment: nil)
+                        let compartment: String? = selectedCategory.isEmpty
+                            ? nil
+                            : Compartment.inferCompartment(fromCategory: selectedCategory).rawValue
+                        await store.addItem(pantryId: pantryStore.selectedPantryId, name: trimmed, quantity: newItemQuantity, compartment: compartment)
                         if store.error == nil {
                             newItemName = ""
                             suggestionQuery = ""
+                            selectedCategory = ""
                             store.suggestions = []
                         }
                     }
@@ -360,12 +383,78 @@ struct ShoppingListView: View {
                     if new.count >= 2 { suggestionQuery = new }
                 }
 
+            CategoryPicker(selection: $selectedCategory)
+
             HStack(spacing: 12) {
                 QuantityStepper(quantity: $newItemQuantity)
                 Spacer()
             }
             .frame(maxWidth: .infinity)
         }
+    }
+
+    // MARK: - Add choice (stessa UX della dispensa)
+
+    /// Scelta dal foglio "Aggiungi prodotto". L'azione effettiva è rimandata
+    /// alla chiusura del foglio (onChange su showAddChoice) per evitare la
+    /// race iOS 17 in cui il secondo sheet viene inghiottito dal primo.
+    private enum ShoppingAddMethod {
+        case scanner, manual
+    }
+
+    private var addChoiceSheet: some View {
+        VStack(spacing: 12) {
+            Text("Aggiungi prodotto")
+                .font(.headline)
+                .foregroundStyle(Color.textPrimary)
+                .accessibilityAddTraits(.isHeader)
+
+            Button {
+                pendingAdd = .scanner
+                showAddChoice = false
+            } label: {
+                Label("Scansiona", systemImage: "barcode.viewfinder")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.pantryMoss)
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background {
+                Capsule()
+                    .fill(.regularMaterial)
+                    .overlay(Capsule().fill(Color.pantryLinen.opacity(0.35)))
+            }
+            .overlay(Capsule().strokeBorder(Color.pantryOat, lineWidth: 0.5))
+            .accessibilityLabel("Scansiona codice a barre")
+            .accessibilityHint("Apri la camera per scansionare un codice a barre")
+
+            Button {
+                pendingAdd = .manual
+                showAddChoice = false
+            } label: {
+                Label("Inserimento manuale", systemImage: "pencil")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.pantryMoss)
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background {
+                Capsule()
+                    .fill(.regularMaterial)
+                    .overlay(Capsule().fill(Color.pantryLinen.opacity(0.35)))
+            }
+            .overlay(Capsule().strokeBorder(Color.pantryOat, lineWidth: 0.5))
+            .accessibilityLabel("Inserimento manuale")
+            .accessibilityHint("Espandi il modulo per inserire un prodotto a mano")
+
+            Button("Annulla") { showAddChoice = false }
+                .font(.body.weight(.semibold))
+                .foregroundStyle(Color.textPrimary)
+        }
+        .padding()
+        .presentationDetents([.height(280)])
+        .presentationDragIndicator(.visible)
+        .dynamicTypeSize(.xSmall ... .accessibility2)
     }
 
     // MARK: - Row
@@ -381,6 +470,8 @@ struct ShoppingListView: View {
                     .contentTransition(.symbolEffect(.replace))
             }
             .buttonStyle(.plain)
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
             .accessibilityLabel(item.checked ? "Segnato: \(item.name)" : "Non segnato: \(item.name)")
             .accessibilityValue(item.checked ? "Completato" : "Da acquistare")
             .accessibilityHint("Tocca per segnare come \(item.checked ? "da acquistare" : "completato")")
@@ -579,5 +670,180 @@ struct ShoppingListView: View {
             }
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         }
+    }
+}
+
+// MARK: - Scanner per la spesa (riuso ScannerView tal-quale)
+
+/// Foglio scansione della Spesa: riusa `ScannerView` + `ScanSessionStore`
+/// senza fork. A differenza di `ScannerViewWrapper` (dispensa) il salvataggio
+/// va in `ShoppingStore.addItem` con comparto inferito; i barcode non trovati
+/// dal POST /api/scan restano aggiungibili a mano (+ sulla riga o fallback).
+private struct ShoppingScannerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let store: ShoppingStore
+    let pantryId: Int
+    @State private var session = ScanSessionStore()
+    @State private var isSavingAll = false
+    @State private var fallbackName = ""
+
+    private var foundCount: Int {
+        session.queue.filter { $0.state == .found }.count
+    }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if DataScannerViewController.isSupported && DataScannerViewController.isAvailable {
+                    ZStack {
+                        ScannerView(session: session)
+                            .ignoresSafeArea()
+                        VStack(spacing: 0) {
+                            Spacer(minLength: 0)
+                            if !session.queue.isEmpty {
+                                scanQueuePanel
+                            }
+                        }
+                    }
+                } else {
+                    Form {
+                        Section("Inserimento manuale") {
+                            TextField("Nome prodotto", text: $fallbackName)
+                                .textInputAutocapitalization(.words)
+                                .autocorrectionDisabled()
+                            Button("Aggiungi alla spesa") {
+                                Task { await addFallback() }
+                            }
+                            .disabled(fallbackName.trimmingCharacters(in: .whitespaces).isEmpty)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Scansiona")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Chiudi") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private var scanQueuePanel: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                LazyVStack(spacing: 8) {
+                    ForEach(session.queue) { item in
+                        HStack(spacing: 10) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.result?.name ?? item.barcode)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Color.textPrimary)
+                                    .lineLimit(1)
+                                Text(queueStatusText(for: item))
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(Color.textSecondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer(minLength: 4)
+                            if item.state == .loading || item.state == .pending {
+                                ProgressView()
+                                    .tint(Color.pantryMoss)
+                                    .accessibilityLabel("Ricerca prodotto in corso")
+                            }
+                            if item.state == .found || item.state == .notFound {
+                                Button {
+                                    Task { await addScanned(item) }
+                                } label: {
+                                    Image(systemName: "plus.circle.fill")
+                                        .foregroundStyle(Color.pantryMoss)
+                                }
+                                .buttonStyle(.plain)
+                                .frame(minWidth: 44, minHeight: 44)
+                                .contentShape(Rectangle())
+                                .accessibilityLabel("Aggiungi \(item.result?.name ?? item.barcode) alla spesa")
+                            }
+                            Button {
+                                session.delete(id: item.id)
+                            } label: {
+                                Image(systemName: "trash")
+                                    .foregroundStyle(Color.statusExpired)
+                            }
+                            .buttonStyle(.plain)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
+                            .accessibilityLabel("Elimina \(item.barcode) dalla coda")
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .pantryCardBackground(cornerRadius: 12)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+            }
+            .frame(maxHeight: 220)
+            .scrollIndicators(.hidden)
+
+            HStack(spacing: 12) {
+                Button("Aggiungi tutti (\(foundCount))") {
+                    Task { await addAllFound() }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Color.pantryMoss)
+                .disabled(foundCount == 0 || isSavingAll)
+                .accessibilityLabel("Aggiungi \(foundCount) prodotti alla spesa")
+
+                Spacer(minLength: 0)
+
+                Button("Termina") {
+                    session.clear()
+                    dismiss()
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Termina sessione")
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+        }
+        .pantryGlassChrome()
+        .padding(.horizontal, 12)
+        .padding(.bottom, 12)
+        .dynamicTypeSize(.xSmall ... .accessibility2)
+    }
+
+    private func queueStatusText(for item: ScanQueueItem) -> String {
+        switch item.state {
+        case .pending: return "In coda · \(item.barcode)"
+        case .loading: return "Ricerca… · \(item.barcode)"
+        case .found: return item.barcode
+        case .notFound: return "Non trovato · + per aggiungere a mano"
+        case .error: return item.errorMessage ?? "Errore · \(item.barcode)"
+        }
+    }
+
+    private func addScanned(_ item: ScanQueueItem) async {
+        let name = item.result?.name?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? item.barcode
+        let category = item.result?.suggestedCategory ?? item.result?.categories.first
+        let compartment = Compartment.inferCompartment(name: name, category: category).rawValue
+        await store.addItem(pantryId: pantryId, name: name, quantity: 1, compartment: compartment)
+        if store.error == nil {
+            session.delete(id: item.id)
+        }
+    }
+
+    private func addAllFound() async {
+        isSavingAll = true
+        defer { isSavingAll = false }
+        for item in session.queue where item.state == .found {
+            await addScanned(item)
+        }
+    }
+
+    private func addFallback() async {
+        let trimmed = fallbackName.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        await store.addItem(pantryId: pantryId, name: trimmed, quantity: 1, compartment: nil)
+        if store.error == nil { fallbackName = "" }
     }
 }

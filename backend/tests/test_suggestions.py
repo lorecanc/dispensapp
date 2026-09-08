@@ -2,7 +2,7 @@ import uuid as uuid_mod
 from datetime import datetime, timezone, timedelta
 import pytest
 
-from backend.models import Pantry, ScanHistory
+from backend.models import InventoryItem, Pantry, ScanHistory
 
 VALID_TOKEN = "00000000-0000-0000-0000-000000000000"
 HEADERS = {"X-Pantry-Token": VALID_TOKEN}
@@ -111,3 +111,94 @@ def test_suggestions_returns_minimal_fields(client, db_session, owned_pantry):
         assert "name" in item
         assert "category" in item
         assert "times_scanned" in item
+
+
+TOKEN_A = "11111111-1111-1111-1111-111111111111"
+TOKEN_B = "22222222-2222-2222-2222-222222222222"
+
+
+def _pantry_of(db_session, owner_token):
+    db_session.add(Pantry(name=f"Dispensa {owner_token[:8]}", owner_token=owner_token))
+    db_session.commit()
+    return db_session.query(Pantry).filter(Pantry.owner_token == owner_token).one()
+
+
+def test_pantry_scope_returns_only_own_and_merges(client, db_session):
+    pa = _pantry_of(db_session, TOKEN_A)
+    pb = _pantry_of(db_session, TOKEN_B)
+    db_session.add_all(
+        [
+            InventoryItem(name="Latte", barcode=None, category="fresh", pantry_id=pa.id, created_by_token=TOKEN_A),
+            InventoryItem(name="LATTE", barcode="123", category="fresh", pantry_id=pa.id, created_by_token=TOKEN_A),
+            InventoryItem(name="Miele", barcode=None, category=None, pantry_id=pa.id, created_by_token=TOKEN_A),
+            InventoryItem(name="Pasta", barcode="999", pantry_id=pb.id, created_by_token=TOKEN_B),
+        ]
+    )
+    db_session.commit()
+    resp = client.get("/api/suggestions", params={"scope": "pantry"}, headers={"X-Pantry-Token": TOKEN_A})
+    assert resp.status_code == 200
+    by_name = {(d["name"] or "").lower(): d for d in resp.json()}
+    assert "pasta" not in by_name
+    assert by_name["latte"]["times_scanned"] == 2
+    assert by_name["latte"]["barcode"] == "123"
+    assert by_name["miele"]["barcode"] == ""
+
+
+def test_pantry_scope_empty_pantry_returns_empty(client, db_session):
+    _pantry_of(db_session, TOKEN_A)
+    resp = client.get("/api/suggestions", params={"scope": "pantry"}, headers={"X-Pantry-Token": TOKEN_A})
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_pantry_scope_isolation_between_tokens(client, db_session):
+    pa = _pantry_of(db_session, TOKEN_A)
+    pb = _pantry_of(db_session, TOKEN_B)
+    db_session.add_all(
+        [
+            InventoryItem(name="Mio A", pantry_id=pa.id, created_by_token=TOKEN_A),
+            InventoryItem(name="Legacy A", pantry_id=None, created_by_token=TOKEN_A),
+            InventoryItem(name="Segreto B", pantry_id=pb.id, created_by_token=TOKEN_B),
+            InventoryItem(name="Legacy B", pantry_id=None, created_by_token=TOKEN_B),
+        ]
+    )
+    db_session.commit()
+    resp = client.get("/api/suggestions", params={"scope": "pantry"}, headers={"X-Pantry-Token": TOKEN_A})
+    assert resp.status_code == 200
+    names = [(d["name"] or "").lower() for d in resp.json()]
+    assert "mio a" in names
+    assert "legacy a" in names
+    assert "segreto b" not in names
+    assert "legacy b" not in names
+
+
+def test_pantry_scope_prefix_escape(client, db_session):
+    pa = _pantry_of(db_session, TOKEN_A)
+    db_session.add_all(
+        [
+            InventoryItem(name="50% Sconto", pantry_id=pa.id, created_by_token=TOKEN_A),
+            InventoryItem(name="50X Sconto", pantry_id=pa.id, created_by_token=TOKEN_A),
+            InventoryItem(name="a_b", pantry_id=pa.id, created_by_token=TOKEN_A),
+            InventoryItem(name="axb", pantry_id=pa.id, created_by_token=TOKEN_A),
+            InventoryItem(name="a\\b", pantry_id=pa.id, created_by_token=TOKEN_A),
+        ]
+    )
+    db_session.commit()
+    headers = {"X-Pantry-Token": TOKEN_A}
+    pct = client.get("/api/suggestions", params={"scope": "pantry", "q": "50%"}, headers=headers).json()
+    assert [(d["name"] or "").lower() for d in pct] == ["50% sconto"]
+    und = client.get("/api/suggestions", params={"scope": "pantry", "q": "a_"}, headers=headers).json()
+    assert [(d["name"] or "").lower() for d in und] == ["a_b"]
+    bsl = client.get("/api/suggestions", params={"scope": "pantry", "q": "a\\"}, headers=headers).json()
+    assert [(d["name"] or "").lower() for d in bsl] == ["a\\b"]
+
+
+def test_pantry_scope_limit_10(client, db_session):
+    pa = _pantry_of(db_session, TOKEN_A)
+    db_session.add_all(
+        [InventoryItem(name=f"Prodotto {i}", pantry_id=pa.id, created_by_token=TOKEN_A) for i in range(15)]
+    )
+    db_session.commit()
+    resp = client.get("/api/suggestions", params={"scope": "pantry", "q": "Prodotto"}, headers={"X-Pantry-Token": TOKEN_A})
+    assert resp.status_code == 200
+    assert len(resp.json()) <= 10

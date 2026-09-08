@@ -83,7 +83,8 @@ final class APIClient: Sendable {
         comment: String? = nil,
         appUUID: String? = nil,
         lang: String = "it",
-        consent: Bool
+        consent: Bool,
+        productType: String? = nil
     ) async throws -> ContributeResult {
         let url = try resolvedBaseURL().appending(path: "api/scan/contribute")
         var request = URLRequest(url: url)
@@ -104,6 +105,7 @@ final class APIClient: Sendable {
         if let genericName, !genericName.isEmpty { body["generic_name"] = genericName }
         if let comment, !comment.isEmpty { body["comment"] = comment }
         if let appUUID, !appUUID.isEmpty { body["app_uuid"] = appUUID }
+        if let productType { body["product_type"] = productType }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let data = try await perform(request)
@@ -116,7 +118,8 @@ final class APIClient: Sendable {
         filename: String,
         mimeType: String,
         imagefield: String,
-        consent: Bool
+        consent: Bool,
+        productType: String? = nil
     ) async throws -> ContributeResult {
         // Fail-fast locale: evita 30s di upload per un file che il backend rifiuterebbe con 413.
         guard imageData.count <= Self.maxPhotoBytes else {
@@ -139,6 +142,7 @@ final class APIClient: Sendable {
         appendField(name: "code", value: code)
         appendField(name: "imagefield", value: imagefield)
         appendField(name: "consent_cc_bysa", value: consent ? "true" : "false")
+        if let productType { appendField(name: "product_type", value: productType) }
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"image\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
         body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
@@ -338,9 +342,14 @@ final class APIClient: Sendable {
 
     // MARK: - Suggestions
 
-    func fetchSuggestions(q: String) async throws -> [Suggestion] {
+    func fetchSuggestions(q: String, scope: String = "shopping") async throws -> [Suggestion] {
         var comps = URLComponents(url: try resolvedBaseURL().appending(path: "api/suggestions"), resolvingAgainstBaseURL: false)!
-        comps.queryItems = [URLQueryItem(name: "q", value: q)]
+        // Scope omesso quando shopping: l'URL resta identico alle chiamate Spesa esistenti.
+        var queryItems = [URLQueryItem(name: "q", value: q)]
+        if scope != "shopping" {
+            queryItems.append(URLQueryItem(name: "scope", value: scope))
+        }
+        comps.queryItems = queryItems
         guard let url = comps.url else { throw APIError.invalidURL }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"

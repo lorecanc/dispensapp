@@ -20,6 +20,17 @@ struct ManualEntryView: View {
     @State private var isSaving = false
     @State private var showError = false
     @State private var errorMessage = ""
+    @State private var suggestions: [Suggestion] = []
+
+    /// Prefill da tap su suggerimento dispensa (InventoryListView).
+    /// Default vuoti: i call site esistenti restano invariati.
+    let initialName: String
+    let initialCategory: String
+
+    init(initialName: String = "", initialCategory: String = "") {
+        self.initialName = initialName
+        self.initialCategory = initialCategory
+    }
 
     private var isFormValid: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty
@@ -30,6 +41,36 @@ struct ManualEntryView: View {
             Section("Dettagli prodotto") {
                 TextField("Nome *", text: $name)
                     .autocorrectionDisabled()
+
+                if !suggestions.isEmpty {
+                    ForEach(suggestions) { sug in
+                        Button {
+                            name = sug.name
+                            if let cat = sug.category, !cat.isEmpty {
+                                selectedCategory = cat
+                                storageTouched = false
+                            }
+                            suggestions = []
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(sug.name)
+                                        .foregroundStyle(Color.textPrimary)
+                                        .font(.subheadline.weight(.medium))
+                                    if let cat = sug.category {
+                                        Text(CategoryRegistry.displayName(for: cat))
+                                            .font(.caption)
+                                            .foregroundStyle(Color.textSecondary)
+                                    }
+                                }
+                                Spacer()
+                                Text("×\(sug.timesScanned)")
+                                    .font(.caption2)
+                                    .foregroundStyle(Color.textSecondary)
+                            }
+                        }
+                    }
+                }
 
                 TextField("Marca", text: $brand)
                     .autocorrectionDisabled()
@@ -97,6 +138,21 @@ struct ManualEntryView: View {
         }
         .navigationTitle("Inserimento manuale")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            if name.isEmpty && !initialName.isEmpty { name = initialName }
+            if selectedCategory.isEmpty && !initialCategory.isEmpty { selectedCategory = initialCategory }
+        }
+        .task(id: name) {
+            let trimmed = name.trimmingCharacters(in: .whitespaces)
+            guard trimmed.count >= 2 else { suggestions = []; return }
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled else { return }
+            do {
+                suggestions = try await APIClient.shared.fetchSuggestions(q: trimmed, scope: "pantry")
+            } catch {
+                suggestions = []
+            }
+        }
         .alert("Errore", isPresented: $showError) {
             Button("OK") { }
         } message: {
