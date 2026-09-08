@@ -218,9 +218,48 @@ OFF_TO_INTERNAL: dict[str, str] = {
     "hygiene": "cleaning-hygiene",
     "detergents": "cleaning-hygiene",
     "cosmetics": "cleaning-hygiene",
+    "cosmetic": "cleaning-hygiene",
     "shampoos": "cleaning-hygiene",
     "soaps": "cleaning-hygiene",
     "toothpastes": "cleaning-hygiene",
+    # beauty / cura persona (openbeautyfacts) -> Igiene e Casa
+    "makeup": "cleaning-hygiene",
+    "make-up": "cleaning-hygiene",
+    "makeups": "cleaning-hygiene",
+    "skincare": "cleaning-hygiene",
+    "skin-care": "cleaning-hygiene",
+    "hair-care": "cleaning-hygiene",
+    "haircare": "cleaning-hygiene",
+    "personal-care": "cleaning-hygiene",
+    # pet-food: varianti normalizzate a token "pet-food" (fuori registry/map:
+    # defer, mai cibo umano né igiene; comparto via default Dispensa Secca)
+    "dog-food": "pet-food",
+    "dog-foods": "pet-food",
+    "cat-food": "pet-food",
+    "cat-foods": "pet-food",
+    "pet-food": "pet-food",
+    "pet-foods": "pet-food",
+    "petfood": "pet-food",
+}
+
+# Tag generici Open Products Facts: da soli valgono "nessuna categoria"
+# (uso futuro T3: se solo-generici -> defer None, mai cleaning-hygiene).
+# La regola substring "productsfacts" senza qualificatore vive in T3, non qui.
+GENERIC_OPF: set[str] = {
+    "product",
+    "products",
+    "open-products-facts",
+    "openproductsfacts",
+}
+
+# Tag/gruppi solo-cibo-umano (uso futuro T3 per disambiguare vs pet-food).
+HUMAN_FOOD_ONLY: set[str] = {
+    "tuna",
+    "sardines",
+    "canned-fish",
+    "fish",
+    "meat",
+    "fish-meat-eggs",
 }
 
 # pnns_groups_1 OFF -> categoria interna (mappa grossolana; chiavi = slug dei

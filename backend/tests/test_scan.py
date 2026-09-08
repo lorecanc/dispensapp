@@ -202,3 +202,76 @@ def test_scan_non_food_without_pnns():
     assert body["found"] is True
     assert body["source"] == "beauty"
     assert body["product_type"] == "beauty"
+
+
+# --- T1 RED: scan deve inoltrare source a suggest_category -------------------
+# scan.py oggi chiama suggest_category(categories, pnns_group) ignorando
+# source: i test sotto falliscono finché la produzione non propaga source.
+
+def test_scan_makeup_beauty_suggests_cleaning_hygiene():
+    """source=beauty + makeup → suggested cleaning-hygiene (oggi None)."""
+    payload = {
+        "barcode": "3560070791460",
+        "name": "Cream",
+        "brand": None,
+        "categories": ["makeup"],
+        "pnns_group": None,
+        "image_url": None,
+        "source": "beauty",
+        "product_type": "beauty",
+    }
+
+    with patch("backend.routes.scan.fetch_product") as mock_fetch:
+        mock_fetch.return_value = payload
+        resp = _call_scan(barcode="3560070791460")
+
+    assert resp.status_code == 200
+    assert resp.json()["suggested_category"] == "cleaning-hygiene"
+
+
+def test_scan_tuna_petfood_defers_none():
+    """source=petfood + tonno → suggested None (oggi canned-fish)."""
+    payload = {
+        "barcode": "1234567890123",
+        "name": "Tonno per gatti",
+        "brand": None,
+        "categories": ["tuna"],
+        "pnns_group": None,
+        "image_url": None,
+        "source": "petfood",
+        "product_type": "petfood",
+    }
+
+    with patch("backend.routes.scan.fetch_product") as mock_fetch:
+        mock_fetch.return_value = payload
+        resp = _call_scan(barcode="1234567890123")
+
+    assert resp.status_code == 200
+    assert resp.json()["suggested_category"] is None
+
+
+def test_scan_forwards_source_to_suggest_category():
+    """Wiring: scan inoltra source a suggest_category (oggi chiamata a 2 args)."""
+    payload = {
+        "barcode": "3560070791460",
+        "name": "Cream",
+        "brand": None,
+        "categories": ["makeup"],
+        "pnns_group": None,
+        "image_url": None,
+        "source": "beauty",
+        "product_type": "beauty",
+    }
+
+    with (
+        patch("backend.routes.scan.fetch_product") as mock_fetch,
+        patch("backend.routes.scan.suggest_category") as mock_suggest,
+    ):
+        mock_fetch.return_value = payload
+        mock_suggest.return_value = None
+        resp = _call_scan(barcode="3560070791460")
+
+    assert resp.status_code == 200
+    mock_suggest.assert_called_once_with(
+        ["makeup"], None, source="beauty", product_type="beauty"
+    )

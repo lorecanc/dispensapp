@@ -5,7 +5,7 @@ from fastapi.responses import PlainTextResponse, Response
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from backend.config import normalize_category
+from backend.config import COMPARTMENT_MAP, normalize_category
 from backend.database import get_db
 from backend.dependencies.pantry import PantryContext, get_current_pantry
 from backend.models import ConsumptionEvent, InventoryItem
@@ -17,7 +17,7 @@ from backend.schemas import (
     InventoryOut,
     InventoryUpdate,
 )
-from backend.services.compartment import infer_compartment, suggest_category
+from backend.services.compartment import _log_safe, infer_compartment, suggest_category
 from backend.services.expiration import resolve_expiration
 from backend.services.markdown_export import to_markdown
 
@@ -64,11 +64,31 @@ def _create_scoped_item(
     source: str | None = None,
     product_type: str | None = None,
 ) -> InventoryItem:
-    # Categoria interna: esplicita normalizzata; se assente, auto-assegnazione
-    # ON dai tag OFF (nessun tag utile -> None, comportamento preesistente).
-    category = normalize_category(body.category)
+    # Priorità categoria persistita: explicit valida > suggest > None.
+    # Explicit spuria (non in COMPARTMENT_MAP) vale come None e prosegue cascata.
+    explicit = normalize_category(body.category)
+    if explicit is not None and explicit not in COMPARTMENT_MAP:
+        explicit = None
+    resolved_source = source if source is not None else getattr(body, "source", None)
+    resolved_product_type = (
+        product_type if product_type is not None else getattr(body, "product_type", None)
+    )
+    pnns_group = getattr(body, "pnns_group", None)
+    if explicit is not None:
+        category = explicit
+    else:
+        category = suggest_category(
+            body.off_category_tags, pnns_group, resolved_source, resolved_product_type
+        )
     if category is None:
-        category = suggest_category(body.off_category_tags)
+        logger.warning(
+            "inventory category fallback None barcode=%s source=%s product_type=%s tags=%s pnns=%s esito=None",
+            _log_safe(getattr(body, "barcode", None), 32),
+            _log_safe(resolved_source, 32),
+            _log_safe(resolved_product_type, 32),
+            [_log_safe(t, 200) for t in (body.off_category_tags or [])[:50]],
+            _log_safe(pnns_group, 64),
+        )
     expiration_date, is_estimated = resolve_expiration(
         expiration_date=body.expiration_date,
         category=body.category,
@@ -79,7 +99,7 @@ def _create_scoped_item(
     if not compartment:
         compartment = infer_compartment(
             name=body.name,
-            category=body.category,
+            category=category,
             off_category_tags=body.off_category_tags,
         )
     item = InventoryItem(
@@ -95,8 +115,8 @@ def _create_scoped_item(
         # storage_location: NULL = derivato dal client via categoria (by design).
         storage_location=body.storage_location,
         # T8b: param esplicito vince, fallback al body; NULL = non impostato.
-        source=source if source is not None else getattr(body, "source", None),
-        product_type=product_type if product_type is not None else getattr(body, "product_type", None),
+        source=resolved_source,
+        product_type=resolved_product_type,
         pantry_id=pantry_id,
         created_by_token=token,
     )
@@ -146,6 +166,8 @@ def _update_scoped_item(
         data["image_url"] = str(data["image_url"])
     if "category" in data and data["category"] is not None:
         data["category"] = normalize_category(data["category"])
+        if data["category"] is not None and data["category"] not in COMPARTMENT_MAP:
+            data["category"] = None
     for k, v in data.items():
         setattr(item, k, v)
     try:

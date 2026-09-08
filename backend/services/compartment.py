@@ -1,20 +1,31 @@
 from __future__ import annotations
 
+import logging
+import re
+
 from backend.config import (
     CATEGORY_ALIASES,
     CATEGORY_STORAGE_DEFAULT,
     COMPARTMENT_MAP,
     DEFAULT_STORAGE,
+    GENERIC_OPF,
+    HUMAN_FOOD_ONLY,
     OFF_TO_INTERNAL,
     PNNS_TO_INTERNAL,
     SUPER_MARKET_COMPARTMENTS,
     normalize_category,
 )
 
+logger = logging.getLogger(__name__)
+
 # Ordine supermercato per ordinamento sezioni markdown
 SUPERMARKET_ORDER: list[str] = list(SUPER_MARKET_COMPARTMENTS)
 
 DEFAULT_COMPARTMENT = "Dispensa Secca"
+
+
+def _log_safe(v: object, limit: int = 64) -> str:
+    return re.sub(r"[\r\n]+", " ", str(v))[:limit]
 
 # Keyword fallback su nome prodotto (lower)
 _KEYWORD_MAP: list[tuple[list[str], str]] = [
@@ -43,6 +54,21 @@ def _normalize_tag(tag: str) -> str | None:
     k = OFF_TO_INTERNAL.get(k, k)
     k = CATEGORY_ALIASES.get(k, k)
     return k or None
+
+
+def _normalize_source(value: str | None) -> str | None:
+    if not isinstance(value, str):
+        return None
+    v = value.strip().lower()
+    return v or None
+
+
+def _is_generic_opf(norm: str) -> bool:
+    if norm in GENERIC_OPF:
+        return True
+    # regola substring "productsfacts" senza qualificatore (vive qui, non in config)
+    compact = norm.replace("-", "").replace("_", "")
+    return "productsfacts" in compact
 
 
 def infer_compartment(
@@ -95,36 +121,75 @@ def storage_for_category(category: str | None) -> str:
 def suggest_category(
     off_category_tags: list[str] | None = None,
     pnns_group: str | None = None,
+    source: str | None = None,
+    product_type: str | None = None,
 ) -> str | None:
     """Proponi categoria interna da tag OFF e gruppo PNNS.
 
     Cascata:
-    1) override conservazione: frozen-foods vince su canned-vegetables/canned-fish
-    2) primo tag che normalizza a una chiave di COMPARTMENT_MAP
-    3) PNNS_TO_INTERNAL su pnns_group (slug lowercase già normalizzato)
-    4) None se nulla matcha
+    1) tag filtrati (via GENERIC_OPF) + source-guard petfood
+    2) override conservazione: frozen-foods vince su canned-vegetables/canned-fish
+    3) primo tag filtrato che mappa a una chiave di COMPARTMENT_MAP
+    4) PNNS_TO_INTERNAL su pnns_group (con guard petfood)
+    5) None se nulla matcha (defer, mai default di categoria)
+
+    DEBT: pnns-forward-ios-mancante, GENERIC_OPF parziale,
+    keyword-pet senza categoria.
     """
+    raw_tags = list(off_category_tags or []) if off_category_tags else []
     normalized = [
         norm
-        for tag in (off_category_tags or [])
+        for tag in raw_tags
         if isinstance(tag, str) and (norm := _normalize_tag(tag))
     ]
+    # C2: filtra tag generici OPF prima del match
+    filtered = [n for n in normalized if not _is_generic_opf(n)]
 
-    # 1) override conservazione (freezer prima dello scatolame)
-    if "frozen-foods" in normalized:
+    src = _normalize_source(source)
+    ptype = _normalize_source(product_type)
+    is_petfood = src == "petfood" or ptype == "petfood"
+    is_product = src == "product" or ptype == "product"
+
+    # C3a/C4a: petfood esclude HUMAN_FOOD_ONLY; soli tag pet/food -> defer
+    if is_petfood:
+        filtered = [n for n in filtered if n not in HUMAN_FOOD_ONLY]
+
+    def _defer(reason: str) -> str | None:
+        # C7a: warning con source/tags/pnns/esito, nessun PII oltre barcode (non disponibile qui)
+        logger.warning(
+            "suggest_category defer (%s): source=%s product_type=%s tags=%s pnns=%s esito=None",
+            _log_safe(reason, 64),
+            _log_safe(src, 32),
+            _log_safe(ptype, 32),
+            [_log_safe(t, 200) for t in raw_tags[:50]],
+            _log_safe(pnns_group, 64),
+        )
+        return None
+
+    # 2) override conservazione sui tag filtrati
+    if "frozen-foods" in filtered:
         return "frozen-foods"
-    for norm in normalized:
+    for norm in filtered:
         if norm in ("canned-vegetables", "canned-fish"):
             return norm
 
-    # 2) primo tag che mappa a una categoria nota
-    for norm in normalized:
+    # 3) primo tag filtrato che mappa a categoria nota
+    for norm in filtered:
         if norm in COMPARTMENT_MAP:
+            # C2c: cleaning-hygiene mai da source==product da solo
+            if norm == "cleaning-hygiene" and is_product:
+                return _defer("cleaning-bloccato-per-product")
             return norm
 
-    # 3) fallback PNNS
+    # 4) fallback PNNS (con guard petfood su HUMAN_FOOD_ONLY)
     if isinstance(pnns_group, str) and pnns_group:
-        return PNNS_TO_INTERNAL.get(pnns_group)
+        if is_petfood and pnns_group in HUMAN_FOOD_ONLY:
+            return _defer("pnns-human-food-escluso-per-petfood")
+        mapped = PNNS_TO_INTERNAL.get(pnns_group)
+        if mapped is not None:
+            if mapped == "cleaning-hygiene" and is_product:
+                return _defer("cleaning-bloccato-per-product")
+            return mapped
 
-    # 4) nessun suggerimento
-    return None
+    # 5) nessun suggerimento
+    return _defer("nessun-match")

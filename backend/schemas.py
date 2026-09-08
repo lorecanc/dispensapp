@@ -79,8 +79,9 @@ class InventoryCreate(BaseModel):
     compartment: Optional[str] = Field(default=None, max_length=32)
     off_category_tags: Optional[list[str]] = Field(default=None, max_length=50)
     storage_location: Optional[str] = Field(default=None, max_length=16)
-    source: Optional[str] = None
-    product_type: Optional[str] = None
+    source: Optional[str] = Field(default=None, max_length=32)
+    product_type: Optional[str] = Field(default=None, max_length=32)
+    pnns_group: Optional[str] = Field(default=None, max_length=64)
 
     @field_validator("name")
     @classmethod
@@ -90,7 +91,7 @@ class InventoryCreate(BaseModel):
             raise ValueError("name non può essere vuoto")
         return stripped
 
-    @field_validator("brand", "category", "compartment", "storage_location", "source", "product_type")
+    @field_validator("brand", "category", "compartment", "storage_location", "source", "product_type", "pnns_group")
     @classmethod
     def strip_optional(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
@@ -119,8 +120,9 @@ class InventoryCreateManual(BaseModel):
     compartment: Optional[str] = Field(default=None, max_length=32)
     off_category_tags: Optional[list[str]] = Field(default=None, max_length=50)
     storage_location: Optional[str] = Field(default=None, max_length=16)
-    source: Optional[str] = None
-    product_type: Optional[str] = None
+    source: Optional[str] = Field(default=None, max_length=32)
+    product_type: Optional[str] = Field(default=None, max_length=32)
+    pnns_group: Optional[str] = Field(default=None, max_length=64)
 
     @field_validator("name")
     @classmethod
@@ -130,7 +132,7 @@ class InventoryCreateManual(BaseModel):
             raise ValueError("name non può essere vuoto")
         return stripped
 
-    @field_validator("brand", "category", "compartment", "storage_location", "source", "product_type")
+    @field_validator("brand", "category", "compartment", "storage_location", "source", "product_type", "pnns_group")
     @classmethod
     def strip_optional(cls, v: Optional[str]) -> Optional[str]:
         if v is None:

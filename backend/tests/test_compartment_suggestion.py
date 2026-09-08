@@ -1,6 +1,6 @@
 """Test per le funzioni pure di suggerimento in backend/services/compartment.py."""
 
-from backend.services.compartment import storage_for_category, suggest_category
+from backend.services.compartment import infer_compartment, storage_for_category, suggest_category
 
 
 # --- storage_for_category --------------------------------------------------
@@ -66,3 +66,53 @@ def test_suggest_ignores_non_string_tags():
 
 def test_suggest_empty_pnns_skipped():
     assert suggest_category([], "") is None
+
+
+# --- T1 RED: smistamento automatico categorie dispensa (source-aware) --------
+# suggest_category oggi ignora `source`: questi test usano il parametro
+# `source` desiderato e falliscono (TypeError) finché la produzione non lo
+# accetta. Non toccare produzione in T1.
+
+def test_makeup_maps_cleaning_hygiene_via_source():
+    assert suggest_category(["en:makeup"], source="beauty") == "cleaning-hygiene"
+
+
+def test_petfood_defers_none_not_cleaning():
+    assert suggest_category(["en:pet-food", "en:dog-food"], source="petfood") is None
+    assert infer_compartment(off_category_tags=["en:dog-food"]) == "Dispensa Secca"
+
+
+def test_tuna_source_guard_food_vs_petfood():
+    assert suggest_category(["en:tuna"], source="food") == "canned-fish"
+    assert suggest_category(["en:tuna"], source="petfood") is None
+
+
+def test_product_empty_tags_escapes():
+    assert suggest_category(["en:product", "en:electronics", "en:cable"], source="product") is None
+
+
+def test_pnns_transits_through_create():
+    assert suggest_category(["en:organic"], "milk-and-dairy-products", source="food") == "fresh-milk"
+    assert suggest_category(["en:organic"], None, source="food") is None
+
+
+# --- T1 RED falsificanti C7c -------------------------------------------------
+
+def test_explicit_spuria_pippo_pasta():
+    assert suggest_category(["en:pippo", "en:pasta"], source="food") == "pasta"
+
+
+def test_product_laptop_defers_none():
+    assert suggest_category(["en:product", "en:laptop"], source="product") is None
+
+
+def test_petfood_chicken_defers_none():
+    assert suggest_category(["en:petfood", "en:chicken"], source="petfood") is None
+
+
+def test_beauty_empty_defers_none():
+    assert suggest_category([], None, source="beauty") is None
+
+
+def test_pnns_composite_foods_defers_none():
+    assert suggest_category(["en:italian-cuisine"], "composite-foods", source="food") is None
