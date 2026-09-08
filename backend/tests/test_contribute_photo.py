@@ -279,7 +279,6 @@ async def test_upload_product_image_posts_multipart(monkeypatch):
     )
     monkeypatch.setattr(off_module, "OFF_APP_NAME", "DispensApp")
     monkeypatch.setattr(off_module, "OFF_APP_VERSION", "0.1.0")
-    monkeypatch.setattr(off_module, "OFF_CONTACT_EMAIL", "test@example.com")
 
     resp = Mock(spec=httpx.Response)
     resp.raise_for_status.return_value = None

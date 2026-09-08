@@ -38,7 +38,6 @@ struct ScanPreviewSheet: View {
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var photoData: Data?
     @State private var photoFilename = "foto.jpg"
-    @State private var photoMimeType = "image/jpeg"
     @State private var selectedImageField = "front_it"
     @State private var photoLoading = false
     @State private var photoSuccessMessage: String?
@@ -408,7 +407,8 @@ struct ScanPreviewSheet: View {
                 genericName: contributeGenericName.trimmingCharacters(in: .whitespaces).nilIfEmpty,
                 comment: contributeComment.trimmingCharacters(in: .whitespaces).nilIfEmpty,
                 appUUID: Self.persistedAppUUID(),
-                consent: consentCCBYSA
+                consent: consentCCBYSA,
+                productType: scanResult?.productType ?? scanResult?.source
             )
             contributeSuccessMessage = response.message ?? "Contributo inviato, grazie!"
         } catch {
@@ -426,9 +426,8 @@ struct ScanPreviewSheet: View {
                 return
             }
             photoData = data
-            let (filename, mimeType) = Self.photoFilenameAndMime(data: data, code: code, imagefield: selectedImageField)
+            let (filename, _) = Self.photoFilenameAndMime(data: data, code: code, imagefield: selectedImageField)
             photoFilename = filename
-            photoMimeType = mimeType
             photoSuccessMessage = nil
             photoError = nil
         } catch {
@@ -443,7 +442,6 @@ struct ScanPreviewSheet: View {
         // essere cambiato dopo la scelta della foto (filename stale).
         let (filename, mimeType) = Self.photoFilenameAndMime(data: data, code: code, imagefield: selectedImageField)
         photoFilename = filename
-        photoMimeType = mimeType
         photoLoading = true
         photoError = nil
         photoSuccessMessage = nil
@@ -454,7 +452,8 @@ struct ScanPreviewSheet: View {
                 filename: filename,
                 mimeType: mimeType,
                 imagefield: selectedImageField,
-                consent: consentCCBYSA
+                consent: consentCCBYSA,
+                productType: scanResult?.productType ?? scanResult?.source
             )
             photoSuccessMessage = response.message ?? "Foto inviata, grazie!"
         } catch {

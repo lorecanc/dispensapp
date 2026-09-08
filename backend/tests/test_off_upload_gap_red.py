@@ -1,7 +1,6 @@
-"""Red reproduction tests per gap upload OpenFoodFacts (fase Red, no fix).
+"""Regression tests per gap upload OpenFoodFacts (implementati, verdi).
 
 Tutti i test mockano httpx.AsyncClient: mai rete reale.
-Questi test DEVONO FALLIRE sul codice attuale e passare dopo il fix executor:
 - T2a: part multipart deve chiamarsi imgupload_{imagefield}
 - T2b: lang=it-IT deve inviare lc=it & lang=it (2 lettere), senza cc spurio
 - T2c: risposta OFF {"status": "status ok"} (stringa) deve valere successo (status=1)
@@ -26,7 +25,6 @@ def _make_post_patcher(monkeypatch, response_data: dict, capture: dict):
     monkeypatch.setattr(off_module, "OFF_WRITE_BASE_URL", "https://world.openfoodfacts.net/cgi")
     monkeypatch.setattr(off_module, "OFF_APP_NAME", "DispensApp")
     monkeypatch.setattr(off_module, "OFF_APP_VERSION", "0.1.0")
-    monkeypatch.setattr(off_module, "OFF_CONTACT_EMAIL", "test@example.com")
 
     resp = Mock(spec=httpx.Response)
     resp.raise_for_status.return_value = None

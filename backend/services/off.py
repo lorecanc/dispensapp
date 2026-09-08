@@ -9,7 +9,6 @@ import httpx
 from backend.config import (
     OFF_APP_NAME,
     OFF_APP_VERSION,
-    OFF_CONTACT_EMAIL,
     OFF_PASS,
     OFF_PRODUCT_TYPE_DEFAULT,
     OFF_USER,
@@ -182,12 +181,7 @@ async def _fetch_single_v3(url: str, params: dict, barcode: str) -> Optional[dic
 async def fetch_product(
     barcode: str, product_type: str = OFF_PRODUCT_TYPE_DEFAULT
 ) -> Optional[dict]:
-    """Lettura v3 universale: singolo GET product_type=all (default).
-
-    Il fallback per-host (OFF_V3_HOSTS) è usato solo con product_type
-    esplicito != all e solo su fallimento trasporto/5xx del primo GET,
-    mai su 404 o found=False e mai con fan-out parallelo.
-    """
+    """Lettura v3 universale: singolo GET product_type=all (default)."""
     if not re.fullmatch(r"^\d{8,14}$", barcode or ""):
         logger.warning("OFF fetch skipped for invalid barcode %s", barcode)
         return None
@@ -196,10 +190,6 @@ async def fetch_product(
     result = await _fetch_single_v3(f"{OFF_V3_BASE_URL}/{barcode}", params, barcode)
     if result is not None:
         return result
-    if requested != "all" and requested in OFF_V3_HOSTS:
-        host = OFF_V3_HOSTS[requested]
-        fallback_url = f"https://{host}/api/v3/product/{barcode}"
-        return await _fetch_single_v3(fallback_url, params, barcode)
     return None
 
 

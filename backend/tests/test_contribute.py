@@ -140,7 +140,6 @@ async def test_contribute_product_sends_add_fields_and_user_agent(monkeypatch):
     )
     monkeypatch.setattr(off_module, "OFF_APP_NAME", "DispensApp")
     monkeypatch.setattr(off_module, "OFF_APP_VERSION", "0.1.0")
-    monkeypatch.setattr(off_module, "OFF_CONTACT_EMAIL", "test@example.com")
 
     capture = {}
     patcher = _patch_post_client(capture, {"status": 1}, capture)

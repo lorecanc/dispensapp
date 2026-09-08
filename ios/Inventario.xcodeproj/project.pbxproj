@@ -20,6 +20,7 @@
 		3C4FB9A0751785C2F16C3429 /* InventoryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 640EB2695C90E2057ECB8B87 /* InventoryListView.swift */; };
 		3D6D14474A9EE38E76B082FD /* JoinPantrySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FFEB0D9B6F668A2DC23B8B8 /* JoinPantrySheet.swift */; };
 		42431B8E4A51ED357523C9F2 /* InventoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA67E03A3B8FFDE2A92AFD3D /* InventoryStore.swift */; };
+		4849874C422CA8E27BBEC052 /* ContributeProductTypeRedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E9DE98970D9CEDF659376EE /* ContributeProductTypeRedTests.swift */; };
 		49AD880531854B558019F847 /* EmptyStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75BEEC14B41FB5FDB228D811 /* EmptyStateView.swift */; };
 		4FCCFE05EEA9CA294279F84F /* ItemDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DE95F58595DDAFF67148BE5 /* ItemDetailView.swift */; };
 		53DB25F2C96F0895E606C294 /* Color+Palette.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2892CE8877922A53135A4FA /* Color+Palette.swift */; };
@@ -95,6 +96,7 @@
 		6C5DEB4CFC335C43641E9A02 /* APIConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIConfigTests.swift; sourceTree = "<group>"; };
 		6C69E7E0337B768635D7C61F /* CategoryRegistryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryRegistryTests.swift; sourceTree = "<group>"; };
 		6DE95F58595DDAFF67148BE5 /* ItemDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemDetailView.swift; sourceTree = "<group>"; };
+		6E9DE98970D9CEDF659376EE /* ContributeProductTypeRedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContributeProductTypeRedTests.swift; sourceTree = "<group>"; };
 		75BEEC14B41FB5FDB228D811 /* EmptyStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyStateView.swift; sourceTree = "<group>"; };
 		7D0ED61616B3720EB90EB310 /* InviteMembersSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InviteMembersSheet.swift; sourceTree = "<group>"; };
 		86BEC1D1B14FEE10746C1062 /* QuantityStepper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuantityStepper.swift; sourceTree = "<group>"; };
@@ -171,6 +173,7 @@
 				6C5DEB4CFC335C43641E9A02 /* APIConfigTests.swift */,
 				30D477A9B7C1A70B12B220DF /* CategoryPickerTests.swift */,
 				6C69E7E0337B768635D7C61F /* CategoryRegistryTests.swift */,
+				6E9DE98970D9CEDF659376EE /* ContributeProductTypeRedTests.swift */,
 				9B8678ABCD8350396646ED50 /* InventoryDateDecodingTests.swift */,
 				248D4E252368D897CEA5C44A /* InventoryPagingRedTests.swift */,
 				29EAF4C8EECA0F5B3F76C4A8 /* InventoryStoreTests.swift */,
@@ -393,6 +396,7 @@
 				A594A49BC6E6438CFD9EDB25 /* APIConfigTests.swift in Sources */,
 				ACA42871A52D25691B8D5E43 /* CategoryPickerTests.swift in Sources */,
 				D63F9DB5300B4C6CA3ACD6A6 /* CategoryRegistryTests.swift in Sources */,
+				4849874C422CA8E27BBEC052 /* ContributeProductTypeRedTests.swift in Sources */,
 				729210509B35F01D6D646730 /* InventoryDateDecodingTests.swift in Sources */,
 				A7F24CB1B78459322938F1F8 /* InventoryPagingRedTests.swift in Sources */,
 				E2F07AEF620AD17FEFA9A5F9 /* InventoryStoreTests.swift in Sources */,

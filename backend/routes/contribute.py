@@ -26,10 +26,6 @@ def _normalize_product_type(v: object) -> str:
     if v is None or (isinstance(v, str) and not v.strip()):
         return "food"
     if not isinstance(v, str):
-        # Tolleranza direct-call: senza product_type resta il sentinel Form(default="food").
-        default = getattr(v, "default", None)
-        if isinstance(default, str):
-            return _normalize_product_type(default)
         raise ValueError("product_type non valido")
     pt = v.strip().lower()
     if pt not in _WRITE_PRODUCT_TYPES:
