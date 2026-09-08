@@ -210,7 +210,7 @@ enum Compartment: String, CaseIterable, Hashable {
         (["acqua", "succo", "bevanda", "bibita", "cola", "aranciata", "caffè", "caffe", "tè", "the", "tisana"], .bevande),
         (["vino", "birra", "prosecco", "champagne", "whisky", "vodka", "liquore", "alcol"], .cantina),
         (["detersivo", "sapone", "shampoo", "bagnoschiuma", "dentifricio", "candeggina", "igiene", "puliz"], .igieneECasa),
-        (["crocchette", "pet-food", "dog-food", "cat-food"], .animali),
+        (["crocchette", "pet", "pet-food", "dog-food", "cat-food"], .animali),
         (["pasta", "spaghetti", "riso", "farina", "olio", "passata", "pelati", "legumi", "ceci", "lenticchie", "fagioli", "biscotti", "cioccolato", "marmellata", "sale", "zucchero", "scatolame", "tonno"], .dispensaSecca),
     ]
 

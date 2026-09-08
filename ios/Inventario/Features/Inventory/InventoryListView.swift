@@ -570,23 +570,28 @@ struct InventoryListView: View {
     }
 
     @ViewBuilder private func statusSection(status: ItemStatus, items: [InventoryItem]) -> some View {
-        Section {
-            ForEach(compartmentGroups(for: items), id: \.0.rawValue) { compartment, cItems in
-                compartmentGroup(status: status, compartment: compartment, items: cItems)
+        if status == .ok {
+            Section {
+                ForEach(compartmentGroups(for: items), id: \.0.rawValue) { compartment, cItems in
+                    compartmentGroup(status: status, compartment: compartment, items: cItems)
+                }
             }
-        } header: {
-            if status != .ok {
+            .listSectionSeparator(.hidden, edges: .bottom)
+        } else {
+            Section {
+                ForEach(compartmentGroups(for: items), id: \.0.rawValue) { compartment, cItems in
+                    compartmentGroup(status: status, compartment: compartment, items: cItems)
+                }
+            } header: {
                 // HIG: icona+label per stato, colori palette
                 Label(status.label, systemImage: status.symbol)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(status.color)
                     .textCase(nil)
                     .padding(.vertical, 2)
-            } else {
-                EmptyView()
             }
+            .listSectionSeparator(.hidden, edges: .bottom)
         }
-        .listSectionSeparator(.hidden, edges: .bottom)
     }
 
     private func compartmentGroup(status: ItemStatus, compartment: Compartment, items: [InventoryItem]) -> some View {
