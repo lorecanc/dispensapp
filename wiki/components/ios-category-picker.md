@@ -6,16 +6,17 @@ source_files:
   - "ios/Inventario/Components/CategoryPicker.swift"
   - "ios/Inventario/Models/CategoryRegistry.swift"
   - "ios/Inventario/Features/ShoppingList/ShoppingModels.swift"
+  - "ios/Inventario/Features/ShoppingList/ShoppingListView.swift"
   - "ios/InventarioTests/CategoryPickerTests.swift"
 created: "2026-06-24"
-last_updated: "2026-09-06"
+last_updated: "2026-09-09"
 ---
 
 # CategoryPicker
 
 ## Purpose
 
-A two-level category selector: a form row button showing the current category that opens a sheet with a `List` grouped into one section per supermarket department (*reparto*). Used wherever the user assigns or changes a product's category. The list is **server-driven**: options come from [CategoryRegistry](../concepts/category-registry.md) (`GET /api/categories`, with an embedded offline fallback), so the picker never hardcodes categories itself. A flat `Picker`/`Menu` with 26 options does not scale — hence the grouped sheet.
+A two-level category selector: a form row button showing the current category that opens a sheet with a `List` grouped into one section per supermarket department (*reparto*). Used wherever the user assigns or changes a product's category. The list is **server-driven**: options come from [CategoryRegistry](../concepts/category-registry.md) (`GET /api/categories`, with an embedded offline fallback), so the picker never hardcodes categories itself. A flat `Picker`/`Menu` with 27 options does not scale — hence the grouped sheet.
 
 ## Props / Interface
 
@@ -46,7 +47,7 @@ Both the category list and `validCategoryKeys` are computed (not stored): the pi
 
 ## Category Source
 
-`CategoryRegistry.categories` returns `[(key:label:)]` pairs — the live server snapshot after `update(with:)`, or the embedded fallback (mirror of backend `CATEGORY_LABELS`) on first launch/offline. The row button shows the selected label (or `"Nessuna"` for `""`):
+`CategoryRegistry.categories` returns `[(key:label:)]` pairs — the live server snapshot after `update(with:)`, or the embedded fallback (mirror of backend `CATEGORY_LABELS`) on first launch/offline. The fallback now covers 27 categories including `animali` (`"Animali"`, mapped to the `Animali` compartment with a `dispensa` storage default). The row button shows the selected label (or `"Nessuna"` for `""`):
 
 ```swift
 Button {
@@ -94,8 +95,15 @@ CategoryPicker(selection: $selectedCategory)
 
 - **[ManualEntryView](../components/ios-manual-entry-view.md)** — category selection during manual product entry
 - **[ScanPreviewSheet](../components/ios-scan-preview-sheet.md)** — category selection after scanning a barcode
+- `ShoppingListView` (`ios/Inventario/Features/ShoppingList/ShoppingListView.swift`) — category selection in the manual add card (`addItemSection`); the chosen key maps to a compartment via `Compartment.inferCompartment(fromCategory:)` on submit and resets to `""` after a successful add
 
-Both embed the picker in a `Form` `Section` without changes — the public `CategoryPicker(selection:)` interface is unchanged from the flat-picker era.
+```swift
+@State private var selectedCategory = ""
+// in addItemSection:
+CategoryPicker(selection: $selectedCategory)
+```
+
+`ManualEntryView` and `ScanPreviewSheet` embed the picker in a `Form` `Section`; `ShoppingListView` embeds it in the manual add card `VStack` (name field + picker + quantity stepper) — the public `CategoryPicker(selection:)` interface is unchanged in all three, and the picker component itself is untouched.
 
 ## Notes
 

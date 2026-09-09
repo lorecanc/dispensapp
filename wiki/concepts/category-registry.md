@@ -9,7 +9,7 @@ source_files:
   - "ios/Inventario/State/InventoryStore.swift"
   - "ios/InventarioTests/CategoryRegistryTests.swift"
 created: "2026-09-05"
-last_updated: "2026-09-06"
+last_updated: "2026-09-09"
 ---
 
 # Category Registry
@@ -67,7 +67,7 @@ This means a backend that predates the storage fields (nil labels, no per-item l
 
 ## Embedded Fallback
 
-The embedded snapshot is a static copy of the backend registry ([Backend Configuration](../config/backend-config.md) `CATEGORY_LABELS` + `COMPARTMENT_MAP` + `CATEGORY_STORAGE_DEFAULT` + `STORAGE_LOCATION_LABELS`): 26 categories with Italian labels (e.g. `yogurts` → `Yogurt`, `cleaning-hygiene` → `Igiene e pulizia`), the compartment map (e.g. `yogurts` → `Latticini e Uova`, `alcoholic-beverages` → `Cantina`), 26 storage defaults (7 `frigo` including `fresh-milk`/`meat`/`fish`, 1 `freezer` for `frozen-foods`, 18 `dispensa` including `pasta`/`eggs`/`alcoholic-beverages`), and 3 storage labels (`frigo` → `Frigo`, `freezer` → `Freezer`, `dispensa` → `Dispensa`). It can drift from the server; `update(with:)` takes precedence once `/api/categories` is fetched.
+The embedded snapshot is a static copy of the backend registry ([Backend Configuration](../config/backend-config.md) `CATEGORY_LABELS` + `COMPARTMENT_MAP` + `CATEGORY_STORAGE_DEFAULT` + `STORAGE_LOCATION_LABELS`): 27 categories with Italian labels (e.g. `yogurts` → `Yogurt`, `cleaning-hygiene` → `Igiene e pulizia`, `animali` → `Animali`), the compartment map (e.g. `yogurts` → `Latticini e Uova`, `alcoholic-beverages` → `Cantina`, `animali` → `Animali`), 27 storage defaults (7 `frigo` including `fresh-milk`/`meat`/`fish`, 1 `freezer` for `frozen-foods`, 19 `dispensa` including `pasta`/`eggs`/`alcoholic-beverages`/`animali`), and 3 storage labels (`frigo` → `Frigo`, `freezer` → `Freezer`, `dispensa` → `Dispensa`). It can drift from the server; `update(with:)` takes precedence once `/api/categories` is fetched.
 
 ## Backend Contract
 
@@ -90,7 +90,7 @@ The embedded snapshot is a static copy of the backend registry ([Backend Configu
 
 ## Tests
 
-`ios/InventarioTests/CategoryRegistryTests.swift` covers: embedded labels/count (26) and key uniqueness, unknown-key fallback, `compartmentMap` fallback, update-replaces-snapshot, reset-restores-embedded, empty-update-is-ignored (both on embedded and updated snapshots), decoding without optional fields, storage known-key/fallback lookups, update-with-storage-fields-replaces-maps, update-without-storage-fields-keeps-current-maps (both from embedded and from a prior storage payload), reset-restores-storage-maps, `storage_location` JSON decoding, and `Compartment` inference following registry updates.
+`ios/InventarioTests/CategoryRegistryTests.swift` covers: embedded labels/count (27) and key uniqueness, unknown-key fallback, `compartmentMap` fallback, update-replaces-snapshot, reset-restores-embedded, empty-update-is-ignored (both on embedded and updated snapshots), decoding without optional fields, storage known-key/fallback lookups, update-with-storage-fields-replaces-maps, update-without-storage-fields-keeps-current-maps (both from embedded and from a prior storage payload), reset-restores-storage-maps, `storage_location` JSON decoding, and `Compartment` inference following registry updates.
 
 ## Related
 

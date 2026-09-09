@@ -6,7 +6,7 @@ source_files:
   - "backend/services/off.py"
   - "backend/config.py"
 created: "2026-06-24"
-last_updated: "2026-09-06"
+last_updated: "2026-09-09"
 ---
 
 # Open Food Facts Client Service
@@ -40,7 +40,8 @@ Behaviour:
 
 - **Barcode gate:** `re.fullmatch(r"^\d{8,14}$", barcode or "")` fails → `None` with no network call.
 - **Default universal read:** `requested` defaults to `OFF_PRODUCT_TYPE_DEFAULT` (`"all"`); params are always `{"product_type": requested}`.
-- **Single GET + conditional per-host fallback:** `_fetch_single_v3(f"{OFF_V3_BASE_URL}/{barcode}", params, barcode)` runs first. Only when it returns `None` (persistent transport error or 5xx) **and** `requested != "all"` **and** `requested in OFF_V3_HOSTS`, a second `_fetch_single_v3` runs against `https://{OFF_V3_HOSTS[requested]}/api/v3/product/{barcode}`. Never on 404 or `found=False`, never parallel fan-out.
+- **Single GET, terminal:** `fetch_product` performs one `_fetch_single_v3(f"{OFF_V3_BASE_URL}/{barcode}", params, barcode)` call and returns its result directly. No per-host fallback on `product_type != all`, no parallel fan-out — a v3 `failure` envelope is terminal.
+- **Redirect follow inside `_fetch_single_v3`:** when the universal endpoint answers 301/302/303/307/308 with a `Location` whose host is allowlisted in `OFF_V3_HOSTS` values (e.g. food `302` → beauty for `8001280013973`), the client follows it once manually with `GET Location` (`Location` already carries the query). A non-allowlisted `Location` is ignored.
 - **Retry:** `_fetch_single_v3` retries at most once (`~300 ms` sleep) on transport `httpx.HTTPError` or `status >= 500`; persistent failure logs a warning and returns `None`.
 - **404:** returns `{"found": False}` immediately, no retry.
 - **Success envelope:** `_parse_off_status(data) != 1` or `product` not a dict → `{"found": False}`.
@@ -109,7 +110,7 @@ Wire details:
 |--------|-----------|
 | `_normalize_lang(lang)` | `(lang or "it")` → lowercase, `_`→`-`, first subtag truncated to 2 chars; empty → `"it"` |
 | `_parse_off_status(data)` | Int `status` passed through; string `"ok"`/`"status ok"`/`"success"` → 1, `"failure"` → 0, `result.id == "product_found"` → 1; unparseable → 0 |
-| `_fetch_single_v3(url, params, barcode)` | One GET with max 1 retry (~300 ms) on transport error/5xx; maps 404 → `{"found": False}`, success → normalised product dict, `status != 1`/missing product → `{"found": False}`, transport/parse failure → `None` |
+| `_fetch_single_v3(url, params, barcode)` | One GET with max 1 retry (~300 ms) on transport error/5xx; follows 301/302/303/307/308 once manually only to allowlisted `OFF_V3_HOSTS` (`Location` carries the query); maps 404 → `{"found": False}`, success → normalised product dict, `status != 1`/missing product → `{"found": False}`, transport/parse failure → `None` |
 | `_resolve_product_source(data, requested)` | Scans `product_type`/`instance`/`source` (top-level and `product`); substring match `beauty`/`petfood`/`product`/`food`; falls back to `requested` when specific, else `"product"` (never `"all"`) |
 | `resolve_write_url(product_type, base)` | Staging → `https://world.openfoodfacts.net/cgi`; production → per-type `world.open* facts.org/cgi` twin |
 | `_get_client()` | Lazily-created shared `httpx.AsyncClient(timeout=10.0, headers={"User-Agent": off_user_agent()})` for reads |
@@ -126,7 +127,7 @@ graph LR
     OffSvc --> WriteAPI["OFF write API"]
 ```
 
-- Internal: [Scan API](../api/scan.md) and the Contribute API consume this service; [Backend Configuration](../config/backend-config.md) supplies `OFF_V3_BASE_URL`, `OFF_V3_HOSTS`, and write credentials.
+- Internal: [Scan API](../api/scan.md) and the Contribute API consume this service; [Backend Configuration](../config/backend-config.md) supplies `OFF_V3_BASE_URL`, `OFF_V3_HOSTS` (redirect allowlist), and write credentials.
 - External: `httpx` (shared read client, per-call write clients), OFF v3 read API (`world.open* facts.org/api/v3/product`), OFF write API (`product_jqm2.pl`, `product_image_upload.pl`).
 
 ## Flow
@@ -135,16 +136,14 @@ graph LR
 graph LR
     Caller -->|barcode| Fetch["fetch_product barcode, type=all"]
     Fetch -->|invalid barcode| RetNone["return None - no network"]
-    Fetch -->|GET v3 + product_type| Httpx["shared client timeout=10s + UA"]
-    Httpx -->|transport error / 5xx 1x300ms retry| Fallback{"explicit type + failed?"}
+    Fetch -->|single GET v3 + product_type| Httpx["shared client timeout=10s + UA"]
+    Httpx -->|301/302/303/307/308 allowlisted host| Follow["GET Location once"]
     Httpx -->|404| NotFound["return {'found': False}"]
     Httpx -->|"status failure / no product"| NotFound
-    Httpx -->|valid product| Normalize["normalise fields + resolve source"]
+    Httpx -->|transport error / 5xx 1x300ms retry| RetNone2["return None"]
+    Follow -->|valid product| Normalize["normalise fields + resolve source"]
+    Httpx -->|valid product| Normalize
     Normalize --> Success["return product dict"]
-    Fallback -->|yes| PerHost["GET per-host twin - once"]
-    Fallback -->|no - 404 / found False / type all| RetNone2["return None or found False"]
-    PerHost --> Success
-    PerHost --> RetNone2
     Contrib["contribute_product"] -->|POST product_jqm2.pl per-host + product_type| OffW["OFF write API"]
     Upload["upload_product_image"] -->|POST product_image_upload.pl per-host| OffW
     OffW -->|status / reason| WriteRes["return {status, reason}"]
@@ -192,7 +191,7 @@ None              # invalid barcode, network or parse error
 
 ## Testing
 
-- Read path: `backend/tests/test_off.py` — v3 URL + `product_type=all` params, no `v0` segment, barcode gate with no network call, shared-client reuse, 1-retry-then-`None` on 500/timeout, no retry on 404/`found=False`, `User-Agent` header, `success`/`product_found` vs `failure` envelopes, `source`/`product_type` propagation, pnns slug cases.
+- Read path: `backend/tests/test_off.py` — v3 URL + `product_type=all` params, no `v0` segment, barcode gate with no network call, shared-client reuse, 1-retry-then-`None` on 500/timeout, no retry on 404/`found=False`, single GET terminal (failure envelope → 1 GET, no fan-out), 302 food→beauty followed once only to allowlisted `OFF_V3_HOSTS` (`8001280013973` → Felce Azzurra), `User-Agent` header, `success`/`product_found` vs `failure` envelopes, `source`/`product_type` propagation, pnns slug cases.
 - Scan caller: `backend/tests/test_scan.py` — maps `None` → 502, `{"found": False}` → 200 `found: false`, propagates `source`/`product_type`/`pnns_group`.
 - Metadata write: `backend/tests/test_contribute.py` — asserts `add_*`-only form fields, `User-Agent` contents, and that the password never appears in logs.
 - Photo write: `backend/tests/test_contribute_photo.py` and `test_off_upload_gap_red.py` — assert the `imgupload_{imagefield}` part name, size/type guards, and the 413/415/422 mappings.

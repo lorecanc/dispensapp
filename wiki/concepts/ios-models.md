@@ -10,7 +10,7 @@ source_files:
   - "ios/Inventario/Networking/APIClient.swift"
   - "ios/Inventario/Features/ShoppingList/ShoppingModels.swift"
 created: "2026-06-24"
-last_updated: "2026-09-06"
+last_updated: "2026-09-09"
 ---
 
 # iOS Models
@@ -80,8 +80,9 @@ Transient model for a barcode-lookup response.
 | `message` | `String?` | `message` | Optional human-readable message |
 | `source` | `String?` | `source` | Raw product source from backend; nil with backends predating the field |
 | `productType` | `String?` | `product_type` | Product type from backend; nil with backends predating the field |
+| `pnnsGroup` | `String?` | `pnns_group` | OFF PNNS group (`pnns_groups_1` slugified) from backend v3; nil with backends predating the field |
 
-Only `imageURL`, `suggestedCategory` (`suggested_category`), and `productType` (`product_type`) need explicit `CodingKeys` mappings. `source` and `productType` are additive `var` fields with `nil` defaults, so decoding tolerates payloads from older backends and the memberwise initializer is unchanged for existing call sites. See the [Scan API](../api/scan.md) for the backend fields.
+Only `imageURL`, `suggestedCategory` (`suggested_category`), `productType` (`product_type`), and `pnnsGroup` (`pnns_group`) need explicit `CodingKeys` mappings. `source`, `productType`, and `pnnsGroup` are additive `var` fields with `nil` defaults, so decoding tolerates payloads from older backends and the memberwise initializer is unchanged for existing call sites. See the [Scan API](../api/scan.md) for the backend fields.
 
 ### needsEnrichment
 
@@ -94,6 +95,8 @@ var needsEnrichment: Bool {
     return imageURL == nil
 }
 ```
+
+Offline creates preserve the value in `OutboxStore.Mutation.Create.pnnsGroup` (`var` with `nil` default, so pre-upgrade disk entries decode as `nil` and replay sends them unchanged) — see [iOS Offline Outbox](./ios-offline-outbox.md).
 
 ## ProductSource
 
@@ -177,6 +180,6 @@ History entry returned by `APIClient.history(pantryId:itemId:)` and cached per i
 
 - **ShoppingList**: `id`, `pantryId` (`pantry_id`), `name`, `createdAt` (`created_at`), `items: [ShoppingListItem]`.
 - **ShoppingListItem**: `id`, `shoppingListId` (`shopping_list_id`), `name`, `quantity`, `checked` (var), `compartment: String?`, `createdAt` (`created_at`).
-- **Suggestion**: `barcode` (used as `id`), `name`, `category?`, `timesScanned` (`times_scanned`).
+- **Suggestion**: `barcode`, `name`, `category?`, `timesScanned` (`times_scanned`). `id` is `barcode` when non-empty, otherwise a derived name key (`"name:" + name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()`); the custom `init(from:)` decodes `barcode` with `decodeIfPresent(String.self, forKey: .barcode) ?? ""` so payloads missing `barcode` decode instead of failing.
 - **PantryCheckItem / PantryCheckResponse**: `PantryCheckItem` (`id`, `name`, `inPantry`, `status`) wrapped in `PantryCheckResponse(items:)`.
-- **Compartment**: 10-case supermarket-aisle enum (`Ortofrutta`, `Latticini e Uova`, `Salumi e Formaggi`, `Carne e Pesce`, `Surgelati`, `Dispensa Secca`, `Bevande`, `Cantina`, `Forno e Panetteria`, `Igiene e Casa`) with `icon` (SF Symbol), `supermarketOrder` traversal order (aligned with backend `SUPER_MARKET_COMPARTMENTS`), legacy-name normalization (`frigo`/`cantina`/`dispensa`/`altro`), and inference cascade category-via-registry → name-keywords → default `Dispensa Secca`.
+- **Compartment**: 11-case supermarket-aisle enum (`Ortofrutta`, `Latticini e Uova`, `Salumi e Formaggi`, `Carne e Pesce`, `Surgelati`, `Dispensa Secca`, `Bevande`, `Cantina`, `Forno e Panetteria`, `Igiene e Casa`, `Animali`) with `icon` (SF Symbol; `Animali` uses `pawprint.fill`), `supermarketOrder` traversal order with `.animali` appended last (aligned with backend `SUPER_MARKET_COMPARTMENTS`), legacy-name normalization (`frigo`/`cantina`/`dispensa`/`altro`), and inference cascade category-via-registry → name-keywords → default `Dispensa Secca` (pet aliases/keywords such as `dog-food`, `cat-food`, `crocchette` resolve to `Animali`).

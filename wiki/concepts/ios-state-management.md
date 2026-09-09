@@ -9,7 +9,7 @@ source_files:
   - "ios/Inventario/Networking/APIClient.swift"
   - "ios/Inventario/Models/InventoryItem.swift"
 created: "2026-06-24"
-last_updated: "2026-09-06"
+last_updated: "2026-09-09"
 ---
 
 # iOS State Management
@@ -108,7 +108,7 @@ All item calls are pantry-scoped (`createScoped`, `createManualScoped`, `updateS
 
 When `isOffline` (or a request fails with classified `.offline` mid-flight), every mutation applies locally first, persists the snapshot, enqueues, and returns — no banner (see [iOS Offline Outbox](../concepts/ios-offline-outbox.md)):
 
-- `enqueueLocalCreate` — allocates a negative temp-id via `outbox.nextTempId()` (`-1, -2, …`, monotonic counter persisted in the same JSON so restarts never reuse IDs), appends a visible `InventoryItem` with that ID (including `source`/`productType` plus `offTags`/`storageLocation`), sorts, `cache.save`, enqueues `.create` with `tempId` and the same fields. `add` threads `source`/`productType` through both the online `createScoped` path and the offline enqueue path.
+- `enqueueLocalCreate` — allocates a negative temp-id via `outbox.nextTempId()` (`-1, -2, …`, monotonic counter persisted in the same JSON so restarts never reuse IDs), appends a visible `InventoryItem` with that ID (including `source`/`productType` plus `offTags`/`storageLocation`), sorts, `cache.save`, enqueues `.create` with `tempId` and the same fields plus `pnnsGroup`. `add` threads `source`/`productType`/`pnnsGroup` through both the online `createScoped` path and the offline enqueue path.
 - `enqueueLocalConsume` — decrements locally (or archives to zero), clears history, enqueues `.consume`.
 - `enqueueLocalUpdate` — PATCH-style merge (`nil` = untouched) via `InventoryItem.merging`, re-sorts, enqueues `.update`.
 - `enqueueLocalDelete` — removes locally + history/archived cleanup, enqueues `.delete`.
@@ -119,7 +119,7 @@ Each enqueue calls `triggerReplayIfOnline()` (covers the "classified offline but
 
 `replayOutbox()` drains [`outbox.entries`](../concepts/ios-offline-outbox.md) in FIFO order on the entry's own `pantryId` (not the current selection — the user may have switched pantries mid-queue):
 
-- Success → `remove(id:)`; for `.create`, `remapTempId(tempId → serverId)` rewrites later entries referencing the temp-id (e.g. consume-on-offline-created-item), then continue. Create replay re-sends `source`/`productType` (plus `offTags`/`storageLocation`) via `createScoped`; optimistic `InventoryItem.replacing`/`merging` preserve `source`/`productType` so snapshots keep them.
+- Success → `remove(id:)`; for `.create`, `remapTempId(tempId → serverId)` rewrites later entries referencing the temp-id (e.g. consume-on-offline-created-item), then continue. Create replay re-sends `source`/`productType`/`pnnsGroup` (plus `offTags`/`storageLocation`) via `createScoped`; optimistic `InventoryItem.replacing`/`merging` preserve `source`/`productType` so snapshots keep them.
 - `OutboxStore.decision(for:)` → `.drop` (server wins: `.notFound`, HTTP 404/409 and other 4xx except 401/403/408/429, `.decoding`) logs and discards; `.stop` (HTTP 401/403/408/429, `.transport`, `.offline`, `.invalidURL`, 5xx) halts and retries on the next online event. Unknown `catch` also halts.
 - Never sets `store.error` (state is already reflected in the UI; a banner would mislead). After processing anything, reconciles via `refresh()` — or `fetchPantries()` when `pantries` is empty (cold-start offline gate).
 - Single-flight via `isReplayingOutbox` + `replayRequested` coalescing (one extra pass, only if still online).

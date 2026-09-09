@@ -30,7 +30,7 @@ source_files:
   - "ios/Inventario/Models/ItemStatus.swift"
   - "ios/Inventario/Models/ScanResult.swift"
 created: "2026-06-24"
-last_updated: "2026-09-06"
+last_updated: "2026-09-09"
 ---
 
 # Project Overview

@@ -197,7 +197,13 @@ struct ShoppingListView: View {
                     } else {
                         ForEach(groupedItems, id: \.0.rawValue) { compartment, items in
                             Section {
-                                DisclosureGroup(isExpanded: binding(for: compartment)) {
+                                PantryDisclosureGroup(
+                                    title: compartment.label,
+                                    icon: compartment.icon,
+                                    count: items.count,
+                                    tone: .neutral,
+                                    isExpanded: binding(for: compartment)
+                                ) {
                                     ForEach(items) { item in
                                         shoppingRow(item: item)
                                             .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
@@ -214,27 +220,7 @@ struct ShoppingListView: View {
                                                 .accessibilityHint("Rimuove il prodotto dalla lista della spesa")
                                             }
                                     }
-                                } label: {
-                                    HStack(spacing: 8) {
-                                        Label(compartment.label, systemImage: compartment.icon)
-                                            .font(.subheadline.weight(.semibold))
-                                            .foregroundStyle(Color.pantryMoss)
-                                        Spacer()
-                                        Text("\(items.count)")
-                                            .font(.caption.weight(.semibold))
-                                            .foregroundStyle(Color.textSecondary)
-                                            .padding(.horizontal, 7)
-                                            .padding(.vertical, 3)
-                                            .background(Capsule().fill(Color.pantryOat.opacity(0.35)))
-                                            .overlay(Capsule().strokeBorder(Color.pantryOat, lineWidth: 0.5))
-                                            .accessibilityLabel("\(items.count) prodotti in \(compartment.label)")
-                                    }
-                                    .contentShape(Rectangle())
                                 }
-                                .tint(Color.pantryMoss)
-                            } header: {
-                                // Header vuoto: label dentro DisclosureGroup già mostra comparto + count
-                                EmptyView()
                             }
                             .listSectionSeparator(.hidden, edges: .bottom)
                         }
@@ -246,7 +232,6 @@ struct ShoppingListView: View {
             .scrollContentBackground(.hidden)
             .background(Color.pantryCream)
             .listSectionSpacing(12)
-            .tint(Color.pantryOat)
         }
         .navigationTitle(store.selectedList?.name ?? "Spesa")
         .searchable(text: $suggestionQuery, prompt: "Cerca suggerimenti...")

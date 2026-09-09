@@ -5,7 +5,7 @@ category: "modules"
 source_files:
   - "backend/routes/inventory.py"
 created: "2026-06-24"
-last_updated: "2026-09-06"
+last_updated: "2026-09-09"
 ---
 
 # Backend Routes — Inventory
@@ -44,7 +44,7 @@ Legacy shims (deprecated, same handlers on the default pantry):
 |--------|------|-------|
 | POST / POST / GET / GET / GET / PATCH / DELETE / POST / GET | `/api/inventory`, `/api/inventory/manual`, `/api/inventory`, `/api/inventory/export`, `/api/inventory/{item_id}`, `/api/inventory/{item_id}`, `/api/inventory/{item_id}`, `/api/inventory/{item_id}/consume`, `/api/inventory/{item_id}/history` | Auth via `_default_pantry_ctx` against `DEFAULT_PANTRY_ID = 1`; queries pass `allow_null=True` so pre-scoping rows with `pantry_id NULL` remain visible. Scoped routes use `allow_null=False`. |
 
-Creation shares `_create_scoped_item`: `resolve_expiration()` computes `expiration_date`/`is_estimated` (`allow_none=True` for manual), missing `compartment` is inferred via `infer_compartment()`, `category` is normalized, `source`/`product_type` use the explicit `source`/`product_type` param when not `None` and fall back to the body field (`NULL` = not set), and failures return 500. Body fields and stripping rules are defined in [Backend Schemas](./backend-schemas.md) (`InventoryCreate`/`InventoryCreateManual`). Listing shares `_list_scoped_items`: `quantity > 0` filter, `limit` default 50 (`ge=1, le=100`), `offset` default 0 (`ge=0`). History shares `_history_scoped_items` with the same pagination, ordered by `created_at DESC, id DESC`.
+Creation shares `_create_scoped_item` with category cascade explicit-valid > `suggest_category(tags, pnns_group, source, product_type)` > `None`: `normalize_category(body.category)` is kept only when present in `COMPARTMENT_MAP`, otherwise it becomes `None` and the cascade continues to `suggest_category(body.off_category_tags, pnns_group, resolved_source, resolved_product_type)`; `source`/`product_type` resolve from the explicit param when not `None` with fallback to the body field (`NULL` = not set) and `pnns_group` resolves from the body; the resolved category feeds `resolve_expiration(category=resolved)` (`allow_none=True` for manual) and `infer_compartment(category=resolved)` when `compartment` is omitted; a `None` fallback emits a redacted `logger.warning` (barcode/source/product_type/tags/pnns), and failures return 500. Body fields (`source`/`product_type` max 32, `pnns_group` max 64) and stripping rules are defined in [Backend Schemas](./backend-schemas.md) (`InventoryCreate`/`InventoryCreateManual`). Updates share `_update_scoped_item`: `category` is normalized and a spurious value not in `COMPARTMENT_MAP` becomes `None` on PATCH. Listing shares `_list_scoped_items`: `quantity > 0` filter, `limit` default 50 (`ge=1, le=100`), `offset` default 0 (`ge=0`). History shares `_history_scoped_items` with the same pagination, ordered by `created_at DESC, id DESC`.
 
 Consume (`_consume_scoped_item`) is a single conditional `UPDATE ... WHERE id AND pantry AND quantity >= delta`. On zero matched rows it rolls back and returns 404 when the item does not exist in the pantry, otherwise 409 `Quantità insufficiente`. Each success appends a `ConsumptionEvent` (`pantry_id`, `item_id`, `name_snapshot`, `barcode`, `delta=-delta`, `reason`); no actor token is persisted. Contract A: when quantity reaches zero the item row is deleted and a zero-quantity snapshot is returned, while history stays queryable on `pantry_id + item_id` without requiring the row.
 
@@ -56,12 +56,12 @@ Errors: 401 missing/malformed `X-Pantry-Token`; 404 unknown pantry or item outsi
 graph LR
     InventoryRoutes["Inventory Routes"] --> PantryDep["dependencies.pantry.get_current_pantry"]
     InventoryRoutes --> ExpirationSvc["services.expiration.resolve_expiration"]
-    InventoryRoutes --> CompartmentSvc["services.compartment.infer_compartment"]
+    InventoryRoutes --> CompartmentSvc["services.compartment.infer_compartment + suggest_category"]
     InventoryRoutes --> MarkdownSvc["services.markdown_export.to_markdown"]
     InventoryRoutes --> ORM["InventoryItem + ConsumptionEvent"]
 ```
 
-- Internal: `backend.database.get_db`, `backend.config.normalize_category`
+- Internal: `backend.database.get_db`, `backend.config.normalize_category + COMPARTMENT_MAP`
 - External: FastAPI, SQLAlchemy, Pydantic
 
 ## Usage Example

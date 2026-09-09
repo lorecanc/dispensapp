@@ -5,7 +5,7 @@ category: "components"
 source_files:
   - "ios/Inventario/Features/Inventory/InventoryListView.swift"
 created: "2026-06-24"
-last_updated: "2026-09-06"
+last_updated: "2026-09-09"
 ---
 
 # InventoryListView
@@ -23,8 +23,10 @@ last_updated: "2026-09-06"
 | Prop | Type | Required | Description |
 |------|------|----------|-------------|
 | `store` | `InventoryStore` (`@Environment`) | yes | Source of `items`, `pantries`, `selectedPantryId`, `selectedPantryName`, `archivedIDs`, `history`, `isOffline`, `error` |
-| `searchText` | `String` (`@State`) | no | Drives `.searchable` client-side filter on name/brand/category |
-| `selectedCompartment` | `Compartment?` (`@State`) | no | Reparto chip filter, options from `Compartment.supermarketOrder`; match via `CategoryRegistry.compartmentMap` (nil/unknown category visible only with Tutti) |
+| `searchText` | `String` (`@State`) | no | Drives `.searchable` client-side filter on name/brand/category; when trimmed text is ≥2 chars a 350ms-debounce `.task(id: searchText)` calls `APIClient.shared.fetchSuggestions(q:scope:"pantry")` into `pantrySuggestions` |
+| `selectedCompartment` | `Compartment?` (`@State`) | no | Reparto chip filter, options from `Compartment.supermarketOrder`; match via `Compartment.inferCompartment(name:category:)` — nil/unknown maps to `dispensaSecca`, never hidden |
+| `expandedCompartments` | `Set<String>` (`@State`) | no | Expanded `DisclosureGroup` state, pre-expanded for all `ItemStatus × Compartment.supermarketOrder` keys as `"status#compartment"`; toggled via `binding(for:status:comp:)` |
+| `pantrySuggestions` / `manualPrefillName` / `manualPrefillCategory` | state | no | Suggestion results plus prefill for `ManualEntryView(initialName:initialCategory:)`; tapping a suggestion fills prefill, clears `pantrySuggestions`/`searchText`, and opens `showManual` |
 | `showDetailItem` | `InventoryItem?` (`@State`) | no | Presents `ItemDetailView` sheet on row tap |
 | `showScanner` / `showManual` / `showAddChoice` | `Bool` (`@State`) | no | Add flow: `addProductPill` → confirmation dialog (Scansiona / Inserimento manuale) → `ScannerViewWrapper` or `ManualEntryView` sheet |
 | `showHistorySheet` | `Bool` (`@State`) | no | Presents Storico history sheet (medium/large detents) from overflow menu |
@@ -48,11 +50,16 @@ Tab("Dispensa", systemImage: "refrigerator") {
 
 Header: `navigationTitle` is `store.selectedPantryName`. Leading toolbar is `pantryPickerMenu` (Picker over `store.pantries` + "Gestisci dispense" sheet + "Elimina dispensa" confirm). Trailing toolbar is a scanner button plus a single `ellipsis.circle` overflow `Menu` (Inserimento manuale, Invita membri, Impostazioni, Storico, Esporta dispensa).
 
+Body is split into extracted helpers to keep type-checking light: `inventoryListContent` / `statusSection(status:items:)` / `compartmentGroup(status:compartment:items:)` / `selectableInventoryRow(for:)` / `overflowMenu`. Status iteration uses `ForEach(groupedItems, id: \.0.rawValue)`.
+
 Body sections in the `List`:
 
 - `compartmentFilterBar`: horizontal chips (Tutti + `Compartment.supermarketOrder`), toggle `selectedCompartment`; reparto-only filtering, no `ProductSource` filter pills.
 - `addProductPill`: capsule button opening the Scansiona/Manuale choice dialog.
-- Status sections: `ForEach(groupedItems)` with `Label(status.label, systemImage: status.symbol)` headers; rows are `InventoryRowView` with leading consume (`fork.knife`, `store.consume`) and trailing delete (`trash`, `store.delete`) swipe actions (`allowsFullSwipe: false`) plus matching `contextMenu` items.
+- `pantrySuggestionsSection`: shown only when `pantrySuggestions` is non-empty; rows show name + category display name with `×N` (`timesScanned`) and `plus.circle` affordance; tap prefills `ManualEntryView(initialName:initialCategory:)`.
+- Status sections (`statusSection`): one `Section` per `ItemStatus`; `.ok` sections render without a status header, other statuses render a `Label(status.label, systemImage: status.symbol)` header. Inside each, items are sub-grouped by `compartmentGroups(for:)` (via `Compartment.inferCompartment(name:category:)`, ordered by `Compartment.supermarketOrder`) with `ForEach(..., id: \.0.rawValue)`.
+- Compartment groups (`compartmentGroup`): each `(Compartment, [InventoryItem])` renders as a `DisclosureGroup` with `isExpanded: binding(for:status:comp:)` and a `compartmentHeader` label (icon + label + count capsule); rows are `selectableInventoryRow`.
+- Rows (`selectableInventoryRow`): `InventoryRowView` with leading consume (`fork.knife`, `store.consume`) and trailing delete (`trash`, `store.delete`) swipe actions (`allowsFullSwipe: false`) plus matching `contextMenu` items.
 - Empty states: `EmptyStateView()` when the pantry is empty, `EmptyStateView(magnifyingglass / Nessun risultato / "Prova a cambiare ricerca o filtri.")` when filters match nothing.
 - Overlay (top): `OfflinePill()` when `store.isOffline` (see [iOS Offline Outbox](../concepts/ios-offline-outbox.md)), unified `BannerView(style: .error, autoDismiss: true)` when `store.error != nil`.
 

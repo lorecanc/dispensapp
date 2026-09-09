@@ -5,17 +5,18 @@ category: "modules"
 source_files:
   - "backend/routes/scan.py"
   - "backend/services/off.py"
+  - "backend/services/compartment.py"
   - "backend/schemas.py"
   - "backend/models.py"
 created: "2026-06-24"
-last_updated: "2026-09-06"
+last_updated: "2026-09-09"
 ---
 
 # Barcode Scan Route
 
 ## Purpose
 
-Handles barcode scanning requests from the mobile or web client. Accepts a barcode string, queries the [Open Food Facts API](../concepts/off-integration.md) through the internal `fetch_product` service (see [OFF service](./backend-service-off.md)), and returns either the matched product details or a not-found indicator. Missing or incomplete products can be enriched via [Contribute](../api/contribute.md). On a successful lookup it also records the scan in `ScanHistory` without blocking the event loop. Provenance fields (`source` / `product_type`) are surfaced to clients following [iOS Models](../concepts/ios-models.md). See the [Scan API](../api/scan.md) page for endpoint reference.
+Handles barcode scanning requests from the mobile or web client. Accepts a barcode string, queries the [Open Food Facts API](../concepts/off-integration.md) through the internal `fetch_product` service (see [OFF service](./backend-service-off.md)), and returns either the matched product details or a not-found indicator. Missing or incomplete products can be enriched via [Contribute](../api/contribute.md). On a successful lookup it also records the scan in `ScanHistory` without blocking the event loop. Provenance fields (`source` / `product_type`) and the OFF `pnns_group` passthrough are surfaced to clients following [iOS Models](../concepts/ios-models.md), and the internal category suggestion is source-aware (`categories` + `pnns_group` + `source` / `product_type`). See the [Scan API](../api/scan.md) page for endpoint reference.
 
 ## Key Files
 
@@ -44,14 +45,38 @@ Handles barcode scanning requests from the mobile or web client. Accepts a barco
 | `brand` | `Optional[str]` | Product brand (present when `found=True`) |
 | `categories` | `list[str]` | Category tags (present when `found=True`) |
 | `image_url` | `Optional[str]` | URL to the front product image (present when `found=True`) |
-| `suggested_category` | `Optional[str]` | Internal category suggestion from OFF tags + PNNS group |
+| `suggested_category` | `Optional[str]` | Source-aware internal category suggestion from `suggest_category(categories, pnns_group, source, product_type)` (OFF tags + PNNS group with petfood / `product` guards) |
 | `source` | `Optional[str]` | Resolved OFF twin (`food` / `beauty` / `petfood` / `product`) |
 | `product_type` | `Optional[str]` | Mirrors `source`; persisted to `ScanHistory` |
+| `pnns_group` | `Optional[str]` | OFF PNNS group passthrough (`max_length=64`); forwarded to `InventoryCreate` / `InventoryCreateManual` (see [Schemas](./backend-schemas.md) and [Inventory API](../api/inventory.md)) |
 | `message` | `Optional[str]` | Human-readable status message |
 
 ### `fetch_product(barcode: str, product_type: str = OFF_PRODUCT_TYPE_DEFAULT) -> Optional[dict]`
 
 Async function in `backend/services/off.py` (see [OFF service](./backend-service-off.md)). Performs a universal v3 read — a single GET to `{OFF_V3_BASE_URL}/{barcode}` with `product_type=all` by default — using the shared client from `_get_client()`. Per-host fallback via `OFF_V3_HOSTS` applies only for an explicit non-`all` type on transport/5xx failure, never on 404 or `found=False`. Returns a product dict including `source` and `product_type` on success, `{"found": False}` when OFF reports `status != 1` or no `product` object, or `None` on any network / parse error.
+
+### `suggest_category(categories, pnns_group, source, product_type) -> Optional[str]`
+
+Source-aware category suggestion from `backend/services/compartment.py` (`backend/routes/scan.py:86-98`):
+
+```python
+suggested = suggest_category(
+    result.get("categories"),
+    result.get("pnns_group"),
+    source=result.get("source"),
+    product_type=result.get("product_type"),
+)
+```
+
+`None`-safe: missing tags / PNNS group yield `None` (defer, never a default category). When the result is `None` the route emits a PII-free warning carrying only barcode + source:
+
+```python
+logger.warning(
+    "scan suggest fallback None barcode=%s source=%s",
+    _log_safe(body.barcode, 32),
+    _log_safe(result.get("source"), 32),
+)
+```
 
 ## Dependencies
 
@@ -62,10 +87,11 @@ graph LR
     ScanRoute --> fetch_product["fetch_product (services/off)"]
     fetch_product --> SharedClient["_get_client shared httpx.AsyncClient"]
     SharedClient --> OFF["Open Food Facts API (external)"]
+    ScanRoute --> suggest_category["suggest_category (services/compartment)"]
     ScanRoute --> ScanHistory["ScanHistory via anyio.to_thread"]
 ```
 
-- **Internal**: `backend/schemas.py` (`ScanRequest`, `ScanResponse`), `backend/models.py` (`ScanHistory`), `backend/database.py` (`get_db`)
+- **Internal**: `backend/schemas.py` (`ScanRequest`, `ScanResponse` with `pnns_group`), `backend/services/compartment.py` (`suggest_category`, `_log_safe`), `backend/models.py` (`ScanHistory`), `backend/database.py` (`get_db`)
 - **External**: `httpx` (shared async client, 10s timeout), `anyio.to_thread`, Open Food Facts public API
 
 ## ScanHistory Persistence
@@ -113,7 +139,8 @@ Content-Type: application/json
   "suggested_category": "pasta",
   "message": null,
   "source": "food",
-  "product_type": "food"
+  "product_type": "food",
+  "pnns_group": "Cereals and potatoes"
 }
 
 # Product not found (200)
@@ -156,9 +183,10 @@ sequenceDiagram
         ScanRoute-->>Client: 200 OK {found: False}
     else Product found
         OFF_API-->>fetch_product: {product: {...}}
-        fetch_product-->>ScanRoute: {barcode, name, brand, ..., source, product_type}
+        fetch_product-->>ScanRoute: {barcode, name, brand, ..., source, product_type, pnns_group}
         ScanRoute->>DBThread: anyio.to_thread persist_history()
         DBThread-->>ScanRoute: committed / logged
-        ScanRoute-->>Client: 200 OK {found: True, ..., source, product_type}
+        ScanRoute->>ScanRoute: suggest_category(categories, pnns_group, source, product_type)
+        ScanRoute-->>Client: 200 OK {found: True, ..., source, product_type, pnns_group}
     end
 ```

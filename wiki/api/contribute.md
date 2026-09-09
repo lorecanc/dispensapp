@@ -6,7 +6,7 @@ source_files:
   - "backend/routes/contribute.py"
   - "backend/services/off.py"
 created: "2026-09-05"
-last_updated: "2026-09-06"
+last_updated: "2026-09-09"
 ---
 
 # Contribute
@@ -41,7 +41,7 @@ Both endpoints are disabled by default behind `OFF_WRITE_ENABLED` and share an i
 | `app_uuid` | `string` | no | max 64, metadata only |
 | `consent_cc_bysa` | `bool` | yes | must be `true`, else 400 |
 | `lang` | `string` | no | default `it`, pattern `^[a-z]{2}(-[A-Z]{2})?$`, blank/`None` → `it`, normalized case |
-| `product_type` | `string` | no | default `food`, allowlist `food\|beauty\|petfood\|product` via `_normalize_product_type` (trimmed, lowercased; blank/`None` → `food`), else 422 |
+| `product_type` | `string` | no | default `food`, allowlist `food\|beauty\|petfood\|product` via `_normalize_product_type` (trimmed, lowercased; blank/`None` → `food`; non-string → strict 422, no Form-sentinel tolerance), else 422. iOS `APIClient.contribute(productType:)` sends `scanResult?.productType ?? source`, omitted when `nil` |
 
 \* At least one of `product_name`, `generic_name`, `brands`, `quantity`, `categories`, `labels` must be non-blank (`at_least_one_field`, else 422). `comment`/`app_uuid` do not satisfy the rule.
 
@@ -61,7 +61,7 @@ Both endpoints are disabled by default behind `OFF_WRITE_ENABLED` and share an i
 | `imagefield` | form `string` | yes | `^(?:front\|ingredients\|nutrition\|packaging\|other)(?:_[a-z]{2})?$`, else 422 |
 | `consent_cc_bysa` | form `bool` | yes | must be `true`, else 400 |
 | `image` | file | yes | JPEG/PNG/HEIC, max 5 MB; magic-byte check, else 415; JPEG/PNG min 640x160 px, else 422 |
-| `product_type` | form `string` | no | default `food`, same 4-value allowlist as metadata (`food\|beauty\|petfood\|product`), else 422 `product_type non valido` |
+| `product_type` | form `string` | no | default `food`, same 4-value allowlist as metadata (`food\|beauty\|petfood\|product`; blank/`None` → `food`, non-string → strict 422), else 422 `product_type non valido`. iOS `APIClient.uploadPhoto(productType:)` sends `scanResult?.productType ?? source`, omitted when `nil` |
 
 Guard order (fail-fast): declared `Content-Length` pre-check (413, 5 MB + 1 KB multipart tolerance, body not read) runs BEFORE `product_type` validation (422), then consent (400) → write gate (403) → `code`/`imagefield` validation (422).
 
@@ -96,7 +96,7 @@ Auth: `user_id`/`password` from `OFF_USER`/`OFF_PASS` plus staging Basic (`off:o
 ## Validation & Guards
 
 - `lang`: max 8, pattern-gated, case-normalized (`it`, `it-IT`); service re-normalizes to 2-letter lower (`_normalize_lang`).
-- `product_type`: max 16, `_normalize_product_type` allowlist `food|beauty|petfood|product` (trimmed, lowercased; blank/`None` → `food`); JSON rejects invalid with Pydantic 422, photo rejects with 422 `product_type non valido` after the 413 `Content-Length` pre-check.
+- `product_type`: max 16, `_normalize_product_type` allowlist `food|beauty|petfood|product` (trimmed, lowercased; blank/`None` → `food`; non-string → strict 422, no Form-sentinel tolerance); JSON rejects invalid with Pydantic 422, photo rejects with 422 `product_type non valido` after the 413 `Content-Length` pre-check.
 - `max_length`: enforced by Pydantic (`product_name`/`brands`/`generic_name` 200, `quantity`/`app_uuid` 64, `categories`/`labels`/`comment` 500).
 - Rate limit: `_check_rate_limit(ip)`, shared bucket across both endpoints, 10 req/min per IP (`backend/routes/contribute.py:42-54`).
 - Photo: allowlist `front|ingredients|nutrition|packaging|other` + optional `_[a-z]{2}` suffix; filename sanitized (`_safe_filename`, 128 chars); HEIC brand allowlist fail-closed (`mif1`/`msf1` → 415).
@@ -112,7 +112,7 @@ Auth: `user_id`/`password` from `OFF_USER`/`OFF_PASS` plus staging Basic (`off:o
 | 413 | photo over 5 MB (declared or actual) | `Immagine troppo grande (max 5MB)` |
 | 415 | empty, unknown, or `Content-Type`/magic mismatch | `Tipo immagine non consentito (JPEG/PNG/HEIC)` |
 | 422 | bad `code`, empty product fields, bad `lang`, bad `imagefield`, image under 640x160 px | Pydantic error / `code non valido` / `imagefield non valido` / `Immagine troppo piccola (minimo 640x160 px)` |
-| 422 | bad `product_type` (not `food\|beauty\|petfood\|product`) | Pydantic error (metadata) / `product_type non valido` (photo) |
+| 422 | bad `product_type` (not `food\|beauty\|petfood\|product`, including non-string values — strict 422) | Pydantic error (metadata) / `product_type non valido` (photo) |
 | 429 | >10 req/min per IP | `Troppe richieste, riprova tra poco` |
 | 502 | OFF transport error or `status != 1` refusal | `Errore durante la comunicazione con Open Facts` / `Open Facts ha rifiutato il contributo` |
 

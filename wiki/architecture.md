@@ -17,7 +17,7 @@ source_files:
   - "ios/Inventario/Features/Scan/ScanSessionStore.swift"
   - "ios/Inventario/Components/CachedThumbnail.swift"
 created: "2026-06-24"
-last_updated: "2026-09-06"
+last_updated: "2026-09-09"
 ---
 
 # Architecture

@@ -5,7 +5,7 @@ category: "modules"
 source_files:
   - "backend/tests/"
 created: "2026-06-24"
-last_updated: "2026-09-06"
+last_updated: "2026-09-09"
 ---
 
 # Backend Tests
@@ -79,6 +79,10 @@ Tests the [`POST /api/scan` endpoint](./backend-routes-scan.md). Uses FastAPI's 
 | `test_scan_not_found_suggested_category_null` | `found: false` branch still carries `suggested_category: null` |
 | `test_scan_propagates_source_product_type` | `source`/`product_type` from `fetch_product` echoed in `ScanResponse` (e.g. beauty) |
 | `test_scan_non_food_without_pnns` | Non-food without `pnns_group` → `found: true`, no crash |
+| `test_scan_makeup_beauty_suggests_cleaning_hygiene` | `source: beauty` + `makeup` → `suggested_category: cleaning-hygiene` (source-aware suggest) |
+| `test_scan_tuna_petfood_defers_none` | `source: petfood` + `tuna` → `suggested_category: null` (food `canned-fish` mapping suppressed) |
+| `test_scan_propagates_pnns_group` | `pnns_group` from `fetch_product` echoed in `ScanResponse` |
+| `test_scan_forwards_source_to_suggest_category` | Wiring check: scan calls `suggest_category(categories, pnns_group, source=..., product_type=...)` |
 
 ### Open Food Facts service tests (`test_off.py`)
 
@@ -105,6 +109,9 @@ Uses `pytest.mark.asyncio`. Mocks `httpx.AsyncClient` at the class level to cont
 | `test_fetch_product_logs_requested_vs_resolved` | Log distinguishes requested vs resolved `product_type` |
 | `test_off_v3_base_url_allowlist_reject` | Non-allowlisted or `http` `OFF_V3_BASE_URL` falls back to default |
 | `test_fetch_product_uses_shared_client` | Service reuses the shared client instead of creating one per call |
+| `test_failure_envelope_is_terminal_no_fanout` | v3 `failure` / `product_not_found` envelope is terminal: no sub-DB fan-out, exactly 1 GET → `{"found": False}` |
+| `test_fanout_all_miss_returns_not_found` | All-hosts miss converges to `{"found": False}` (unchanged behavior) |
+| `test_food_302_to_beauty_is_followed` | Food 302 with `Location` to the beauty twin is followed → beauty product returned (pre-fix surfaced as `None`/502) |
 
 ### Contribute tests (`test_contribute.py`)
 
@@ -185,6 +192,11 @@ Seeds `ScanHistory` rows and exercises `GET /api/suggestions` (see [Suggestions]
 | `test_suggestions_prefix_trim_and_q_empty` | Query is trimmed; empty `q` returns all ordered by `times_scanned` desc, then `last_scanned_at` desc |
 | `test_suggestions_limit_10` | At most 10 results |
 | `test_suggestions_returns_minimal_fields` | Each item has `barcode`, `name`, `category`, `times_scanned` |
+| `test_pantry_scope_returns_only_own_and_merges` | `scope=pantry` returns only the caller's pantry rows; case-insensitive name merge (`Latte` + `LATTE` → `times_scanned: 2`, barcode kept), null barcode → `""` |
+| `test_pantry_scope_empty_pantry_returns_empty` | `scope=pantry` on an empty pantry → `[]` |
+| `test_pantry_scope_isolation_between_tokens` | `scope=pantry` isolates by token: own + legacy `created_by_token` rows visible, other pantry's rows invisible |
+| `test_pantry_scope_prefix_escape` | `scope=pantry` LIKE wildcards escaped: `50%` matches only `50% Sconto`, `a_` only `a_b`, `a\` only `a\b` |
+| `test_pantry_scope_limit_10` | `scope=pantry` caps at 10 results |
 
 ### Validation tests (`test_validation.py`)
 
@@ -252,6 +264,14 @@ Pure unit tests for `backend.services.compartment.storage_for_category` / `sugge
 | `test_suggest_pnns_fallback_milk` / `test_suggest_pnns_fallback_fish_meat_eggs` | PNNS fallback: milk-and-dairy → `fresh-milk`, fish-meat-eggs → `meat` |
 | `test_suggest_nothing_matches_returns_none` | Unmapped tags + excluded PNNS (`composite-foods`) → `None` |
 | `test_suggest_ignores_non_string_tags` / `test_suggest_empty_pnns_skipped` | Defensive runtime: non-string tags ignored, empty PNNS skipped |
+| `test_makeup_maps_cleaning_hygiene_via_source` | `makeup` + `source: beauty` → `cleaning-hygiene` |
+| `test_petfood_defers_none_not_cleaning` | `pet-food`/`dog-food` + `source: petfood` → `animali` (never `cleaning-hygiene`); `infer_compartment(dog-food)` → `Animali` |
+| `test_tuna_source_guard_food_vs_petfood` | `tuna` + `source: food` → `canned-fish`; + `source: petfood` → `None` |
+| `test_product_empty_tags_escapes` / `test_product_laptop_defers_none` / `test_product_pasta_maps_pasta` | `source: product`: generic `product`/`electronics`/`cable`/`laptop` filtered → `None`, but a real food tag (`pasta`) still wins |
+| `test_pnns_transits_through_create` | PNNS transits with source: `organic` + milk PNNS + `source: food` → `fresh-milk`; without PNNS → `None` |
+| `test_explicit_spuria_pippo_pasta` | Unknown `pippo` skipped, `pasta` wins (`source: food`) |
+| `test_petfood_chicken_defers_none` | `petfood` + `chicken` + `source: petfood` → `animali` |
+| `test_beauty_empty_defers_none` / `test_pnns_composite_foods_defers_none` | Empty tags + `source: beauty` → `None`; excluded PNNS `composite-foods` → `None` |
 
 ### Inventory storage tests (`test_inventory_storage.py`)
 
@@ -270,7 +290,7 @@ DB-backed via `client` / `db_session` fixtures (see [Inventory](../api/inventory
 | Suite | Coverage |
 |-------|----------|
 | `test_shopping.py` | Shopping-list CRUD + toggle, input validation, markdown export, cross-check against inventory, 401 (missing/malformed token), 403 (forbidden pantry), 404 (pantry not found) |
-| `test_expiration.py` | Explicit `expiration_date` passthrough (not estimated); category-based estimation (known category, case-insensitive, `en:` prefix); combined category + OFF tags dedup; unknown/empty tags fall back to the estimated default; end-to-end via API |
+| `test_expiration.py` | Explicit `expiration_date` passthrough (not estimated); category-based estimation (known category, case-insensitive, `en:` prefix); combined category + OFF tags dedup; unknown/empty tags fall back to the estimated default; `pastas` → `pasta` (365 days) and `pet-food` → `animali` shelf life via `OFF_TO_INTERNAL`/aliases; end-to-end via API |
 | `test_cors.py` | Allowlist (no wildcard `*`), allowed origin echoed back, disallowed origin rejected, preflight handling, `credentials: false` |
 | `test_markdown_escape.py` | Pipe/newline/CR escaping in table cells, no broken columns or rows, status and estimated-note rendering, shopping grouping with compartment defaults |
 
@@ -343,3 +363,6 @@ These `ios/InventarioTests/` suites have no `ios-tests.md` page by design — th
 | `OutboxStoreTests.testDecisionDoesNotDropRateLimitAndAuthErrors` | Replay policy: 429/401/403 → `.stop` (retryable, never silently dropped); 400/404/409/422 + decoding errors → `.drop`; offline/transport/5xx → `.stop` | [iOS offline outbox](../concepts/ios-offline-outbox.md) |
 | `APIClientBodyTests.testInventoryBodyCapsOffTagsToBackendLimits` + omit/empty variants | Request body pre-trims `off_category_tags` to backend limits (≤50 tags, ≤200 chars) — the client side of the `test_inventory_storage` 422 boundaries | [iOS networking](../concepts/ios-networking.md) |
 | `APIClientBodyTests.testInventoryBodyPreservesPickedCalendarDayEastOfUTC` | Local-midnight `DatePicker` day (e.g. Europe/Rome 2026-09-06) is sent as `2026-09-06`, not shifted to the previous day by the GMT outbound formatter | [iOS networking](../concepts/ios-networking.md) |
+| `CategoryRegistryTests` (animali, 27 keys) | Embedded registry pins 27 categories including `animali` (`Animali` display/compartment, `dispensa` storage fallback); update/reset/empty-payload and storage-map guards | [Category registry](../concepts/category-registry.md) |
+| `InventoryCompartmentFilterGreenTests` / `InventoryCompartmentFilterRedTests` | `Compartment.inferCompartment(name:category:)` proxy of the `InventoryListView.sections` predicate: `Tutti` shows all; normalized forms (uppercase, `off:`-prefix, keyword-only) included; unknown never leaks; `animali`/`pet-food`/`dog-food`/`cat-food` resolve to `.animali` | [Category registry](../concepts/category-registry.md) |
+| `ContributeProductTypeRedTests` | `APIClient.contribute` sends `product_type` in JSON and `uploadPhoto` sends it as a multipart field; `nil` omits the key (backward compatible) | [OFF integration](../concepts/off-integration.md) |

@@ -6,8 +6,8 @@
 
 | Page | Description | Last Updated |
 |------|-------------|-------------|
-| [Project Overview](./overview.md) | High-level description of the Inventario pantry management application | 2026-09-06 |
-| [Architecture](./architecture.md) | System architecture, back-end layering, iOS Store-View pattern, and data flow | 2026-09-06 |
+| [Project Overview](./overview.md) | High-level description of the Inventario pantry management application | 2026-09-09 |
+| [Architecture](./architecture.md) | System architecture, back-end layering, iOS Store-View pattern, and data flow | 2026-09-09 |
 | [Getting Started](./getting-started.md) | Setup instructions for backend (FastAPI) and iOS (SwiftUI) development | 2026-09-06 |
 
 ## Modules
@@ -15,19 +15,19 @@
 | Page | Description | Last Updated |
 |------|-------------|-------------|
 | [Backend API](./modules/backend-api.md) | FastAPI application entry point — app factory, lifespan, middleware, router registration, and uvicorn runner | 2026-09-06 |
-| [Backend Config](./modules/backend-config.md) | Central configuration constants for the Inventario backend service | 2026-09-06 |
+| [Backend Config](./modules/backend-config.md) | Central configuration constants for the Inventario backend service | 2026-09-09 |
 | [Backend Database](./modules/backend-database.md) | SQLAlchemy engine, session factory, ORM base, constraints, and Alembic migrations for SQLite | 2026-09-06 |
 | [Backend Models](./modules/backend-models.md) | SQLAlchemy ORM models for pantries, members, invites, inventory, shopping lists, and consumption events | 2026-09-06 |
-| [Backend Routes — Contribute](./modules/backend-routes-contribute.md) | POST /api/scan/contribute and /photo endpoints proxying opt-in OFF writes with validation, rate-limit, and strict photo checks | 2026-09-06 |
-| [Backend Routes — Inventory](./modules/backend-routes-inventory.md) | Pantry-scoped inventory CRUD, atomic consume, and consumption history | 2026-09-06 |
+| [Backend Routes — Contribute](./modules/backend-routes-contribute.md) | POST /api/scan/contribute and /photo endpoints proxying opt-in OFF writes with validation, rate-limit, and strict photo checks | 2026-09-09 |
+| [Backend Routes — Inventory](./modules/backend-routes-inventory.md) | Pantry-scoped inventory CRUD, atomic consume, and consumption history | 2026-09-09 |
 | [Backend Routes — Pantries](./modules/backend-routes-pantries.md) | Pantry lifecycle, invite creation/acceptance, and member management | 2026-09-06 |
-| [Barcode Scan Route](./modules/backend-routes-scan.md) | POST /api/scan endpoint that looks up products by barcode via Open Food Facts | 2026-09-06 |
+| [Barcode Scan Route](./modules/backend-routes-scan.md) | POST /api/scan endpoint that looks up products by barcode via Open Food Facts | 2026-09-09 |
 | [Shopping Routes](./modules/backend-routes-shopping.md) | Shopping-list CRUD, item check/uncheck, pantry cross-check, and markdown export grouped by supermarket compartment | 2026-09-05 |
-| [Backend Schemas](./modules/backend-schemas.md) | Pydantic v2 request/response schemas for inventory, pantry, invites, consumption, and shopping lists | 2026-09-06 |
-| [Backend Service — Expiration](./modules/backend-service-expiration.md) | Expiration date estimation service for pantry items | 2026-09-05 |
+| [Backend Schemas](./modules/backend-schemas.md) | Pydantic v2 request/response schemas for inventory, pantry, invites, consumption, and shopping lists | 2026-09-09 |
+| [Backend Service — Expiration](./modules/backend-service-expiration.md) | Expiration date estimation service for pantry items | 2026-09-09 |
 | [Backend Service — Markdown Export](./modules/backend-service-markdown-export.md) | Generates a markdown table of the pantry inventory from a list of items | 2026-09-05 |
-| [Open Food Facts Client Service](./modules/backend-service-off.md) | Async client for the Open Food Facts API — barcode lookup, metadata contribution, and photo upload | 2026-09-06 |
-| [Backend Tests](./modules/backend-tests.md) | Test suites for the FastAPI backend — scan, contribute, photo upload, pantry, suggestions, pagination, validation, and OFF service tests | 2026-09-06 |
+| [Open Food Facts Client Service](./modules/backend-service-off.md) | Async client for the Open Food Facts API — barcode lookup, metadata contribution, and photo upload | 2026-09-09 |
+| [Backend Tests](./modules/backend-tests.md) | Test suites for the FastAPI backend — scan, contribute, photo upload, pantry, suggestions, pagination, validation, and OFF service tests | 2026-09-09 |
 
 ## Components
 
@@ -35,16 +35,16 @@
 |------|-------------|-------------|
 | [iOS App Entry Point](./components/ios-app-entry.md) | App entry, tab navigation, and inventario:// deep-link invite flow | 2026-09-05 |
 | [iOS Cached Thumbnail](./components/ios-cached-thumbnail.md) | SwiftUI thumbnail view with NSCache memory cache and ImageIO downsampling for smooth list scrolling | 2026-09-05 |
-| [CategoryPicker](./components/ios-category-picker.md) | Two-level category picker (button + department-grouped sheet) reading the server-driven CategoryRegistry | 2026-09-06 |
+| [CategoryPicker](./components/ios-category-picker.md) | Two-level category picker (button + department-grouped sheet) reading the server-driven CategoryRegistry | 2026-09-09 |
 | [EmptyStateView](./components/ios-empty-state-view.md) | Full-screen empty-state placeholder displayed when the inventory list has no items | 2026-09-05 |
 | [ErrorBanner](./components/ios-error-banner.md) | Unified BannerView (error/success, optional auto-dismiss) plus the discrete OfflinePill, driven by ConnectivityMonitor with transport-error to offline classification | 2026-09-05 |
-| [InventoryListView](./components/ios-inventory-list-view.md) | Main pantry list view — pantry picker, category chips, consume/delete actions, history sheet, and offline handling | 2026-09-06 |
+| [InventoryListView](./components/ios-inventory-list-view.md) | Main pantry list view — pantry picker, category chips, consume/delete actions, history sheet, and offline handling | 2026-09-09 |
 | [InventoryRowView](./components/ios-inventory-row-view.md) | Card-style list row for a single inventory item — CachedThumbnail image, name/brand/category chip, status badge (hidden when ok), and quantity capsule | 2026-09-06 |
 | [iOS Invite Members Sheet](./components/ios-invite-members-sheet.md) | Pantry invite-link creation, read-only member list, and token-accept flow for the Inventario iOS app | 2026-09-05 |
 | [iOS ItemDetailView](./components/ios-item-detail-view.md) | Detail view for a single inventory item in the iOS app | 2026-09-06 |
-| [ManualEntryView (iOS)](./components/ios-manual-entry-view.md) | SwiftUI form for manually adding inventory items | 2026-09-05 |
+| [ManualEntryView (iOS)](./components/ios-manual-entry-view.md) | SwiftUI form for manually adding inventory items | 2026-09-09 |
 | [QuantityStepper](./components/ios-quantity-stepper.md) | Reusable stepper component for adjusting a numeric quantity within a configurable range | 2026-09-05 |
-| [iOS Scan Preview Sheet](./components/ios-scan-preview-sheet.md) | Scan result preview, save form, and Open Food Facts contribute flow for the Inventario iOS app | 2026-09-06 |
+| [iOS Scan Preview Sheet](./components/ios-scan-preview-sheet.md) | Scan result preview, save form, and Open Food Facts contribute flow for the Inventario iOS app | 2026-09-09 |
 | [iOS Scan Session](./components/ios-scan-session.md) | Continuous-scan queue, acquired pill overlay, and VisionKit scanner wrapper for the Inventario iOS app | 2026-09-05 |
 | [iOS Scanner View](./components/ios-scanner-view.md) | Continuous multi-scan barcode session for the Inventario iOS app | 2026-09-05 |
 | [SettingsView (iOS)](./components/ios-settings-view.md) | Settings screen for API URL configuration, connection testing, and markdown export | 2026-09-06 |
@@ -54,33 +54,33 @@
 
 | Page | Description | Last Updated |
 |------|-------------|-------------|
-| [Contribute](./api/contribute.md) | Opt-in Open Food Facts write API for product metadata and photos via staging | 2026-09-06 |
-| [Inventory API](./api/inventory.md) | Pantry-scoped inventory CRUD, atomic consume, and consumption history | 2026-09-06 |
+| [Contribute](./api/contribute.md) | Opt-in Open Food Facts write API for product metadata and photos via staging | 2026-09-09 |
+| [Inventory API](./api/inventory.md) | Pantry-scoped inventory CRUD, atomic consume, and consumption history | 2026-09-09 |
 | [Pantries API](./api/pantries.md) | Pantry lifecycle, invite creation/acceptance, and member management endpoints | 2026-09-06 |
-| [Scan](./api/scan.md) | Barcode scan lookup via Open Food Facts plus opt-in contribute and photo upload endpoints | 2026-09-06 |
-| [Suggestions](./api/suggestions.md) | Scan-history autocomplete endpoint GET /api/suggestions — prefix search ordered by scan frequency | 2026-09-06 |
+| [Scan](./api/scan.md) | Barcode scan lookup via Open Food Facts plus opt-in contribute and photo upload endpoints | 2026-09-09 |
+| [Suggestions](./api/suggestions.md) | Autocomplete endpoint GET /api/suggestions — shopping scan-history or pantry inventory scopes | 2026-09-09 |
 
 ## Concepts
 
 | Page | Description | Last Updated |
 |------|-------------|-------------|
-| [Category Registry](./concepts/category-registry.md) | Server-driven category/compartment/storage registry on iOS — CategoryRegistry.update(with:) from GET /api/categories with embedded offline fallback | 2026-09-06 |
-| [Expiration Date Estimation](./concepts/expiration-estimation.md) | Automatic shelf-life-based expiration date estimation when the user does not provide one | 2026-09-05 |
+| [Category Registry](./concepts/category-registry.md) | Server-driven category/compartment/storage registry on iOS — CategoryRegistry.update(with:) from GET /api/categories with embedded offline fallback | 2026-09-09 |
+| [Expiration Date Estimation](./concepts/expiration-estimation.md) | Automatic shelf-life-based expiration date estimation when the user does not provide one | 2026-09-09 |
 | [Inventory Consume & History](./concepts/inventory-consume-history.md) | Atomic quantity decrement with an append-only ConsumptionEvent ledger and the Storico history UI | 2026-09-05 |
-| [iOS Models](./concepts/ios-models.md) | Data models used by the native iOS app — InventoryItem, ScanResult, CategoryRegistry, Pantry, ConsumptionEvent, and shopping models | 2026-09-06 |
-| [iOS Networking](./concepts/ios-networking.md) | Pantry-scoped HTTP client, Keychain token auth, and connectivity for the Inventario iOS app | 2026-09-06 |
-| [iOS Offline Outbox](./concepts/ios-offline-outbox.md) | OutboxStore FIFO queue, LocalInventoryCache snapshots, connectivity gating, and offline replay for the Inventario iOS app | 2026-09-06 |
-| [iOS State Management](./concepts/ios-state-management.md) | InventoryStore multi-pantry single-source, optimistic outbox with FIFO replay, snapshot cold-start, and provisioning | 2026-09-06 |
+| [iOS Models](./concepts/ios-models.md) | Data models used by the native iOS app — InventoryItem, ScanResult, CategoryRegistry, Pantry, ConsumptionEvent, and shopping models | 2026-09-09 |
+| [iOS Networking](./concepts/ios-networking.md) | Pantry-scoped HTTP client, Keychain token auth, and connectivity for the Inventario iOS app | 2026-09-09 |
+| [iOS Offline Outbox](./concepts/ios-offline-outbox.md) | OutboxStore FIFO queue, LocalInventoryCache snapshots, connectivity gating, and offline replay for the Inventario iOS app | 2026-09-09 |
+| [iOS State Management](./concepts/ios-state-management.md) | InventoryStore multi-pantry single-source, optimistic outbox with FIFO replay, snapshot cold-start, and provisioning | 2026-09-09 |
 | [Item Status](./concepts/item-status.md) | The three-state lifecycle of an inventory item: ok, expiring_soon, expired | 2026-09-05 |
-| [Open Food Facts Integration](./concepts/off-integration.md) | Read and write integration patterns with the Open Food Facts API — scan lookup, metadata contribution, and photo upload | 2026-09-06 |
+| [Open Food Facts Integration](./concepts/off-integration.md) | Read and write integration patterns with the Open Food Facts API — scan lookup, metadata contribution, and photo upload | 2026-09-09 |
 | [Pantry Sharing](./concepts/pantry-sharing.md) | Multi-pantry share model, X-Pantry-Token auth, invite deep-links, and idempotent provisioning | 2026-09-05 |
-| [Shopping Departments](./concepts/shopping-departments.md) | Supermarket compartments model, legacy normalization, category suggestion cascade, storage derivation, spesa UI cleanup, and authenticated suggestions | 2026-09-06 |
+| [Shopping Departments](./concepts/shopping-departments.md) | Supermarket compartments model, legacy normalization, category suggestion cascade, storage derivation, spesa UI cleanup, and authenticated suggestions | 2026-09-09 |
 
 ## Config
 
 | Page | Description | Last Updated |
 |------|-------------|-------------|
-| [Backend Configuration](./config/backend-config.md) | Configuration values for the Inventario FastAPI backend | 2026-09-06 |
+| [Backend Configuration](./config/backend-config.md) | Configuration values for the Inventario FastAPI backend | 2026-09-09 |
 | [iOS Configuration](./config/ios-config.md) | iOS project configuration via XcodeGen and Info.plist for the Inventario app | 2026-09-06 |
 
 ## Dependencies

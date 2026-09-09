@@ -9,7 +9,7 @@ source_files:
   - "backend/schemas.py"
   - "backend/config.py"
 created: "2026-06-24"
-last_updated: "2026-09-06"
+last_updated: "2026-09-09"
 ---
 
 # Open Food Facts Integration
@@ -48,7 +48,7 @@ sequenceDiagram
     end
 ```
 
-The scan endpoint builds a `ScanResponse` from `fetch_product`'s return value; category tags (`en:pasta`) are stripped to their last segment (`pasta`), `pnns_groups_1` is normalised to a slug for the `PNNS_TO_INTERNAL` map, and the response carries the resolved `source`/`product_type` twin plus a `suggested_category`. Reads share one `httpx.AsyncClient` (10 s timeout, app `User-Agent`); each GET is retried at most once on transport errors and 5xx. A per-host fallback (`OFF_V3_HOSTS`) applies only when an explicit `product_type != all` was requested and only after a transport/5xx failure of the first GET — never on 404 or `found=false`, and never as a parallel fan-out. An invalid barcode is skipped client-side (`None` → 502). A missing product is HTTP 200 with `found=false` — the scan succeeded, the databases simply have no match. Only transport failures become 502.
+The scan endpoint builds a `ScanResponse` from `fetch_product`'s return value; category tags (`en:pasta`) are stripped to their last segment (`pasta`), `pnns_groups_1` is normalised to a slug for the `PNNS_TO_INTERNAL` map, and the response carries the resolved `source`/`product_type` twin plus a `suggested_category`. Reads share one `httpx.AsyncClient` (10 s timeout, app `User-Agent`); each GET is retried at most once on transport errors and 5xx. `_fetch_single_v3` follows 301/302/303/307/308 once manually only when the `Location` host is allowlisted in `OFF_V3_HOSTS` values (e.g. food `302` → beauty for `8001280013973`; `Location` already carries the query) — the universal endpoint resolves sub-DBs server-side via redirect. There is no per-host fallback on `product_type != all` and no parallel fan-out: a single GET is terminal, so a v3 `failure` envelope means genuinely not found. An invalid barcode is skipped client-side (`None` → 502). A missing product is HTTP 200 with `found=false` — the scan succeeded, the databases simply have no match. Only transport failures become 502.
 
 ## Write Pattern (Contribute Metadata + Photo)
 
@@ -110,7 +110,7 @@ Every write request identifies the app the same way: `User-Agent: {OFF_APP_NAME}
 | Setting | Default | Notes |
 |---------|---------|-------|
 | `OFF_V3_BASE_URL` | `https://world.openfoodfacts.org/api/v3/product` | Read path; invalid/insecure values fall back to default with a warning |
-| `OFF_V3_HOSTS` | food/beauty/petfood/product → `world.open{food,beauty,petfood,products}facts.org` | Per-host fallback for explicit `product_type != all` reads |
+| `OFF_V3_HOSTS` | food/beauty/petfood/product → `world.open{food,beauty,petfood,products}facts.org` | Redirect allowlist for `_fetch_single_v3` (301/302/303/307/308 followed once only to these hosts; no per-host fallback) |
 | `OFF_PRODUCT_TYPE_DEFAULT` | `all` | Default `product_type` query param for reads |
 | `OFF_WRITE_BASE_URL` | `https://world.openfoodfacts.net/cgi` (staging) | Prod twin hosts only via env; invalid/insecure values fall back to staging with a warning |
 | `OFF_WRITE_ENABLED` | `false` | True only if the flag is on **and** `OFF_USER`/`OFF_PASS` are set **and** the base URL is valid |

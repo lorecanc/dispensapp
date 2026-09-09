@@ -6,7 +6,7 @@ source_files:
   - "backend/services/expiration.py"
   - "backend/config.py"
 created: "2026-06-24"
-last_updated: "2026-09-05"
+last_updated: "2026-09-09"
 ---
 
 # Backend Service — Expiration
@@ -22,7 +22,7 @@ The module exports three functions: `get_status` (single status computation shar
 | File | Role |
 |------|------|
 | `backend/services/expiration.py` | `get_status`, `estimate_expiration`, `resolve_expiration` |
-| `backend/config.py` | [`DEFAULT_SHELF_LIFE` mapping, `CATEGORY_ALIASES`, `EXPIRING_SOON_DAYS`](../config/backend-config.md) |
+| `backend/config.py` | [`DEFAULT_SHELF_LIFE` mapping, `OFF_TO_INTERNAL`, `CATEGORY_ALIASES`, `EXPIRING_SOON_DAYS`](../config/backend-config.md) |
 
 ## Public API
 
@@ -47,7 +47,7 @@ def resolve_expiration(
 - **get_status** — Central status computation (`None` → `ok`; past → `expired`; within `EXPIRING_SOON_DAYS` → `expiring_soon`; else `ok`). Used by schemas and the markdown export so the rule lives in one place.
 - **estimate_expiration / category_tags** — List of Open Food Facts category tags (e.g. `["en:pasta", "en:yogurts"]`). When `None` or empty, the fallback shelf life is used.
 - **estimate_expiration / reference_date** — Base date for the calculation. When `None`, defaults to `date.today()`. Accepting this as a parameter makes the function testable without mocking `date.today()`.
-- **resolve_expiration** — Full create-path helper used by create-inventory/create-manual: an explicit `expiration_date` wins `(date, False)`; otherwise the `category` string and `off_category_tags` are merged, normalized (lowercase, strip, split on `:`, alias, dedup preserving order), and estimated `(estimated, True)`; with no usable tags and `allow_none=True` (manual entry without category) it returns `(None, False)` instead of a fallback estimate.
+- **resolve_expiration** — Full create-path helper used by create-inventory/create-manual: an explicit `expiration_date` wins `(date, False)`; otherwise the `category` string and `off_category_tags` are merged, normalized (lowercase, strip, split on `:`, `OFF_TO_INTERNAL` lookup, then `CATEGORY_ALIASES` lookup, dedup preserving order — the same path as `normalize_category`), and estimated `(estimated, True)`; with no usable tags and `allow_none=True` (manual entry without category) it returns `(None, False)` instead of a fallback estimate.
 
 ## Decision Flow
 
@@ -59,7 +59,7 @@ graph LR
     Today --> Tags{"category_tags<br>provided?"}
     UseRef --> Tags
     Tags -- No/Fallback --> Default["matched_days = 30<br>(default)"]
-    Tags -- Yes --> Normalize["Strip + lowercase +<br>split on ':' → last segment +<br>CATEGORY_ALIASES lookup"]
+    Tags -- Yes --> Normalize["Strip + lowercase +<br>split on ':' → last segment +<br>OFF_TO_INTERNAL then<br>CATEGORY_ALIASES lookup"]
     Normalize --> Match["For each normalized tag,<br>EXACT-match against<br>DEFAULT_SHELF_LIFE keys<br/>(excluding 'default')"]
     Match -- Hit --> Override["matched_days = matched key's value"]
     Match -- Miss --> KeepDefault["Keep current matched_days"]
@@ -73,7 +73,7 @@ graph LR
 1. If `category_tags` is provided and non-empty, each tag is cleaned and normalized:
    - Whitespace is stripped; empty or whitespace-only entries are discarded.
    - The tag is lowercased, split on `:` and the **last segment** is kept (e.g. `"en:Pasta"` → `"pasta"`).
-   - `CATEGORY_ALIASES` is applied (e.g. `"yogurt"` → `"yogurts"`, `"milk"` → `"fresh-milk"`, `"bread"` → `"bread-bakery"`).
+   - `OFF_TO_INTERNAL` is applied first, then `CATEGORY_ALIASES` — the same path as `normalize_category` in `backend/config.py` (e.g. `"pastas"` → `"pasta"`, `"pet-food"` → `"animali"`, `"yogurt"` → `"yogurts"`, `"milk"` → `"fresh-milk"`, `"bread"` → `"bread-bakery"`).
 2. Each normalized tag is checked against the keys of `DEFAULT_SHELF_LIFE` (excluding the `"default"` sentinel) using **exact equality** (`key == normalized`), not substring matching.
 3. On the first match, the corresponding shelf-life value is adopted and iteration stops immediately.
 
@@ -82,6 +82,8 @@ graph LR
 | Input Tag | Normalized | Matches Key | Days |
 |-----------|------------|-------------|------|
 | `"en:pasta"` | `"pasta"` | `"pasta"` | 365 |
+| `"en:pastas"` | `"pasta"` (via `OFF_TO_INTERNAL`) | `"pasta"` | 365 |
+| `"en:pet-food"` | `"animali"` (via `OFF_TO_INTERNAL`) | `"animali"` | 365 |
 | `"en:yogurts"` | `"yogurts"` | `"yogurts"` | 14 |
 | `"en:yogurt"` | `"yogurts"` (alias) | `"yogurts"` | 14 |
 | `"it:riso"` | `"riso"` | none | 30 (fallback) |
@@ -118,7 +120,7 @@ estimate_expiration(category_tags=["en:pasta"])
 
 ## Constants
 
-The `DEFAULT_SHELF_LIFE` dictionary in `backend/config.py` defines estimated shelf lives in days (26 categories plus fallback, extended to align with OFF taxonomy):
+The `DEFAULT_SHELF_LIFE` dictionary in `backend/config.py` defines estimated shelf lives in days (27 categories plus fallback, extended to align with OFF taxonomy):
 
 | Category | Days | Category | Days |
 |----------|------|----------|------|
@@ -135,12 +137,12 @@ The `DEFAULT_SHELF_LIFE` dictionary in `backend/config.py` defines estimated she
 | `sweets-snacks` | 180 | `beverages-water` | 365 |
 | `beverages-juices` | 30 | `coffee-tea` | 365 |
 | `alcoholic-beverages` | 1095 | `cleaning-hygiene` | 730 |
-| `default` | 30 | | |
+| `animali` | 365 | `default` | 30 |
 
-The `"default"` entry serves as both the fallback value and the sentinel that is excluded from tag matching. Common singular/plural variants are covered by `CATEGORY_ALIASES` (`yogurt`, `cheese`, `milk`, `uht-milks`, `legume`, `cold-cut`, `bread`, `flour`, `sauce`, `oil`, `sweet`/`snack`, `water`, `juice`, `coffee`/`tea`, `alcohol`, …).
+The `"default"` entry serves as both the fallback value and the sentinel that is excluded from tag matching. Common singular/plural variants are covered by `CATEGORY_ALIASES` (`yogurt`, `cheese`, `milk`, `uht-milks`, `legume`, `cold-cut`, `bread`, `flour`, `sauce`, `oil`, `sweet`/`snack`, `water`, `juice`, `coffee`/`tea`, `alcohol`, …), while broader OFF plural/synonym variants are covered by `OFF_TO_INTERNAL`, applied first (`pastas` → `pasta`, `milks` → `fresh-milk`, `pulses`/`lentils` → `legumes`, `pet-food`/`dog-food`/`cat-food` → `animali`, `tuna`/`sardines` → `canned-fish`, …).
 
 ## Notes
 
-- Matching is **exact and case-insensitive** (tags are lowercased before comparison): `"en:cheese"` matches via the alias → `"cheeses"`, but an unknown tag like `"en:cheddar"` matches nothing and falls back to 30 days.
+- Matching is **exact and case-insensitive** (tags are lowercased before comparison): `"en:cheese"` matches via the alias → `"cheeses"`, `"en:pastas"` matches via `OFF_TO_INTERNAL` → `"pasta"` (365 days, not the 30-day fallback), and `"en:pet-food"` matches via `OFF_TO_INTERNAL` → `"animali"` (365 days); but an unknown tag like `"en:cheddar"` matches nothing and falls back to 30 days.
 - `resolve_expiration` callers: scan-based creation passes `off_category_tags` from the OFF record; manual creation passes the user-chosen `category` with `allow_none=True` so a category-less manual item keeps `expiration_date=None` instead of a fabricated estimate.
 - The function does not store or persist the estimated date; it returns a `date` value. The caller is responsible for setting `is_estimated` on the product record if needed — see the [Pydantic schemas](./backend-schemas.md) for how `is_estimated` flows through the API.

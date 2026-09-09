@@ -5,7 +5,7 @@ category: "api"
 source_files:
   - "backend/routes/inventory.py"
 created: "2026-06-24"
-last_updated: "2026-09-06"
+last_updated: "2026-09-09"
 ---
 
 # Inventory API
@@ -22,27 +22,27 @@ Scoped routes require pantry membership via `get_current_pantry` (`X-Pantry-Toke
 
 **Response**: `200` `list[InventoryOut]`.
 
-**Source**: `backend/routes/inventory.py:269-277`
+**Source**: `backend/routes/inventory.py:307-315`
 
 ### POST /api/pantries/{pantry_id}/inventory
 
-**Description**: Create an item from a barcode scan. Resolves expiration via `resolve_expiration`, infers `compartment` when omitted, normalizes category, persists `source`/`product_type` (explicit `_create_scoped_item` param wins, fallback to body; `NULL` = not set), stores `pantry_id` and `created_by_token`.
+**Description**: Create an item from a barcode scan. Category cascade explicit-valid > `suggest_category(tags, pnns_group, source, product_type)` > `None` (spurious explicit value not in `COMPARTMENT_MAP` becomes `None`); the resolved category feeds `resolve_expiration` and `infer_compartment` when `compartment` is omitted; persists `source`/`product_type` (explicit `_create_scoped_item` param wins, fallback to body; `NULL` = not set) and body `pnns_group`; a `None` fallback emits a redacted warning log; stores `pantry_id` and `created_by_token`.
 
-**Request**: Path `pantry_id: int`. Body `InventoryCreate` (`barcode`, `name`, `brand`, `expiration_date`, `category`, `image_url`, `quantity`, `compartment`, `off_category_tags`, `storage_location`, `source`, `product_type`; see [Backend Schemas](../modules/backend-schemas.md)). Header `X-Pantry-Token`.
+**Request**: Path `pantry_id: int`. Body `InventoryCreate` (`barcode`, `name`, `brand`, `expiration_date`, `category`, `image_url`, `quantity`, `compartment`, `off_category_tags`, `storage_location`, `source` max 32, `product_type` max 32, `pnns_group` max 64 with strip-to-`None`; see [Backend Schemas](../modules/backend-schemas.md)). Header `X-Pantry-Token`.
 
 **Response**: `201` `InventoryOut`. `500` on persistence failure.
 
-**Source**: `backend/routes/inventory.py:280-289`
+**Source**: `backend/routes/inventory.py:318-327`
 
 ### POST /api/pantries/{pantry_id}/inventory/manual
 
-**Description**: Create an item via manual entry (`barcode=None`). Same expiration/compartment handling as the barcode route, with `allow_none=True` so a missing date and category yields `expiration_date=None`. Persists `source`/`product_type` with the same explicit-param-wins fallback as the barcode route.
+**Description**: Create an item via manual entry (`barcode=None`). Same category cascade (explicit-valid > `suggest_category(tags, pnns_group, source, product_type)` > `None`, spurious explicit becomes `None`) and expiration/compartment handling as the barcode route, with `allow_none=True` so a missing date and category yields `expiration_date=None`. Persists `source`/`product_type` with the same explicit-param-wins fallback as the barcode route plus body `pnns_group`.
 
-**Request**: Path `pantry_id: int`. Body `InventoryCreateManual` (same fields minus `barcode`, plus `off_category_tags`, `storage_location`, `source`, `product_type`; see [Backend Schemas](../modules/backend-schemas.md)). Header `X-Pantry-Token`.
+**Request**: Path `pantry_id: int`. Body `InventoryCreateManual` (same fields minus `barcode`, plus `off_category_tags`, `storage_location`, `source` max 32, `product_type` max 32, `pnns_group` max 64 with strip-to-`None`; see [Backend Schemas](../modules/backend-schemas.md)). Header `X-Pantry-Token`.
 
 **Response**: `201` `InventoryOut`. `500` on persistence failure.
 
-**Source**: `backend/routes/inventory.py:292-303`
+**Source**: `backend/routes/inventory.py:330-341`
 
 ### GET /api/pantries/{pantry_id}/inventory/export
 
@@ -52,7 +52,7 @@ Scoped routes require pantry membership via `get_current_pantry` (`X-Pantry-Toke
 
 **Response**: `200` `PlainTextResponse` with `media_type="text/markdown"`.
 
-**Source**: `backend/routes/inventory.py:306-322`
+**Source**: `backend/routes/inventory.py:344-360`
 
 ### GET /api/pantries/{pantry_id}/inventory/{item_id}
 
@@ -62,17 +62,17 @@ Scoped routes require pantry membership via `get_current_pantry` (`X-Pantry-Toke
 
 **Response**: `200` `InventoryOut`. `404` `{"detail": "Elemento non trovato"}` when the item is missing or belongs to another pantry.
 
-**Source**: `backend/routes/inventory.py:325-332`
+**Source**: `backend/routes/inventory.py:363-370`
 
 ### PATCH /api/pantries/{pantry_id}/inventory/{item_id}
 
-**Description**: Partially update an item. Applies only explicitly sent fields (`model_dump(exclude_unset=True)`), normalizing `category` and stringifying `image_url`.
+**Description**: Partially update an item. Applies only explicitly sent fields (`model_dump(exclude_unset=True)`), normalizing `category` (spurious value not in `COMPARTMENT_MAP` becomes `None`) and stringifying `image_url`.
 
 **Request**: Path `pantry_id: int`, `item_id: int`. Body `InventoryUpdate` (all fields optional, at least one required). Header `X-Pantry-Token`.
 
 **Response**: `200` `InventoryOut`. `404` when the item is missing or out of scope. `422` on empty/invalid body. `500` on persistence failure.
 
-**Source**: `backend/routes/inventory.py:335-343`
+**Source**: `backend/routes/inventory.py:373-381`
 
 ### DELETE /api/pantries/{pantry_id}/inventory/{item_id}
 
@@ -82,7 +82,7 @@ Scoped routes require pantry membership via `get_current_pantry` (`X-Pantry-Toke
 
 **Response**: `204` empty body. `404` when the item is missing or out of scope. `500` on persistence failure.
 
-**Source**: `backend/routes/inventory.py:346-354`
+**Source**: `backend/routes/inventory.py:384-392`
 
 ### POST /api/pantries/{pantry_id}/inventory/{item_id}/consume
 
@@ -92,7 +92,7 @@ Scoped routes require pantry membership via `get_current_pantry` (`X-Pantry-Toke
 
 **Response**: `200` `InventoryOut` (updated item, or snapshot with `quantity=0` after deletion). `404` when the item is missing or out of scope. `409` `{"detail": "Quantità insufficiente"}` when stock is insufficient. `500` on persistence failure.
 
-**Source**: `backend/routes/inventory.py:438-451`
+**Source**: `backend/routes/inventory.py:476-489`
 
 ### GET /api/pantries/{pantry_id}/inventory/{item_id}/history
 
@@ -102,7 +102,7 @@ Scoped routes require pantry membership via `get_current_pantry` (`X-Pantry-Toke
 
 **Response**: `200` `list[ConsumptionEventOut]`.
 
-**Source**: `backend/routes/inventory.py:454-466`
+**Source**: `backend/routes/inventory.py:492-504`
 
 ### Legacy shims (deprecated)
 
@@ -112,4 +112,4 @@ Scoped routes require pantry membership via `get_current_pantry` (`X-Pantry-Toke
 
 **Response**: Same shapes and status codes as the scoped counterparts (`201` on create, `200` on read/update/consume/history, `204` on delete, `404`/`409` on consume errors).
 
-**Source**: `backend/routes/inventory.py:360-432, 472-493`
+**Source**: `backend/routes/inventory.py:398-470, 510-531`

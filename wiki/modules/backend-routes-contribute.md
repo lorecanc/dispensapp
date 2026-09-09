@@ -6,7 +6,7 @@ source_files:
   - "backend/routes/contribute.py"
   - "backend/services/off.py"
 created: "2026-09-05"
-last_updated: "2026-09-06"
+last_updated: "2026-09-09"
 ---
 
 # Backend Routes — Contribute
@@ -46,7 +46,7 @@ Both handlers share the same prefix (rate limit (429) → consent (400) → writ
 
 - `code` must match `BARCODE_PATTERN`; optional fields carry `max_length` caps (200/500/64 chars).
 - `lang` defaults to `"it"`, is normalized (`it` → `it`, `it-it` → `it-IT`) and validated against `^[a-z]{2}(-[A-Z]{2})?$`.
-- `product_type` defaults to `"food"` via `_normalize_product_type` allowlist `food|beauty|petfood|product` (trimmed, lowercased; blank/`None` → `food`); invalid values fail Pydantic validation with 422 and the value is forwarded to `contribute_product()` for per-twin `resolve_write_url()` routing.
+- `product_type` defaults to `"food"` via `_normalize_product_type` allowlist `food|beauty|petfood|product` (trimmed, lowercased; blank/`None` → `food`); invalid strings fail Pydantic validation with 422 and non-string values fail strict with 422 (no Form-sentinel tolerance). The normalized value is forwarded to `contribute_product()` for per-twin `resolve_write_url()` routing. iOS forwards `scanResult?.productType ?? source` via `APIClient.contribute(productType:)` (omitted when `nil`).
 - Whitespace-only optionals are coerced to `None`; a model validator requires at least one real product field (`product_name`, `generic_name`, `brands`, `quantity`, `categories`, `labels`) — comment/`app_uuid` alone are rejected with 422.
 
 ## Photo Endpoint
@@ -54,7 +54,7 @@ Both handlers share the same prefix (rate limit (429) → consent (400) → writ
 `POST /scan/contribute/photo` takes multipart form fields (`code`, `imagefield`, `consent_cc_bysa`, `image`, `product_type`) and applies fail-closed checks in order:
 
 1. **Content-Length pre-check** — declared length over `MAX_PHOTO_BYTES + 1024` is rejected with 413 before the body is read. Runs BEFORE `product_type` validation by design.
-2. **`product_type` allowlist** — `_normalize_product_type` (`food|beauty|petfood|product`, default `food`), else 422 `product_type non valido`. Forwarded to `upload_product_image()` for `resolve_write_url()` host routing.
+2. **`product_type` allowlist** — `_normalize_product_type` (`food|beauty|petfood|product`, default `food`; blank/`None` → `food`, non-string → 422 strict with no Form-sentinel tolerance), else 422 `product_type non valido`. Forwarded to `upload_product_image()` for `resolve_write_url()` host routing. iOS forwards `scanResult?.productType ?? source` via `APIClient.uploadPhoto(productType:)` (field omitted when `nil`).
 3. **Consent + write gate** — `consent_cc_bysa` must be `true` (400) and `OFF_WRITE_ENABLED` must hold (403), with Open Facts detail strings.
 4. **Size cap** — actual bytes over 5 MB → 413.
 5. **Type sniffing** — magic-byte detection (`_detect_photo_kind`) must agree with the declared content type; JPEG/PNG/HEIC only, else 415. HEIC brands are restrictive (`heic/heix/hevc/...`; generic `mif1/msf1` containers rejected, including up to 8 compatible-brand entries).
@@ -76,6 +76,6 @@ Transport errors and staging refusals map to 502 with Italian detail messages; b
 | 403 | `OFF_WRITE_ENABLED=false` (default without `OFF_USER`/`OFF_PASS`) |
 | 413 | Photo over 5 MB (declared or actual) |
 | 415 | Not a genuine JPEG/PNG/HEIC |
-| 422 | Invalid barcode, imagefield, dimensions, empty contribute payload, or `product_type` outside `food\|beauty\|petfood\|product` |
+| 422 | Invalid barcode, imagefield, dimensions, empty contribute payload, or `product_type` outside `food\|beauty\|petfood\|product` (including non-string values — strict 422, no sentinel fallback) |
 | 429 | Per-IP rate limit exceeded |
 | 502 | OFF transport error or staging refusal |

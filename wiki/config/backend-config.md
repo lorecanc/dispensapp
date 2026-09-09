@@ -5,7 +5,7 @@ category: "config"
 source_files:
   - "backend/config.py"
 created: "2026-06-24"
-last_updated: "2026-09-06"
+last_updated: "2026-09-09"
 ---
 
 # Backend Configuration
@@ -68,9 +68,20 @@ Default shelf life values in days, keyed by canonical category:
 | `coffee-tea` | 365 |
 | `alcoholic-beverages` | 1095 |
 | `cleaning-hygiene` | 730 |
+| `animali` | 365 |
 | `default` | 30 |
 
 The `default` key is the fallback for unmatched categories after `normalize_category()` (alias + OFF-tag mapping).
+
+## Category Mapping and Compartments
+
+Canonical category `animali` ("Animali", shelf life 365 days, default storage `dispensa`) covers pet food. Labels and storage defaults are defined alongside `DEFAULT_SHELF_LIFE` in [`backend/config.py`](../modules/backend-config.md): `CATEGORY_LABELS` holds the Italian UI labels and `CATEGORY_STORAGE_DEFAULT` holds the per-category storage location (unknown keys fall back to `DEFAULT_STORAGE`, `"dispensa"`).
+
+`OFF_TO_INTERNAL` normalizes Open Food Facts tags before alias resolution in `normalize_category()`. Recent additions map `cosmetic -> cleaning-hygiene`, the beauty cluster (`makeup`, `make-up`, `makeups`, `skincare`, `skin-care`, `hair-care`, `haircare`, `personal-care -> cleaning-hygiene`), and the pet-food cluster (`dog-food`, `dog-foods`, `cat-food`, `cat-foods`, `pet-food`, `pet-foods`, `petfood -> animali`).
+
+Two reserved tag sets support future disambiguation (not yet applied by `normalize_category()`): `GENERIC_OPF` (`product`, `products`, `open-products-facts`, `openproductsfacts` — generic Open Products Facts tags meaning "no category") and `HUMAN_FOOD_ONLY` (`tuna`, `sardines`, `canned-fish`, `fish`, `meat`, `fish-meat-eggs` — human-food-only tags for human-food vs pet-food disambiguation).
+
+Supermarket layout uses 11 walk-order aisles in `SUPER_MARKET_COMPARTMENTS` (`Ortofrutta` … `Igiene e Casa`, plus `Animali`), with `COMPARTMENT_MAP` assigning `animali -> Animali` and `cleaning-hygiene -> Igiene e Casa`.
 
 ## `.env.example`
 

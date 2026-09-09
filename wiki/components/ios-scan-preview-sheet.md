@@ -6,7 +6,7 @@ source_files:
   - "ios/Inventario/Features/Scan/ScanPreviewSheet.swift"
   - "ios/Inventario/Models/ScanResult.swift"
 created: "2026-06-24"
-last_updated: "2026-09-06"
+last_updated: "2026-09-09"
 ---
 
 # iOS Scan Preview Sheet
@@ -50,7 +50,7 @@ struct ScanPreviewSheet: View {
 | `contributeError` | `APIError?` | `nil` | Contribute failure |
 | `selectedPhotoItem` | `PhotosPickerItem?` | `nil` | PhotosPicker selection |
 | `photoData` | `Data?` | `nil` | Loaded photo bytes |
-| `photoFilename` / `photoMimeType` | `String` | `"foto.jpg"` / `"image/jpeg"` | Recomputed from magic bytes on select and on send |
+| `photoFilename` | `String` | `"foto.jpg"` | Recomputed from magic bytes on select and on send; MIME type is a send-time local only (no stored state) |
 | `selectedImageField` | `String` | `"front_it"` | Photo view: `front_it`, `ingredients_it`, `nutrition_it`, `packaging_it` |
 | `photoLoading` | `Bool` | `false` | In-flight flag for `client.uploadPhoto` |
 | `photoSuccessMessage` / `photoError` | `String?` / `APIError?` | `nil` | Photo upload outcome |
@@ -210,7 +210,7 @@ Expanded form fields: product name, brands, quantity (e.g. 500g), comma-separate
 > "Acconsento alla pubblicazione di dati e foto con licenza CC BY-SA / ODbL su Open Food Facts, con cessione irrevocabile delle foto come da termini OFF. Obbligatorio per inviare."
 
 Send behavior (`sendContribute(code:)` → `store.client.contribute`):
-- Sends trimmed fields (`nilIfEmpty`), a per-install `appUUID` persisted in `UserDefaults` (`persistedAppUUID()`), and `consent: consentCCBYSA`.
+- Sends trimmed fields (`nilIfEmpty`), a per-install `appUUID` persisted in `UserDefaults` (`persistedAppUUID()`), `consent: consentCCBYSA`, and `productType: scanResult?.productType ?? scanResult?.source`.
 - Send button disabled while `!consentCCBYSA || contributeLoading || isContributeEmpty` (at least one of name/brands/quantity/categories/labels/genericName required; "Inserisci almeno un campo" hint otherwise).
 - Shows `ProgressView("Invio in corso...")`, then success label or error text with an "Invia contributo" / "Riprova" retry button.
 
@@ -219,12 +219,12 @@ Send behavior (`sendContribute(code:)` → `store.client.contribute`):
 Below a `Divider` in the same section:
 - `PhotosPicker(selection: $selectedPhotoItem, matching: .images)` ("Scegli una foto" / "Cambia foto"); `.onChange` loads bytes via `loadSelectedPhoto(code:)` (`loadTransferable(type: Data.self)`).
 - `Picker("Tipo di foto")`: `front_it` (Fronte), `ingredients_it` (Ingredienti), `nutrition_it` (Valori nutrizionali), `packaging_it` (Confezione).
-- Send behavior (`sendPhoto(code:)` → `store.client.uploadPhoto` multipart): recomputes filename/MIME from magic bytes via `photoFilenameAndMime(data:code:imagefield:)` — JPEG magic → `.jpg`/`image/jpeg`, PNG magic → `.png`/`image/png`, otherwise `.heic`/`image/heic`, named `<code>_<imagefield>.<ext>`. This recompute on send guards against a stale filename if `selectedImageField` changed after picking.
+- Send behavior (`sendPhoto(code:)` → `store.client.uploadPhoto` multipart): recomputes filename/MIME from magic bytes via `photoFilenameAndMime(data:code:imagefield:)` — JPEG magic → `.jpg`/`image/jpeg`, PNG magic → `.png`/`image/png`, otherwise `.heic`/`image/heic`, named `<code>_<imagefield>.<ext>`, and forwards `productType: scanResult?.productType ?? scanResult?.source`. The MIME type is a send-time local only; `photoFilename` state is recomputed on send, which guards against a stale filename if `selectedImageField` changed after picking.
 - "Invia foto" button disabled while `!consentCCBYSA || photoLoading || photoData == nil` ("Scegli una foto per continuare" hint). 5 MB JPEG/PNG/HEIC limit and CC BY-SA notice shown in footnote text. Success/error UI mirrors the contribute flow.
 
 ### 6. Save Flow
 
-The toolbar "Salva" button (`.glassProminent` + `pantryMoss` tint on iOS 26+) is disabled when the trimmed name is empty or `isSaving` is true. On tap, `saveItem()` delegates to `InventoryStore.add(...)` (POST `/api/inventory`), forwarding `source: scanResult?.source` and `productType: scanResult?.productType` so the saved item keeps the backend-provided product type; on success the sheet dismisses, on failure a `.alert` shows the error. "Annulla" dismisses at any point, discarding unsaved changes.
+The toolbar "Salva" button (`.glassProminent` + `pantryMoss` tint on iOS 26+) is disabled when the trimmed name is empty or `isSaving` is true. On tap, `saveItem()` delegates to `InventoryStore.add(...)` (POST `/api/inventory`), forwarding `source: scanResult?.source`, `productType: scanResult?.productType`, and `pnnsGroup: scanResult?.pnnsGroup` so the saved item keeps the backend-provided product type and nutrition group; on success the sheet dismisses, on failure a `.alert` shows the error. "Annulla" dismisses at any point, discarding unsaved changes.
 
 ## Internal Visibility (for Tests)
 

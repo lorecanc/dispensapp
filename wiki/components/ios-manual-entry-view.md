@@ -8,21 +8,45 @@ source_files:
   - "ios/Inventario/Components/CategoryPicker.swift"
   - "ios/Inventario/Components/QuantityStepper.swift"
 created: "2026-06-24"
-last_updated: "2026-09-05"
+last_updated: "2026-09-09"
 ---
 
 # ManualEntryView (iOS)
 
 ## Purpose
 
-`ManualEntryView` is a SwiftUI form that lets users add inventory items by typing product details (name, brand), selecting a category, picking an expiration date, and setting a quantity. It calls [InventoryStore.addManual(...)](../concepts/ios-state-management.md) on save and dismisses on success.
+`ManualEntryView` is a SwiftUI form that lets users add inventory items by typing product details (name, brand), selecting a category, picking an expiration date, and setting a quantity. It supports prefill via `init(initialName:initialCategory:)` and live name suggestions from the pantry, calls [InventoryStore.addManual(...)](../concepts/ios-state-management.md) on save, and dismisses on success.
+
+## Initialization / Prefill
+
+```swift
+let initialName: String
+let initialCategory: String
+
+init(initialName: String = "", initialCategory: String = "") {
+    self.initialName = initialName
+    self.initialCategory = initialCategory
+}
+```
+
+Defaults are empty so existing call sites are unchanged. On `.onAppear` the view copies the initials into state only if the corresponding state is still empty:
+
+```swift
+.onAppear {
+    if name.isEmpty && !initialName.isEmpty { name = initialName }
+    if selectedCategory.isEmpty && !initialCategory.isEmpty { selectedCategory = initialCategory }
+}
+```
+
+This is used for prefill from a pantry-suggestion tap in the inventory list.
 
 ## Form Structure
 
 The view is a `Form` with three sections:
 
-1. **"Dettagli prodotto"** — Two text fields:
+1. **"Dettagli prodotto"** — Two text fields plus an inline suggestion list:
    - `Nome *` (required) — bound to `name`, trimmed whitespace must be non-empty for the form to be valid.
+   - Suggestion rows (rendered only when `suggestions` is non-empty, directly below the `Nome` field) — each row shows the suggestion name, its display category, and a `×timesScanned` count.
    - `Marca` (optional) — bound to `brand`, passed as `String?` via the `nilIfEmpty` extension.
 
  2. **Implicit section** — Contains three controls:
@@ -42,12 +66,49 @@ private var isFormValid: Bool {
 
 The form is considered valid if the trimmed `name` is non-empty. There is no validation for brand, category, date, or quantity.
 
+## Name Suggestions
+
+A `.task(id: name)` modifier debounces input and fetches pantry-scoped suggestions:
+
+```swift
+.task(id: name) {
+    let trimmed = name.trimmingCharacters(in: .whitespaces)
+    guard trimmed.count >= 2 else { suggestions = []; return }
+    try? await Task.sleep(for: .milliseconds(350))
+    guard !Task.isCancelled else { return }
+    do {
+        suggestions = try await APIClient.shared.fetchSuggestions(q: trimmed, scope: "pantry")
+    } catch {
+        suggestions = []
+    }
+}
+```
+
+- No request until the trimmed name is at least 2 characters; shorter input clears the list.
+- 350 ms debounce via `Task.sleep`; a new keystroke cancels the previous task (`Task.isCancelled` guard).
+- Scope is always `"pantry"`; failures clear the list rather than surfacing an error.
+
+Tapping a suggestion fills the form and clears the list:
+
+```swift
+Button {
+    name = sug.name
+    if let cat = sug.category, !cat.isEmpty {
+        selectedCategory = cat
+        storageTouched = false
+    }
+    suggestions = []
+}
+```
+
+The suggestion name overwrites `name`, its non-empty category overwrites `selectedCategory` and resets `storageTouched` (so the derived storage location follows the new category), and the list is cleared.
+
 ## Save Flow
 
 `saveItem()` is called inside a `Task` when the user taps "Salva":
 
 1. Sets `isSaving = true` (disables the button, shows spinner).
-2. Calls `store.addManual(...)` with trimmed `name`, `brand.nilIfEmpty`, `expirationDate`, `selectedCategory.nilIfEmpty`, and `quantity`.
+2. Calls `store.addManual(...)` with trimmed `name`, trimmed `brand.nilIfEmpty`, `expirationDate`, `selectedCategory.nilIfEmpty`, `quantity`, and `storageLocation: storageTouched ? selectedStorage : nil` (nil preserves the category-derived default).
 3. Sets `isSaving = false`.
 4. Checks `store.error`:
    - If non-nil: sets `errorMessage` to the error's `localizedDescription` and toggles `showError` to present an alert.

@@ -159,8 +159,6 @@ struct InventoryListView: View {
             .scrollContentBackground(.hidden)
             .background(Color.pantryCream)
             .listSectionSpacing(12)
-            // PantryOat per separatori se visibili
-            .tint(Color.pantryOat)
         }
         .searchable(text: $searchText, prompt: "Cerca nella dispensa...")
         .refreshable {
@@ -570,19 +568,12 @@ struct InventoryListView: View {
     }
 
     @ViewBuilder private func statusSection(status: ItemStatus, items: [InventoryItem]) -> some View {
-        if status == .ok {
-            Section {
-                ForEach(compartmentGroups(for: items), id: \.0.rawValue) { compartment, cItems in
-                    compartmentGroup(status: status, compartment: compartment, items: cItems)
-                }
+        Section {
+            ForEach(compartmentGroups(for: items), id: \.0.rawValue) { compartment, cItems in
+                compartmentGroup(status: status, compartment: compartment, items: cItems)
             }
-            .listSectionSeparator(.hidden, edges: .bottom)
-        } else {
-            Section {
-                ForEach(compartmentGroups(for: items), id: \.0.rawValue) { compartment, cItems in
-                    compartmentGroup(status: status, compartment: compartment, items: cItems)
-                }
-            } header: {
+        } header: {
+            if status != .ok {
                 // HIG: icona+label per stato, colori palette
                 Label(status.label, systemImage: status.symbol)
                     .font(.subheadline.weight(.semibold))
@@ -590,37 +581,30 @@ struct InventoryListView: View {
                     .textCase(nil)
                     .padding(.vertical, 2)
             }
-            .listSectionSeparator(.hidden, edges: .bottom)
         }
+        .listSectionSeparator(.hidden, edges: .bottom)
     }
 
     private func compartmentGroup(status: ItemStatus, compartment: Compartment, items: [InventoryItem]) -> some View {
-        DisclosureGroup(isExpanded: binding(for: status, comp: compartment)) {
+        PantryDisclosureGroup(
+            title: compartment.label,
+            icon: compartment.icon,
+            count: items.count,
+            tone: tone(for: status),
+            isExpanded: binding(for: status, comp: compartment)
+        ) {
             ForEach(items) { item in
                 selectableInventoryRow(for: item)
             }
-        } label: {
-            compartmentHeader(compartment: compartment, count: items.count)
         }
-        .tint(Color.pantryMoss)
     }
 
-    private func compartmentHeader(compartment: Compartment, count: Int) -> some View {
-        HStack(spacing: 8) {
-            Label(compartment.label, systemImage: compartment.icon)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Color.pantryMoss)
-            Spacer()
-            Text("\(count)")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.textSecondary)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(Color.pantryOat.opacity(0.35)))
-                .overlay(Capsule().strokeBorder(Color.pantryOat, lineWidth: 0.5))
-                .accessibilityLabel("\(count) prodotti in \(compartment.label)")
+    private func tone(for status: ItemStatus) -> PantryTone {
+        switch status {
+        case .ok: .ok
+        case .expiringSoon: .soon
+        case .expired: .expired
         }
-        .contentShape(Rectangle())
     }
 
     // MARK: - Riga selezionabile (estratta dal body: alleggerisce il type-check)

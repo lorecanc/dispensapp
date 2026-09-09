@@ -5,7 +5,7 @@ category: "modules"
 source_files:
   - "backend/config.py"
 created: "2026-06-24"
-last_updated: "2026-09-06"
+last_updated: "2026-09-09"
 ---
 
 # Backend Config
@@ -25,12 +25,15 @@ Single source of truth for shared backend constants: shelf-life defaults, catego
 
 | Constant | Type | Value / Default | Description |
 |----------|------|-----------------|-------------|
-| `DEFAULT_SHELF_LIFE` | `dict[str, int]` | 26 categories + `default: 30` | Estimated shelf life in days per canonical category. Used when a product lacks a real expiration date for [expiration date estimation](../concepts/expiration-estimation.md). See full table in [Backend Configuration](../config/backend-config.md). |
-| `CATEGORY_LABELS` | `dict[str, str]` | Italian labels, keys = `DEFAULT_SHELF_LIFE` minus `default` | UI labels aligned with iOS `CategoryRegistry`. E.g. `yogurts -> "Yogurt"`, `uht-milk -> "Latte UHT"`. |
+| `DEFAULT_SHELF_LIFE` | `dict[str, int]` | 27 categories + `default: 30` | Estimated shelf life in days per canonical category. Used when a product lacks a real expiration date for [expiration date estimation](../concepts/expiration-estimation.md). Includes `animali: 365`. See full table in [Backend Configuration](../config/backend-config.md). |
+| `CATEGORY_LABELS` | `dict[str, str]` | Italian labels, keys = `DEFAULT_SHELF_LIFE` minus `default` | UI labels aligned with iOS `CategoryRegistry`. E.g. `yogurts -> "Yogurt"`, `uht-milk -> "Latte UHT"`, `animali -> "Animali"`. |
+| `CATEGORY_STORAGE_DEFAULT` | `dict[str, str]` | category -> storage location | Default storage location per canonical category (`frigo` / `freezer` / `dispensa`). Unknown keys fall back to `DEFAULT_STORAGE` (`"dispensa"`). Includes `animali -> "dispensa"`. |
 | `CATEGORY_ALIASES` | `dict[str, str]` | legacy/singular -> canonical | Normalization of legacy or singular forms, e.g. `yogurt -> yogurts`, `milk -> fresh-milk`, `coffee/tea -> coffee-tea`. |
-| `OFF_TO_INTERNAL` | `dict[str, str]` | OFF tag -> canonical category | Broad OFF tag normalization (plurals, synonyms, e.g. `tuna/sardines -> canned-fish`, `wines/beers/spirits -> alcoholic-beverages`, `detergents/cosmetics/shampoos/soaps/toothpastes -> cleaning-hygiene`). |
-| `SUPER_MARKET_COMPARTMENTS` | `list[str]` | 10 aisle names | Supermarket aisle walk order (`Ortofrutta` … `Igiene e Casa`). |
-| `COMPARTMENT_MAP` | `dict[str, str]` | category -> compartment | Maps each canonical category to its compartment (e.g. `canned-fish -> Dispensa Secca`, `alcoholic-beverages -> Cantina`). |
+| `OFF_TO_INTERNAL` | `dict[str, str]` | OFF tag -> canonical category | Broad OFF tag normalization (plurals, synonyms, e.g. `tuna/sardines -> canned-fish`, `wines/beers/spirits -> alcoholic-beverages`, `detergents/cosmetics/cosmetic/shampoos/soaps/toothpastes -> cleaning-hygiene`, beauty cluster `makeup/make-up/makeups/skincare/skin-care/hair-care/haircare/personal-care -> cleaning-hygiene`, pet-food cluster `dog-food/dog-foods/cat-food/cat-foods/pet-food/pet-foods/petfood -> animali`). |
+| `GENERIC_OPF` | `set[str]` | `product`, `products`, `open-products-facts`, `openproductsfacts` | Generic Open Products Facts tags that alone mean "no category" (reserved for future disambiguation; never maps to `cleaning-hygiene`). |
+| `HUMAN_FOOD_ONLY` | `set[str]` | `tuna`, `sardines`, `canned-fish`, `fish`, `meat`, `fish-meat-eggs` | Human-food-only tags (reserved for future use to disambiguate human food vs pet food). |
+| `SUPER_MARKET_COMPARTMENTS` | `list[str]` | 11 aisle names | Supermarket aisle walk order (`Ortofrutta` … `Igiene e Casa`, `Animali`). |
+| `COMPARTMENT_MAP` | `dict[str, str]` | category -> compartment | Maps each canonical category to its compartment (e.g. `canned-fish -> Dispensa Secca`, `alcoholic-beverages -> Cantina`, `animali -> Animali`). |
 | `DATABASE_URL` | `str` | `sqlite:///<repo>/inventory.db` (via `DATABASE_URL` env) | SQLAlchemy connection string. Default resolved as absolute path relative to the file, not CWD. |
 | `OFF_V3_BASE_URL` | `str` | `"https://world.openfoodfacts.org/api/v3/product"` (via `OFF_V3_BASE_URL` env) | Universal read-only base URL for the [OFF service](./backend-service-off.md) (food + twin projects via `product_type`). Only `https` with host in `world.openfoodfacts.org` / `world.openbeautyfacts.org` / `world.openpetfoodfacts.org` / `world.openproductsfacts.org`; otherwise falls back to default with a warning. |
 | `OFF_PRODUCT_TYPE_DEFAULT` | `str` | `"all"` (via `OFF_PRODUCT_TYPE_DEFAULT` env) | Default `product_type` for v3 reads (`all` queries every project). |

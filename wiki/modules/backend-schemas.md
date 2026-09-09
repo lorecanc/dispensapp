@@ -7,7 +7,7 @@ source_files:
   - "backend/tests/test_datetime_serialization.py"
   - "backend/tests/test_scan.py"
 created: "2026-06-24"
-last_updated: "2026-09-06"
+last_updated: "2026-09-09"
 ---
 
 # Backend Schemas
@@ -57,6 +57,7 @@ Response returned after a barcode lookup.
 | `message` | `Optional[str]` | `None` | Additional context (e.g. error message) |
 | `source` | `Optional[str]` | `None` | Product source (`food`/`beauty`), propagated from `fetch_product` — see [Scan API](../api/scan.md) |
 | `product_type` | `Optional[str]` | `None` | Product type (`food`/`beauty`), propagated from `fetch_product` |
+| `pnns_group` | `Optional[str]` | `None` | PNNS group, `max_length=64` |
 
 ### InventoryCreate
 
@@ -72,8 +73,11 @@ Request body when adding an item from a barcode scan — used in the [inventory 
 | `image_url` | `Optional[HttpUrl]` | `None` | Product image URL |
 | `quantity` | `int` | `1` | Item count, `ge=1, le=999` |
 | `compartment` | `Optional[str]` | `None` | Storage compartment, `max_length=32` |
-| `source` | `Optional[str]` | `None` | Product source, blank stripped to `None` via `strip_optional` |
-| `product_type` | `Optional[str]` | `None` | Product type, blank stripped to `None` via `strip_optional` |
+| `source` | `Optional[str]` | `None` | Product source, `max_length=32`, blank stripped to `None` via `strip_optional` |
+| `product_type` | `Optional[str]` | `None` | Product type, `max_length=32`, blank stripped to `None` via `strip_optional` |
+| `pnns_group` | `Optional[str]` | `None` | PNNS group, `max_length=64`, blank stripped to `None` via `strip_optional` |
+
+`strip_optional` covers `brand`, `category`, `compartment`, `storage_location`, `source`, `product_type`, `pnns_group` (`backend/schemas.py:95-101`).
 
 ### InventoryCreateManual
 
@@ -88,8 +92,11 @@ Request body when adding an item manually (no barcode scan). Same validation as 
 | `quantity` | `int` | `1` | Item count, `ge=1, le=999` |
 | `image_url` | `Optional[HttpUrl]` | `None` | Product image URL |
 | `compartment` | `Optional[str]` | `None` | Storage compartment, `max_length=32` |
-| `source` | `Optional[str]` | `None` | Product source, blank stripped to `None` via `strip_optional` |
-| `product_type` | `Optional[str]` | `None` | Product type, blank stripped to `None` via `strip_optional` |
+| `source` | `Optional[str]` | `None` | Product source, `max_length=32`, blank stripped to `None` via `strip_optional` |
+| `product_type` | `Optional[str]` | `None` | Product type, `max_length=32`, blank stripped to `None` via `strip_optional` |
+| `pnns_group` | `Optional[str]` | `None` | PNNS group, `max_length=64`, blank stripped to `None` via `strip_optional` |
+
+`strip_optional` covers `brand`, `category`, `compartment`, `storage_location`, `source`, `product_type`, `pnns_group` (`backend/schemas.py:136-142`).
 
 ### InventoryOut
 

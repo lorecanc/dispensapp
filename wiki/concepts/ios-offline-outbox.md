@@ -10,7 +10,7 @@ source_files:
   - "ios/Inventario/Networking/APIError.swift"
   - "ios/Inventario/Components/ErrorBanner.swift"
 created: "2026-09-05"
-last_updated: "2026-09-06"
+last_updated: "2026-09-09"
 ---
 
 # iOS Offline Outbox
@@ -27,7 +27,7 @@ The iOS app stays usable without connectivity: mutations made offline are applie
 
 Four cases (`Mutation`, `Codable + Equatable`):
 
-- `create(Create)` — add/addManual; `barcode == nil` means manual create; carries `barcode`, `name`, `brand`, `expirationDate`, `category`, `imageURL`, `quantity`, `tempId` (negative local id), plus additive `offTags`, `storageLocation`, `source`, `productType` (missing keys on old disk entries decode as `nil`).
+- `create(Create)` — add/addManual; `barcode == nil` means manual create; carries `barcode`, `name`, `brand`, `expirationDate`, `category`, `imageURL`, `quantity`, `tempId` (negative local id), plus additive `offTags`, `storageLocation`, `source`, `productType`, `pnnsGroup` (missing keys on old disk entries decode as `nil`).
 - `consume(Consume)` — `itemId`, `delta`, `reason` (see [Inventory Consume & History](../concepts/inventory-consume-history.md)).
 - `update(Update)` — PATCH semantics: `nil` fields are untouched (same as `APIClient.updateScoped`).
 - `delete(Delete)` — `itemId`.
@@ -54,7 +54,7 @@ Pure static policy mapping `APIError` to queue behavior:
 `InventoryStore` owns `outbox: OutboxStore` and `cache: LocalInventoryCache` plus `connectivity: ConnectivityMonitor` (see [iOS State Management](../concepts/ios-state-management.md) for store ownership and replay orchestration):
 
 - Every mutating action (`add`, `addManual`, `update`, `delete`, `consume`) first checks `isOffline` (`!connectivity.isOnline`); if offline it applies the change optimistically and enqueues. If online but the request throws a `.offline`-classified error mid-flight, it falls back to the same enqueue path — no error banner.
-- `replayOutbox()` processes `outbox.entries.first` in FIFO order: success → remove entry (+ remap temp-id for creates); `drop` → discard; `stop` → halt, retry later. Create replay re-sends `source`/`productType` (plus `offTags`/`storageLocation`) via `createScoped`. Reentrancy is coalesced (`isReplayingOutbox` + `replayRequested` triggers one extra pass). It never sets `store.error` — state is already reflected in the UI, a banner would mislead; after real work it calls `refresh()` to reconcile with the server.
+- `replayOutbox()` processes `outbox.entries.first` in FIFO order: success → remove entry (+ remap temp-id for creates); `drop` → discard; `stop` → halt, retry later. Create replay re-sends `source`/`productType`/`pnnsGroup` (plus `offTags`/`storageLocation`) via `createScoped`. Reentrancy is coalesced (`isReplayingOutbox` + `replayRequested` triggers one extra pass). It never sets `store.error` — state is already reflected in the UI, a banner would mislead; after real work it calls `refresh()` to reconcile with the server.
 - Triggering: `triggerReplayIfOnline()` covers the race where classification says offline but the path is still satisfied; `startOnlineWatch()` uses `withObservationTracking` on `connectivity.isOnline`, re-arming on every change so no online transition is lost. On flip to online with empty pantries (offline cold-start), it runs `fetchPantries()` first because `refresh()` is inert without verified pantries.
 
 ## LocalInventoryCache

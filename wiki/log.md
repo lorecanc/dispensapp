@@ -1,5 +1,30 @@
 # Wiki Log
 
+## [2026-09-09] incremental-update | Backend animali first-class category + source-aware category cascade (GENERIC_OPF/HUMAN_FOOD_ONLY guards), inventory persist explicit>suggest>None, scan pnns_group passthrough, suggestions scope=pantry + LIKE escaping, OFF 302-follow (fallback removed), expiration OFF_TO_INTERNAL path, contribute strict 422, iOS pantry autocomplete + Animali compartment + pnnsGroup plumbing + ShoppingScannerSheet (27 updated, 0 added)
+
+- Pages created: 0
+- Pages updated: 27
+  - Root: overview.md, architecture.md (2)
+  - Modules: backend-config.md, backend-routes-contribute.md, backend-routes-inventory.md, backend-routes-scan.md, backend-schemas.md, backend-service-expiration.md, backend-service-off.md, backend-tests.md (8)
+  - Components: ios-category-picker.md, ios-inventory-list-view.md, ios-manual-entry-view.md, ios-scan-preview-sheet.md (4)
+  - API: contribute.md, inventory.md, scan.md, suggestions.md (4)
+  - Concepts: category-registry.md, expiration-estimation.md, ios-models.md, ios-networking.md, ios-offline-outbox.md, ios-state-management.md, off-integration.md, shopping-departments.md (8)
+  - Config: backend-config.md (1)
+- Pages deprecated: 0
+- Depth: Incremental (root + modules + components + api + concepts + config touched, no structural changes)
+- Commit: n/a (watermark unchanged: 25037bc)
+- Themes:
+  - Animali first-class internal category ("Animali", shelf 365d, dispensa storage, Animali compartment, 11th supermarket lane); petfood OFF tags map here
+  - Source-aware suggest_category(tags, pnns_group, source, product_type) cascade (explicit>suggest>None) with GENERIC_OPF / HUMAN_FOOD_ONLY guards and _log_safe defer warnings; inventory persists explicit>suggest>None
+  - Scan pnns_group passthrough (ScanResponse.pnns_group + InventoryCreate.pnns_group carrying OFF pnns_groups_1 slug end-to-end)
+  - Suggestions scope=pantry (pantry inventory + scan history merge for manual-entry autocomplete; default shopping unchanged) + LIKE escaping
+  - OFF 302 redirect follow (universal v3 client follows single server-side 302 to allowlisted OFF sub-DB host; per-host fan-out removed)
+  - Expiration OFF_TO_INTERNAL path; contribute strict 422
+  - iOS pantry autocomplete + Animali compartment + pnnsGroup plumbing + ShoppingScannerSheet
+- Notes:
+  - `api/suggestions.md` frontmatter description changed ("shopping scan-history or pantry inventory scopes"); index synced.
+  - No new/removed pages; all other index descriptions verified unchanged against frontmatter.
+
 ## [2026-09-06] incremental-update | OFF v3 universal, naive-UTC fixes, two-axis categories, pantry cascade, iOS paging/TZ/outbox, prod default, CI + test suites (35 updated, 0 added)
 
 - **Watermark range:** 179b4a5..25037bc (18 commits)

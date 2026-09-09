@@ -10,7 +10,7 @@ source_files:
   - "ios/Inventario/Networking/ConnectivityMonitor.swift"
   - "ios/Inventario/Models/InventoryItem.swift"
 created: "2026-06-24"
-last_updated: "2026-09-06"
+last_updated: "2026-09-09"
 ---
 
 # iOS Networking
@@ -48,9 +48,9 @@ All methods are `async throws`. Bodies use `JSONSerialization` with nil-values f
 | Method | HTTP | Path |
 |--------|------|------|
 | `scan(barcode:)` | POST | `/api/scan` (10s timeout) |
-| `contribute(code:productName:brands:quantity:categories:labels:genericName:comment:appUUID:lang:consent:)` | POST | `/api/scan/contribute` (15s timeout) |
-| `uploadPhoto(code:imageData:filename:mimeType:imagefield:consent:)` | POST multipart | `/api/scan/contribute/photo` (fail-fast 413 over 5 MB) |
-| `fetchSuggestions(q:)` | GET | `/api/suggestions?q=` (see [Suggestions](../api/suggestions.md)) |
+| `contribute(code:productName:brands:quantity:categories:labels:genericName:comment:appUUID:lang:consent:productType:)` | POST | `/api/scan/contribute` (15s timeout; `product_type` sent when non-nil) |
+| `uploadPhoto(code:imageData:filename:mimeType:imagefield:consent:productType:)` | POST multipart | `/api/scan/contribute/photo` (fail-fast 413 over 5 MB; `product_type` part sent when non-nil) |
+| `fetchSuggestions(q:scope:="shopping")` | GET | `/api/suggestions?q=` (+ `&scope=` only when scope != `shopping`, so default calls stay URL-identical; see [Suggestions](../api/suggestions.md)) |
 | `fetchCategories()` | GET | `/api/categories` → `CategoriesResponse` (registry of categories, shelf life, compartments) |
 
 ### Pantries / invites / members
@@ -72,8 +72,8 @@ Decoded type is `InventoryItem` (see [iOS Models](./ios-models.md)); server pagi
 | Method | HTTP | Path |
 |--------|------|------|
 | `listScoped(pantryId:)` | GET (paged loop) | `/api/pantries/{id}/inventory?limit=50&offset=` — client-side loop, appends each page, stops when `page.count < limit`; single `GET` per page |
-| `createScoped(pantryId:barcode:name:brand:expirationDate:category:imageURL:quantity:offTags:storageLocation:source:productType:)` | POST | `/api/pantries/{id}/inventory` (`source` / `product_type` sent only when non-empty) |
-| `createManualScoped(pantryId:name:brand:expirationDate:category:quantity:)` | POST | `/api/pantries/{id}/inventory/manual` |
+| `createScoped(pantryId:barcode:name:brand:expirationDate:category:imageURL:quantity:offTags:storageLocation:source:productType:pnnsGroup:)` | POST | `/api/pantries/{id}/inventory` (`source` / `product_type` / `pnns_group` sent only when non-empty) |
+| `createManualScoped(pantryId:name:brand:expirationDate:category:quantity:storageLocation:)` | POST | `/api/pantries/{id}/inventory/manual` (`storage_location` sent only when non-empty) |
 | `updateScoped(pantryId:id:name:brand:expirationDate:category:quantity:)` | PATCH | `/api/pantries/{id}/inventory/{item}` |
 | `deleteScoped(pantryId:id:)` | DELETE | `/api/pantries/{id}/inventory/{item}` (200/204) |
 | `consume(pantryId:itemId:delta:reason:)` | POST | `/api/pantries/{id}/inventory/{item}/consume` (atomic server-side; 409 on insufficient quantity; see [Inventory Consume & History](../concepts/inventory-consume-history.md)) |
@@ -103,6 +103,7 @@ while true {
 // APIClient.inventoryBody — additive fields only when non-empty
 if let source, !source.isEmpty { body["source"] = source }
 if let productType, !productType.isEmpty { body["product_type"] = productType }
+if let pnnsGroup, !pnnsGroup.isEmpty { body["pnns_group"] = pnnsGroup }
 ```
 
 ### Shopping lists (pantry-scoped)
@@ -130,7 +131,7 @@ if let productType, !productType.isEmpty { body["product_type"] = productType }
 
 Specialized helpers bypass `perform(_:)` but apply `decorated(_:)` themselves:
 
-- `sendInventory(method:path:body:)` — JSON POST/PATCH returning one `InventoryItem`; backs `createScoped / createManualScoped / updateScoped` with bodies built by `inventoryBody(...)` (nil fields omitted; `off_category_tags` capped to 50 tags / 200 chars, `storage_location` / `source` / `product_type` only when non-empty).
+- `sendInventory(method:path:body:)` — JSON POST/PATCH returning one `InventoryItem`; backs `createScoped / createManualScoped / updateScoped` with bodies built by `inventoryBody(...)` (nil fields omitted; `off_category_tags` capped to 50 tags / 200 chars, `storage_location` / `source` / `product_type` / `pnns_group` only when non-empty).
 - `deleteItem(at:)` — DELETE expecting 200/204; backs `deleteScoped`; `deletePantry` / `removeMember` / `deleteShopping*` duplicate the pattern inline.
 - `fetchMarkdown(from:)` — GET with `Accept: text/markdown`, raw UTF-8 → `String` (failure → `APIError.decoding`); backs `exportScoped`.
 
